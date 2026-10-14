@@ -1,0 +1,7 @@
+__pycache__/
+.pytest_cache/
+.venv/
+.env.projectx
+data/
+*.sqlite
+audit.jsonl

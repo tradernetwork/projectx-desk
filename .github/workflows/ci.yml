@@ -1,0 +1,24 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No credentials or personal data committed
+        run: |
+          set -e
+          if git grep -nIE "sk-ant-|td_live_|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}" -- . ':!static/klinecharts.min.js' ':!tests' ':!.github/workflows/ci.yml'; then
+            echo "credential-looking string found"; exit 1; fi
+          for f in .env.projectx data; do test ! -e "$f" || { echo "$f must not be committed"; exit 1; }; done

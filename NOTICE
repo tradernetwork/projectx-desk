@@ -1,0 +1,8 @@
+Third-party material shipped in this repository
+
+static/klinecharts.min.js   KLineChart v10 (https://github.com/klinecharts/KLineChart), Apache License 2.0.
+static/aggregator.js        @klinecharts/data-aggregator (https://github.com/klinecharts/data-aggregator), Apache License 2.0.
+static/fonts/Inter_*        Inter, SIL Open Font License 1.1 (see static/fonts/OFL-Inter.txt).
+static/fonts/JetBrainsMono_* JetBrains Mono, SIL Open Font License 1.1 (see static/fonts/OFL-JetBrainsMono.txt).
+
+This project is not affiliated with, endorsed by, or sponsored by ProjectX, TopstepX, or Topstep.

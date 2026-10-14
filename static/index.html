@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ProjectX Desk</title>
+<meta name="theme-color" content="#080a0f">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="preload" href="/static/fonts/JetBrainsMono_500Medium.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/Inter_500Medium.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/desk.css">
+<script src="/static/klinecharts.min.js"></script>
+</head><body>
+<div class="desk" id="desk">
+
+  <!-- 1. RIBBON (top bar) -->
+  <section class="ribbon" id="ribbon" role="region" aria-label="Ribbon">
+    <strong class="brand"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 18 L10 8 L14 14 L20 5"/><circle cx="20" cy="5" r="2"/></svg><span>PX<em>DESK</em></span></strong>
+    <span class="grp contract">
+      <label class="sr" for="q">Contract search</label><input id="q" size="5" maxlength="12" value="MES" autocomplete="off" spellcheck="false">
+      <label class="sr" for="c">Contract</label><select id="c"></select>
+    </span>
+    <span class="grp seg" id="tfs" role="group" aria-label="Timeframe"></span>
+    <span class="quote">
+      <output id="price" class="price" aria-label="Last price">NA</output>
+      <span class="ba" aria-label="Bid and ask"><span class="ba-l">B</span><b data-ai="quote.bid" class="na">NA</b><span class="ba-l">A</span><b data-ai="quote.ask" class="na">NA</b></span>
+    </span>
+    <span class="grp feeds">
+      <span class="pill" id="feed-market" title="market data hub">MKT NA</span>
+      <span class="pill" id="feed-user" title="user hub">USER NA</span>
+    </span>
+    <span class="grp states">
+      <span class="pill" id="engine">ENGINE NA</span>
+      <span class="pill" id="trading">TRADING NA</span>
+      <span class="pill" id="acct-kind">ACCT NA</span>
+    </span>
+    <span class="grp push actions">
+      <button id="stream-toggle" class="ghost" aria-pressed="false" title="Stream mode: removes account and dollar nodes from the page">STREAM</button>
+      <button id="reveal" class="ghost" hidden title="Show hidden figures for 30 seconds">Reveal 30s</button>
+      <button id="ai-toggle" class="ghost" aria-pressed="false" aria-controls="ai-panel">AI</button>
+      <span class="vsep" aria-hidden="true"></span>
+      <button id="halt-btn" class="danger" title="Halt: refuse all new orders">HALT</button>
+      <button id="flatten-btn" class="danger" title="Flatten all positions">FLATTEN</button>
+    </span>
+    <span id="act-msg" class="actmsg" role="status" aria-live="polite"></span>
+  </section>
+
+  <!-- 1b. KPI RIBBON: every stat carries its sample size -->
+  <section class="kpis" id="kpis" role="region" aria-label="Session KPIs">
+    <div class="kpi" id="kpi-pnl">
+      <div class="k-h"><span class="k-t">Live P&amp;L</span><span class="k-tag">day, net</span></div>
+      <div class="k-v"><span data-slot="sens" data-tpl="t-kpi-pnl"></span><span data-slot="stream" data-tpl="t-kpi-hidden"></span></div>
+      <div class="k-s">from n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b> closed trades</div>
+    </div>
+    <div class="kpi wide" id="kpi-wr">
+      <div class="k-h"><span class="k-t">Win rate vs break-even</span></div>
+      <div class="k-v"><span class="k-num"><b data-ai="kpi.win_rate" data-fmt="num1" class="na">NA</b><small>%</small></span>
+        <span class="k-vs">need <b data-ai="kpi.breakeven_win_rate" data-fmt="num1" class="na">NA</b>%</span>
+        <span id="wr-verdict" class="verdict">NA</span></div>
+      <div class="k-s k-pay" id="wr-pay">payoff <b data-ai="kpi.payoff" data-fmt="num2" class="na">NA</b>, <span id="wr-need">needs <b data-ai="kpi.breakeven_win_rate" data-fmt="num1" class="na">NA</b>% wins to break even</span><span id="wr-need-na" hidden>break-even NA</span></div>
+      <div class="wr" id="wr-gauge" aria-hidden="true"><i class="wr-fill" id="wr-fill"></i><i class="wr-be" id="wr-be"></i></div>
+      <div class="k-s"><b data-ai="kpi.wins" data-fmt="int" class="na">NA</b>W / <b data-ai="kpi.losses" data-fmt="int" class="na">NA</b>L, n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b><span class="ss" hidden>SMALL SAMPLE</span></div>
+    </div>
+    <div class="kpi" id="kpi-exp">
+      <div class="k-h"><span class="k-t">Expectancy</span><span class="k-tag">per trade</span></div>
+      <div class="k-v"><span data-slot="sens" data-tpl="t-kpi-exp"></span><span data-slot="stream" data-tpl="t-kpi-hidden"></span></div>
+      <div class="k-s">n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b><span class="ss" hidden>SMALL SAMPLE</span></div>
+    </div>
+    <div class="kpi" id="kpi-pf">
+      <div class="k-h"><span class="k-t">Profit factor</span><span class="k-tag">gross W / L</span></div>
+      <div class="k-v"><span class="k-num"><b data-ai="kpi.profit_factor" data-fmt="num2" class="na">NA</b></span><span class="k-vs"><span data-slot="sens" data-tpl="t-kpi-gross"></span><span data-slot="stream" data-tpl="t-kpi-gross-hidden"></span></span></div>
+      <div class="k-s">n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b><span class="ss" hidden>SMALL SAMPLE</span></div>
+    </div>
+    <div class="kpi" id="kpi-trades">
+      <div class="k-h"><span class="k-t">Trades</span><span class="k-tag">closed today</span></div>
+      <div class="k-v"><span class="k-num"><b data-ai="kpi.n" data-fmt="int" class="na">NA</b></span><span class="k-vs"><b data-ai="kpi.wins" data-fmt="int" class="na">NA</b>W <b data-ai="kpi.losses" data-fmt="int" class="na">NA</b>L</span></div>
+      <div class="wl" id="wl-bar" aria-hidden="true"><i class="w" id="wl-w"></i><i class="l" id="wl-l"></i></div>
+      <div class="streak" id="streak" role="group" aria-label="Losses in a row" hidden><div class="k-s s-l"><span class="s-t">LOSSES IN A ROW</span><span class="s-n"><b data-ai="behavior.consecutive_losses" data-fmt="int" class="na">NA</b> / <span id="streak-max">3</span></span></div><div class="pips" id="bar-streak" aria-hidden="true"></div></div>
+    </div>
+    <div class="kpi" id="kpi-orders">
+      <div class="k-h"><span class="k-t">Orders today</span></div>
+      <div class="k-v"><span class="k-num"><b data-ai="risk.orders_today" data-fmt="int" class="na">NA</b><small> / <span data-ai="risk.orders_max" data-fmt="int" class="na">NA</span></small></span></div>
+      <div class="pips" id="bar-orders" aria-hidden="true"></div>
+    </div>
+    <div class="kpi" id="kpi-open">
+      <div class="k-h"><span class="k-t">Open contracts</span></div>
+      <div class="k-v"><span class="k-num"><b data-ai="risk.open_contracts" data-fmt="int" class="na">NA</b><small> / <span data-ai="risk.max_contracts" data-fmt="int" class="na">NA</span></small></span></div>
+      <div class="pips" id="bar-open" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <!-- left column: size box, ticket verify, human confirm -->
+  <div class="col col-left">
+    <!-- 2. SIZE BOX -->
+    <section id="size" class="panel hero" role="region" aria-label="Size box">
+      <div class="phead"><h2>Size</h2><span class="dim sub">rounded down, never up</span><span id="size-bind" class="badge push" title="binding source">NA</span></div>
+      <div id="size-answer" class="answer" aria-live="off">
+        <div class="big"><span class="num na" data-ai="size.contracts">NA</span><span class="unit na" data-ai="contract.root">NA</span><span class="chips seg sideseg" id="side" role="group" aria-labelledby="lbl-side"><span class="sr" id="lbl-side">Side</span><button id="side-long" data-v="long" aria-pressed="true">LONG</button><button id="side-short" data-v="short" aria-pressed="false">SHORT</button></span></div>
+        <div id="size-alert" class="banner bad refused alert" role="alert" hidden>
+          <div id="size-notallowed" class="aln na-line" hidden>NOT ALLOWED: STAGE WILL REFUSE</div>
+          <div id="size-refused" class="aln rf-line" hidden></div>
+        </div>
+        <div id="size-chips" class="chipline">
+          <span id="chip-scale" class="chip warn" title="risk scaler: the budget was cut before sizing" hidden><span id="cs-adx" hidden>ADX <b data-ai="size.adx" data-fmt="int" class="na">NA</b> <span id="cs-adx-note"></span></span><span id="cs-atr" hidden>ATR p<b data-ai="size.atr_pctile" data-fmt="int" class="na">NA</b> <span id="cs-atr-note"></span></span><span class="x">x<b data-ai="size.scale.multiplier" data-fmt="num2" class="na">NA</b></span></span>
+          <span id="chip-lock" class="chip warn" title="after a loss, risk may not exceed what the losing trade risked" hidden><span class="t">SIZE LOCKED AFTER LOSS</span></span>
+          <span id="chip-cap" class="chip info" title="risk alone would allow more contracts than the per-order cap" hidden><span class="t">RISK ALLOWS <b data-ai="size.contracts_by_risk" data-fmt="int" class="na">NA</b>, CAP <b data-ai="size.cap" data-fmt="int" class="na">NA</b></span></span>
+        </div>
+        <ul id="size-why" class="why" aria-label="Why this size" hidden></ul>
+        <div class="sec">
+          <span data-slot="sens" data-tpl="t-size-risk"></span>
+          <span class="kv"><b data-ai="size.pct_budget" data-fmt="num1" class="na">NA</b>% of budget</span>
+        </div>
+      </div>
+      <p id="size-math" class="math">
+        <span data-ai="size.risk_pct" data-fmt="pctfrac" class="na">NA</span> of budget<span data-slot="sens" data-tpl="t-size-budget"></span>,
+        <span data-ai="size.stop_atr_k" data-fmt="num1" class="na">NA</span> ATR =
+        <span data-ai="size.stop_ticks" data-fmt="int" class="na">NA</span>t<span data-slot="sens" data-tpl="t-size-rpc"></span>,
+        so <span data-ai="size.contracts" class="na">NA</span> <span data-ai="contract.root" class="na">NA</span>, binds <span data-ai="size.binding" class="na">NA</span>
+      </p>
+      <div class="ctls">
+        <span class="lbl" id="lbl-risk">Risk %</span>
+        <span class="chips" id="risk-pct" role="group" aria-labelledby="lbl-risk">
+          <span class="seg"><button id="risk-pct-1" data-v="0.01" aria-pressed="false">1</button><button id="risk-pct-2" data-v="0.02" aria-pressed="false">2</button><button id="risk-pct-3" data-v="0.03" aria-pressed="true">3</button><button id="risk-pct-5" data-v="0.05" aria-pressed="false">5</button></span>
+          <span class="step"><button id="risk-dec" aria-label="Decrease risk percent by half a point">-</button><output id="risk-val" class="val">3%</output><button id="risk-inc" aria-label="Increase risk percent by half a point">+</button></span>
+        </span>
+        <span class="lbl" id="lbl-stop">Stop</span>
+        <span class="chips" id="stop-atr" role="group" aria-labelledby="lbl-stop">
+          <span class="seg"><button id="stop-atr-10" data-v="1" aria-pressed="false">1.0x</button><button id="stop-atr-15" data-v="1.5" aria-pressed="true">1.5x</button><button id="stop-atr-20" data-v="2" aria-pressed="false">2.0x</button></span>
+          <span class="step"><button id="stop-dec" aria-label="Stop one tick tighter">-t</button><output id="stop-val" class="val">NA</output><button id="stop-inc" aria-label="Stop one tick wider">+t</button></span>
+        </span>
+        <span class="lbl" id="lbl-con">Size for</span>
+        <span class="chips seg" id="size-contract" role="group" aria-labelledby="lbl-con">
+          <button id="size-contract-auto" data-v="AUTO" aria-pressed="true">AUTO</button><button id="size-contract-mes" data-v="MES" aria-pressed="false">MES</button><button id="size-contract-es" data-v="ES" aria-pressed="false">ES</button>
+        </span>
+        <div id="pair" class="pair" data-own="1" aria-label="Micro versus full-size"></div>
+      </div>
+    </section>
+
+    <!-- 4. TICKET VERIFY + BRACKET TREE -->
+    <section id="ticket" class="panel grow" role="region" aria-label="Ticket verify">
+      <div class="phead"><h2>Ticket</h2><span id="tk-state" class="badge">NONE</span>
+        <span class="push meta">TTL <b id="tk-ttl" data-ai="ticket.ttl_s">NA</b><span class="msep" aria-hidden="true"></span>#<b id="tk-hash" data-ai="ticket.id8">NA</b></span></div>
+      <div id="rail" class="rail" role="group" aria-label="Behavior rail" hidden>
+        <span id="rail-cool" class="rail-main"><span class="rail-t">COOLDOWN AFTER A LOSS</span><b id="rail-clock" class="rail-clock" aria-hidden="true" data-ai="behavior.cooldown_left_s" data-fmt="mmss">NA</b><span class="rail-sub">Walk away.</span></span>
+        <span id="rail-lock" class="rail-main" hidden><span class="rail-t">LOCKED FOR THE SESSION: <b data-ai="behavior.consecutive_losses" data-fmt="int" class="na">NA</b> LOSSES IN A ROW</span><span class="rail-sub">No new opens this session.</span></span>
+      </div>
+      <button id="stage-btn" class="primary" disabled>STAGE (preview, places nothing)</button>
+      <div id="tk-refused" class="banner bad" hidden></div>
+      <ul id="tk-checks" class="checks" hidden></ul>
+
+      <p id="tree-empty" class="tree-empty">No ticket. Stage a preview: the bracket draws here before anything is sent.</p>
+      <div id="tree" class="tree" hidden>
+        <div class="tree-head"><span id="tree-mode" class="tmode">PREVIEW</span><span id="tree-prot" class="badge">NA</span></div>
+        <div class="node entry" id="node-entry">
+          <div class="n-h"><span class="n-t">Entry</span><span id="tr-e-state" class="nstate">NA</span></div>
+          <div class="n-main"><span id="tr-e-side" class="nside">NA</span> <b id="tr-e-size" class="na">NA</b> <span id="tr-e-root" class="nroot">NA</span> <span id="tr-e-type" class="ntype">MARKET</span></div>
+          <div class="n-sub">ref <b id="tr-e-ref" class="na">NA</b><span class="push">#<span id="tr-id8">NA</span></span></div>
+        </div>
+        <div class="link" aria-hidden="true"><span id="tree-link">stop after fill</span></div>
+        <div class="node stop" id="node-stop">
+          <div class="n-h"><span class="n-t">Stop</span><span id="tr-unprot" class="unprot" hidden>UNPROTECTED</span><span id="tr-s-state" class="nstate">NA</span></div>
+          <div class="n-main"><span id="tr-s-side" class="nside">NA</span> <b id="tr-s-price" class="na">NA</b> <span class="nticks">(<span id="tr-s-ticks">NA</span>t)</span></div>
+          <div class="n-sub"><span data-slot="sens" data-tpl="t-tree-risk"></span><span data-slot="stream" data-tpl="t-tree-risk-hidden"></span><span class="push" id="tr-filled"></span></div>
+        </div>
+        <div class="node ghost" aria-hidden="true"><span>No target order. Exit by hand or FLATTEN.</span></div>
+        <div class="rr" id="rr">
+          <div class="rr-track"><i class="rr-loss"></i><i class="rr-gain"></i><i class="rr-now" id="rr-now"></i></div>
+          <div class="rr-ticks"><span>-1R</span><span>0R</span><span>1R</span><span>2R</span><span>3R</span></div>
+          <div class="rr-read"><span id="rr-val">now NA</span><span data-slot="sens" data-tpl="t-tree-r"></span></div>
+        </div>
+      </div>
+
+      <details id="tk-details" class="rbwrap" open>
+        <summary>Readback <span class="dim">(read it back before you hold)</span></summary>
+        <dl id="tk-rb" class="rb">
+          <dt>Protection</dt><dd id="tk-prot" data-ai="ticket.readback.protection" class="na">NA</dd>
+          <dt>Account</dt><dd><span data-ai="ticket.readback.account_kind" class="na">NA</span><span data-slot="sens" data-tpl="t-tk-acct"></span></dd>
+          <dt>Contract</dt><dd data-ai="ticket.readback.contract" class="na">NA</dd>
+          <dt>Side</dt><dd data-ai="ticket.readback.side" class="na">NA</dd>
+          <dt>Size</dt><dd data-ai="ticket.readback.size" data-fmt="int" class="na">NA</dd>
+          <dt>Order</dt><dd data-ai="ticket.readback.order_type" class="na">NA</dd>
+          <dt>Entry ref</dt><dd data-ai="ticket.readback.entry_ref" class="na">NA</dd>
+          <dt>Stop</dt><dd><span data-ai="ticket.readback.stop_price" class="na">NA</span> (<span data-ai="ticket.readback.stop_ticks" data-fmt="int" class="na">NA</span> ticks)</dd>
+          <span data-slot="sens" data-tpl="t-tk-risk" class="contents"></span>
+          <dt>% of budget</dt><dd><span data-ai="ticket.readback.pct_of_budget" data-fmt="num1" class="na">NA</span>%, binds <span data-ai="ticket.readback.binding" class="na">NA</span></dd>
+        </dl>
+      </details>
+    </section>
+
+    <!-- 5. PLACE BAR: human only, outside every data region, no data-ai anywhere inside -->
+    <section id="place" class="placebar" role="region" aria-label="Human confirm">
+      <button id="place-btn" type="button" disabled aria-describedby="place-hint">
+        <span class="hold-fill" aria-hidden="true"></span>
+        <svg class="ring" viewBox="0 0 36 36" aria-hidden="true" focusable="false"><circle class="ring-bg" cx="18" cy="18" r="15"/><circle id="ring-fg" class="ring-fg" cx="18" cy="18" r="15" transform="rotate(-90 18 18)"/></svg>
+        <span id="place-label">PLACE (hold)</span>
+      </button>
+      <p id="place-hint" class="hint">No ticket.</p>
+      <p id="place-result" class="presult" role="status" aria-live="polite"></p>
+      <p class="note">Human control; agents must not use it. The hold is anti-fat-finger friction, not security.</p>
+    </section>
+  </div>
+
+  <!-- 3. CHART -->
+  <section class="chartwrap" role="region" aria-label="Chart">
+    <div class="chartbar">
+      <span class="ind" id="ind" role="group" aria-label="Indicators"></span>
+      <span id="ema-badge" class="badge stack" title="EMA 8 / 21 / 34 stack order" hidden><span class="bl"><span class="bl-l">EMA STACK</span><span class="bl-s">EMA</span></span><b data-ai="ind.ema.state" class="na">NA</b></span>
+      <label class="sr" for="tz">Timezone</label>
+      <select id="tz"><option value="America/Chicago">CT</option><option value="America/New_York">ET</option><option value="UTC">UTC</option></select>
+      <span id="msg" class="msg" role="status"></span>
+      <span class="legend" aria-label="Chart line legend"><span class="lg entry">ENTRY</span><span class="lg stop">STOP</span><span class="lg vwap">VWAP</span><span class="lg gex">GEX</span></span>
+      <span class="dot-wrap" title="tick feed"><span id="dot"></span> ticks</span>
+    </div>
+    <div class="chartbody"><div id="tools" role="toolbar" aria-label="Drawing tools"></div><div id="chart"></div></div>
+  </section>
+
+  <!-- right column: risk, blotter, AI -->
+  <div class="col col-right">
+    <!-- 6. RISK GAUGES -->
+    <section id="risk" class="panel" role="region" aria-label="Risk gauges">
+      <div class="phead"><h2>Risk budget</h2><span class="push dim">binds <b id="risk-binds" data-ai="risk.binding" class="na">NA</b></span></div>
+      <div class="gauge" id="g-daily">
+        <div class="gl"><span class="g-t">Daily loss room <span class="bindtag" hidden>BINDS</span></span><span class="g-v"><span data-slot="sens" data-tpl="t-risk-room"></span><span data-slot="stream" data-tpl="t-risk-used"></span></span></div>
+        <div class="bar"><span class="track" id="track-daily"><i id="bar-daily"></i></span></div>
+      </div>
+      <div class="gauge" id="g-dd">
+        <div class="gl"><span class="g-t">Drawdown buffer <span class="bindtag" hidden>BINDS</span></span><span class="g-v"><span data-slot="sens" data-tpl="t-risk-dd"></span><span data-slot="stream" data-tpl="t-hidden"></span></span></div>
+        <div class="bar"><span class="track" id="track-dd"><i id="bar-dd"></i></span></div>
+      </div>
+      <div class="remain"><span class="g-t">Remaining, conservative</span><span class="g-v big"><span data-slot="sens" data-tpl="t-risk-rem"></span><span data-slot="stream" data-tpl="t-hidden"></span></span></div>
+    </section>
+
+    <!-- 6c. MANAGE TRADE: only while a position with a live stop exists. Human clicks, tighten-only. -->
+    <section id="manage" class="panel manage" role="region" aria-label="Manage trade" hidden>
+      <div class="phead"><h2>Manage trade</h2><span class="push meta"><b data-ai="manage.side" class="na">NA</b> <b data-ai="manage.size" data-fmt="int" class="na">NA</b></span></div>
+      <div class="mg-top">
+        <div class="mg-r"><span class="lbl">Open R</span><output id="mg-r" class="mg-rv na" data-ai="manage.open_r" data-fmt="rr" data-sign="1" aria-label="Open R">NA</output></div>
+        <dl class="mg-kv">
+          <dt>Avg</dt><dd data-ai="manage.avg" data-fmt="num" class="na">NA</dd>
+          <dt>Last</dt><dd data-ai="manage.last" data-fmt="num" class="na">NA</dd>
+          <dt>Stop</dt><dd data-ai="manage.stop" data-fmt="num" class="na">NA</dd>
+        </dl>
+      </div>
+      <div id="mg-opts" class="mg-opts" role="group" aria-label="Tighten the stop"></div>
+      <p id="mg-msg" class="mg-msg" role="status" aria-live="polite"></p>
+      <p class="note">Stops only move toward price.</p>
+    </section>
+
+    <!-- 6b. LEVEL REACTIONS: history of how price behaved at each level. Counts, never a forecast. -->
+    <section id="levels" class="panel" role="region" aria-label="Level reactions" data-own="1">
+      <div class="phead"><h2>Level reactions</h2><span class="push dim sub">history, not a forecast</span></div>
+      <div id="lv-list" class="lvlist" role="group" aria-label="Select a level to mark its reactions on the chart"></div>
+      <p id="lv-legend" class="lvlegend"><span class="mk up">&#9650;&#9660; bounce</span><span class="mk fail">&#10005; fail</span><span class="mk neu">&#8226; flat</span><span class="mk pend">&#9675; pending</span><span id="lv-tf" class="dim"></span></p>
+    </section>
+
+    <!-- 7. BLOTTER -->
+    <section id="blotter" class="panel grow" role="region" aria-label="Blotter">
+      <div id="halt-banner" class="banner bad big" hidden>
+        <strong id="halt-title">HALTED</strong>
+        <span id="halt-sub">New orders are refused until a human clears the halt.</span>
+        <span class="row"><button id="reconcile-btn">Reconcile</button><button id="clear-halt-btn" class="danger">Clear halt (human only)</button></span>
+      </div>
+      <div class="phead"><h2>Positions</h2><span class="push dim">fills <b data-ai="fills_today" data-fmt="int" class="na">NA</b><span data-slot="sens" data-tpl="t-pnl"></span></span></div>
+      <table class="tbl"><thead><tr><th>Side</th><th class="r">Qty</th><th>Contract</th><th class="r">Avg</th></tr></thead><tbody id="pos-body"></tbody></table>
+      <div class="phead"><h2>Working orders</h2></div>
+      <table class="tbl"><thead><tr><th>Side</th><th>Type</th><th class="r">Qty</th><th class="r">Px</th><th>Tag</th></tr></thead><tbody id="ord-body"></tbody></table>
+    </section>
+
+    <!-- 8. AI PANEL -->
+    <section id="ai-panel" class="panel" role="region" aria-label="AI readable state" hidden>
+      <div class="phead"><h2>AI view</h2><span class="push dim mono">/ai/state, /ai/digest</span></div>
+      <pre id="ai-digest" tabindex="0">NA</pre>
+      <script type="application/json" id="ai-state">null</script>
+    </section>
+  </div>
+
+  <footer class="strip" role="region" aria-label="Status">
+    <span id="live-polite" class="live" aria-live="polite"></span>
+    <span id="live-assertive" class="live bad" aria-live="assertive"></span>
+    <span class="push dim" id="asof">asof NA</span>
+    <span class="dim">GEX marks positioning, not targets.</span>
+    <a class="byline" href="https://www.traderdaddy.pro" target="_blank" rel="noopener noreferrer" title="Built by TraderMatrix"><img src="/static/brand-mark.png" alt="" width="14" height="14"><span>Built by TraderMatrix</span></a>
+  </footer>
+</div>
+
+<!-- Fragments for nodes that stream mode removes from the DOM (D4). Never CSS-hidden: absent. -->
+<template id="t-size-risk"><span class="kv money">$<b data-ai="size.risk_usd" data-fmt="num" class="na">NA</b> risk</span></template>
+<template id="t-size-budget"> = $<span data-ai="size.budget_usd" data-fmt="num" class="na">NA</span></template>
+<template id="t-size-rpc"> = $<span data-ai="size.rpc" data-fmt="num" class="na">NA</span> per <span data-ai="contract.root" class="na">NA</span></template>
+<template id="t-tk-acct"> acct ...<b id="tk-suffix">NA</b></template>
+<template id="t-tk-risk"><dt>Risk</dt><dd>$<span data-ai="ticket.readback.risk_usd" data-fmt="num" class="na">NA</span></dd></template>
+<template id="t-risk-room">$<b data-ai="risk.daily_room" data-fmt="num" class="na">NA</b> <span class="of">of $<span data-ai="risk.daily_limit" data-fmt="num" class="na">NA</span></span></template>
+<template id="t-risk-used"><b data-ai="risk.daily_used_pct" data-fmt="num1" class="na">NA</b>% used</template>
+<template id="t-risk-dd">$<b data-ai="risk.dd_buffer" data-fmt="num" class="na">NA</b></template>
+<template id="t-risk-rem">$<b data-ai="risk.remaining" data-fmt="num" class="na">NA</b></template>
+<template id="t-pnl">, day P&amp;L <b data-ai="risk.pnl_day" data-fmt="usd" data-sign="1" class="na">NA</b></template>
+<template id="t-hidden"><span class="hid">hidden (stream)</span></template>
+<template id="t-kpi-hidden"><span class="k-num hid">hidden</span></template>
+<template id="t-kpi-pnl"><span class="k-num"><b data-ai="risk.pnl_day" data-fmt="usd" data-sign="1" class="na">NA</b></span></template>
+<template id="t-kpi-exp"><span class="k-num"><b data-ai="kpi.expectancy" data-fmt="usd" data-sign="1" class="na">NA</b></span></template>
+<template id="t-kpi-gross"><span class="pos">+$<b data-ai="kpi.gross_win" data-fmt="num" class="na">NA</b></span> / <span class="neg">-$<b data-ai="kpi.gross_loss" data-fmt="num" class="na">NA</b></span></template>
+<template id="t-kpi-gross-hidden"><span class="hid">gross hidden</span></template>
+<template id="t-tree-risk"><span class="trisk">risk $<b id="tree-risk" class="na">NA</b></span></template>
+<template id="t-tree-risk-hidden"><span class="hid">risk hidden (stream)</span></template>
+<template id="t-tree-r"><span class="r1">1R = $<b id="tree-r1" class="na">NA</b></span></template>
+
+<script src="/static/desk.js"></script>
+</body></html>

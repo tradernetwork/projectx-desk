@@ -150,6 +150,10 @@ RULE: agent reads and stages; the operator places. Voice never confirms.
 ```
 </details>
 
+## How it fits together
+
+<p align="center"><img src="docs/img/architecture.svg" alt="Architecture: browser desk and AI assistant reach the FastAPI app; only px_guard.py sends order writes to the ProjectX gateway or the mock" width="900"></p>
+
 ## Safety model
 
 | Rule | How it is enforced |
@@ -161,6 +165,8 @@ RULE: agent reads and stages; the operator places. Voice never confirms.
 | Fresh state at place | Feed up, quote under 2 seconds old, broker positions match the desk's view, and market entries are refused if price moved more than 8 ticks since staging. |
 | Stops only tighten | Toward price only, never into the market. Simulated accounts only. |
 | Loopback by default | Binds `127.0.0.1`; foreign hosts and origins get a 403. **On loopback there is no login:** anything that can reach the port can stage and place within your caps, including an AI agent with a shell. Any other bind (Docker, an LXC) refuses to start without `PX_OPERATOR_TOKEN` and `PX_ALLOWED_HOSTS`; the token is then a login in front of everything except MCP. Put TLS in front. See [docs/DEPLOY.md](docs/DEPLOY.md). |
+
+<p align="center"><img src="docs/img/order-lifecycle.svg" alt="Order lifecycle: staged, placing, placed, stop sent, stop acknowledged; failures reject, go UNKNOWN, or flatten, and end in a halt" width="900"></p>
 
 Nothing in a browser can tell an AI extension's click from a human's, so the 600 ms hold is anti-fat-finger, not security.
 The reasoning behind every rule, including what is decided but not yet built, is in [docs/DECISIONS.md](docs/DECISIONS.md).

@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" role="img" aria-label="Architecture: browser and AI assistant talk to the FastAPI app; only px_guard.py can place orders; the client makes one attempt per write; a mock gateway can stand in for ProjectX">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker>
+    <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#f43f5e"/></marker>
+    <marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#38bdf8"/></marker>
+    <style>
+      text{font-family:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;fill:#e2e8f0}
+      .mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+      .h{font-size:15px;font-weight:700}.s{font-size:12.5px;fill:#94a3b8}.k{font-size:11px;letter-spacing:.12em;font-weight:700;fill:#94a3b8}
+      .box{fill:#121826;stroke:#1c2438;stroke-width:1.5}.cy{stroke:#38bdf8}.gr{stroke:#22c55e}.mg{stroke:#f43f5e}
+    </style>
+  </defs>
+  <rect x="1" y="1" width="1198" height="598" rx="14" fill="#0d121d" stroke="#1c2438" stroke-width="2"/>
+  <text x="30" y="40" class="k">HOW THE PIECES FIT</text>
+
+  <!-- You and your AI -->
+  <text x="30" y="78" class="k">YOU AND YOUR AI</text>
+  <rect class="box cy" x="30" y="92" width="230" height="92" rx="10"/>
+  <text x="48" y="120" class="h">Browser desk</text>
+  <text x="48" y="142" class="s">size box, ticket readback,</text>
+  <text x="48" y="160" class="s">600 ms hold to PLACE</text>
+  <rect class="box" x="30" y="214" width="230" height="124" rx="10"/>
+  <text x="48" y="242" class="h">AI assistant</text>
+  <text x="48" y="264" class="s">reads /ai/digest</text>
+  <text x="48" y="282" class="s">MCP: read, size, stage, halt</text>
+  <text x="48" y="304" class="h" style="fill:#f43f5e;font-size:13px">cannot place. ever.</text>
+
+  <!-- App -->
+  <text x="340" y="78" class="k">THE APP</text>
+  <rect class="box" x="340" y="92" width="270" height="312" rx="12"/>
+  <text x="358" y="118" class="h mono">px_app.py</text>
+  <text x="358" y="136" class="s">FastAPI. 127.0.0.1 by default.</text>
+  <rect class="box" x="356" y="152" width="238" height="52" rx="8"/>
+  <text x="370" y="174" class="s" style="fill:#e2e8f0">Host / Origin / CSRF checks</text>
+  <text x="370" y="192" class="s">+ operator login off loopback</text>
+  <rect class="box" x="356" y="214" width="238" height="52" rx="8"/>
+  <text x="370" y="236" class="s" style="fill:#e2e8f0">AI surface (read only)</text>
+  <text x="370" y="254" class="s mono">/ai/digest  /ai/state</text>
+  <rect class="box" x="356" y="276" width="238" height="52" rx="8"/>
+  <text x="370" y="298" class="s" style="fill:#e2e8f0">MCP server  /mcp/</text>
+  <text x="370" y="316" class="s">11 tools. No place tool exists.</text>
+  <rect class="box" x="356" y="338" width="238" height="52" rx="8"/>
+  <text x="370" y="360" class="s" style="fill:#e2e8f0">Human desk actions</text>
+  <text x="370" y="378" class="s">stage, place, flatten, stop, halt</text>
+
+  <!-- Guard -->
+  <text x="700" y="78" class="k" style="fill:#f43f5e">THE ONLY ORDER PATH</text>
+  <rect x="700" y="92" width="250" height="312" rx="12" fill="#1a1220" stroke="#f43f5e" stroke-width="2.5"/>
+  <text x="718" y="118" class="h mono">px_guard.py</text>
+  <text x="718" y="136" class="s">every order write lives here</text>
+  <text x="718" y="170" class="s" style="fill:#e2e8f0">every check fails closed</text>
+  <text x="718" y="196" class="s" style="fill:#e2e8f0">size computed, rounded down</text>
+  <text x="718" y="222" class="s" style="fill:#e2e8f0">hashed single-use ticket (120 s)</text>
+  <text x="718" y="248" class="s" style="fill:#e2e8f0">one attempt per write, no replay</text>
+  <text x="718" y="274" class="s" style="fill:#e2e8f0">stop after fill, 5 s watchdog</text>
+  <text x="718" y="300" class="s" style="fill:#e2e8f0">stops only tighten</text>
+  <text x="718" y="326" class="s" style="fill:#e2e8f0">flatten, halt, reconcile</text>
+  <text x="718" y="372" class="s">A test fails the build if any other</text>
+  <text x="718" y="390" class="s">module can send an order write</text>
+
+  <!-- Gateway side -->
+  <text x="1040" y="78" class="k">THE BROKER SIDE</text>
+  <rect class="box" x="1040" y="92" width="130" height="92" rx="10"/>
+  <text x="1054" y="120" class="h mono" style="font-size:13px">px_client.py</text>
+  <text x="1054" y="142" class="s">REST. Writes get</text>
+  <text x="1054" y="160" class="s">exactly one try.</text>
+  <rect class="box gr" x="1040" y="214" width="130" height="92" rx="10"/>
+  <text x="1054" y="242" class="h" style="font-size:14px">ProjectX</text>
+  <text x="1054" y="262" class="h" style="font-size:14px">gateway</text>
+  <text x="1054" y="286" class="s">REST + SignalR</text>
+  <rect x="1040" y="336" width="130" height="68" rx="10" fill="none" stroke="#a855f7" stroke-width="1.8" stroke-dasharray="6 5"/>
+  <text x="1054" y="360" class="h mono" style="font-size:12.5px">dev_gateway.py</text>
+  <text x="1054" y="380" class="s">practice market</text>
+
+  <!-- Live state -->
+  <rect class="box cy" x="340" y="450" width="610" height="110" rx="12"/>
+  <text x="358" y="478" class="h mono">px_hub.py + px_state.py</text>
+  <text x="358" y="500" class="s">Live positions, orders, fills and quotes from the user and market SignalR hubs.</text>
+  <text x="358" y="520" class="s">After any drop it resyncs from REST, and until it has, today's P&amp;L reads NA, never zero.</text>
+  <text x="358" y="540" class="s">px_digest.py, px_levels.py and sizing.py turn that state into the digest (pure math, no I/O).</text>
+  <rect class="box" x="30" y="450" width="270" height="110" rx="12"/>
+  <text x="48" y="478" class="h">Rails</text>
+  <text x="48" y="500" class="s">cooldown after a loss</text>
+  <text x="48" y="518" class="s">lockout after N in a row</text>
+  <text x="48" y="536" class="s">no sizing up after a loss</text>
+
+  <!-- arrows -->
+  <path d="M260 138H340" stroke="#38bdf8" stroke-width="2" fill="none" marker-end="url(#c)"/>
+  <path d="M260 276H340" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  <path d="M610 364H700" stroke="#38bdf8" stroke-width="2" fill="none" marker-end="url(#c)"/>
+  <text x="615" y="354" class="s" style="font-size:11px;fill:#38bdf8">a human click</text>
+  <path d="M610 302H700" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4" fill="none" marker-end="url(#a)"/>
+  <text x="612" y="292" class="s" style="font-size:11px">stage, halt</text>
+  <path d="M950 138H1040" stroke="#f43f5e" stroke-width="2.2" fill="none" marker-end="url(#m)"/>
+  <path d="M1105 184V214" stroke="#f43f5e" stroke-width="2.2" fill="none" marker-end="url(#m)"/>
+  <path d="M1105 306V336" stroke="#a855f7" stroke-width="1.8" stroke-dasharray="4 4" fill="none"/>
+  <text x="1112" y="326" class="s" style="font-size:11px;fill:#a855f7">or</text>
+  <path d="M1170 260H1190V505H950" stroke="#22c55e" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  <text x="1010" y="498" class="s" style="font-size:11px;fill:#22c55e">live feed</text>
+  <path d="M645 450V404" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  <path d="M825 450V404" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  <path d="M300 505H340" stroke="#94a3b8" stroke-width="2" fill="none" marker-start="url(#a)"/>
+</svg>

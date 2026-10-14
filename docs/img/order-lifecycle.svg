@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" width="1200" height="520" role="img" aria-label="Order lifecycle: staged, place re-checks everything, placed (accepted is not filled), stop sent after the fill and acknowledged; failures reject, or become UNKNOWN and halt, or flatten and halt">
+  <defs>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#22c55e"/></marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f43f5e"/></marker>
+    <marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f59e0b"/></marker>
+    <style>
+      text{font-family:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;fill:#e2e8f0}
+      .mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+      .h{font-size:14px;font-weight:700}.s{font-size:12px;fill:#94a3b8}.k{font-size:11px;letter-spacing:.12em;font-weight:700;fill:#94a3b8}
+      .n{fill:#121826;stroke:#1c2438;stroke-width:1.5}
+    </style>
+  </defs>
+  <rect x="1" y="1" width="1198" height="518" rx="14" fill="#0d121d" stroke="#1c2438" stroke-width="2"/>
+  <text x="30" y="40" class="k">LIFE OF AN ORDER</text>
+  <text x="30" y="62" class="s">Green is the normal path. Amber needs a human. Red stops everything.</text>
+
+  <!-- normal path -->
+<rect class="n" x="30" y="110" width="180" height="86" rx="10" stroke="#22c55e" stroke-width="1.5"/>
+<text x="46" y="136" class="h mono">STAGED</text>
+<text x="46" y="158" class="s">checks pass, size set,</text>
+<text x="46" y="175" class="s">ticket hashed, 120 s</text>
+<rect class="n" x="270" y="110" width="180" height="86" rx="10" stroke="#22c55e" stroke-width="1.5"/>
+<text x="286" y="136" class="h mono">PLACING</text>
+<text x="286" y="158" class="s">you hold PLACE; checks</text>
+<text x="286" y="175" class="s">rerun on fresh state</text>
+<rect class="n" x="510" y="110" width="180" height="86" rx="10" stroke="#22c55e" stroke-width="1.5"/>
+<text x="526" y="136" class="h mono">PLACED</text>
+<text x="526" y="158" class="s">broker ACCEPTED it.</text>
+<text x="526" y="175" class="s">That is not a fill.</text>
+<rect class="n" x="750" y="110" width="180" height="86" rx="10" stroke="#22c55e" stroke-width="1.5"/>
+<text x="766" y="136" class="h mono">STOP SENT</text>
+<text x="766" y="158" class="s">sent on first fill event,</text>
+<text x="766" y="175" class="s">5 s watchdog starts</text>
+<rect class="n" x="990" y="110" width="180" height="86" rx="10" stroke="#22c55e" stroke-width="2.5"/>
+<text x="1006" y="136" class="h mono">STOP ACKED</text>
+<text x="1006" y="158" class="s">protected. Stops only</text>
+<text x="1006" y="175" class="s">move toward price</text>
+<path d="M210 153H270" stroke="#22c55e" stroke-width="2" fill="none" marker-end="url(#g)"/>
+<path d="M450 153H510" stroke="#22c55e" stroke-width="2" fill="none" marker-end="url(#g)"/>
+<path d="M690 153H750" stroke="#22c55e" stroke-width="2" fill="none" marker-end="url(#g)"/>
+<path d="M930 153H990" stroke="#22c55e" stroke-width="2" fill="none" marker-end="url(#g)"/>
+<text x="30" y="262" class="k">WHEN SOMETHING GOES WRONG</text>
+<rect class="n" x="30" y="282" width="270" height="112" rx="10" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="46" y="308" class="h mono" style="fill:#f59e0b">REJECTED</text>
+<text x="46" y="330" class="s">a check failed at place time,</text>
+<text x="46" y="347" class="s">or the broker said no. The</text>
+<text x="46" y="364" class="s">ticket is used up. Restage.</text>
+<rect class="n" x="320" y="282" width="270" height="112" rx="10" stroke="#f43f5e" stroke-width="2.2"/>
+<text x="336" y="308" class="h mono" style="fill:#f43f5e">UNKNOWN, then HALT</text>
+<text x="336" y="330" class="s">timeout, 5xx or garbled reply.</text>
+<text x="336" y="347" class="s">The order may exist. Never</text>
+<text x="336" y="364" class="s">resent. Reconcile by its tag.</text>
+<rect class="n" x="610" y="282" width="270" height="112" rx="10" stroke="#f43f5e" stroke-width="2.2"/>
+<text x="626" y="308" class="h mono" style="fill:#f43f5e">FLATTEN, then HALT</text>
+<text x="626" y="330" class="s">stop refused, failed or not</text>
+<text x="626" y="347" class="s">acked in 5 s. A position with</text>
+<text x="626" y="364" class="s">no stop is not allowed to stay.</text>
+<rect class="n" x="900" y="282" width="270" height="112" rx="10" stroke="#38bdf8" stroke-width="1.5"/>
+<text x="916" y="308" class="h mono" style="fill:#38bdf8">HALT FILE</text>
+<text x="916" y="330" class="s">survives a restart, blocks every</text>
+<text x="916" y="347" class="s">new open. Only a human clears</text>
+<text x="916" y="364" class="s">it. No MCP tool can.</text>
+<path d="M360 196V282" stroke="#f59e0b" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#y)"/>
+<path d="M600 196V240H455V282" stroke="#f43f5e" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#r)"/>
+<path d="M840 196V282" stroke="#f43f5e" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#r)"/>
+<text x="30" y="440" class="s">Never in this picture: a retry. The client makes one HTTP attempt per order write.</text>
+<text x="30" y="462" class="s">Both red failures end in the halt file. Flatten is the one action that may send a second, different order.</text>
+<text x="30" y="496" class="mono" style="font-size:11px;fill:#475569">px_guard.py</text>
+</svg>

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 import sizing
 from px_levels import atr_series, bounce_stats, ema_stack, percentile_rank, placebo_rate, verdict
 from px_state import order_view, position_view
-from px_time import CT, session_start
+from px_time import CT, parse_ts, session_start
 
 V = 1
 DISCLAIMER = "GEX marks positioning, not targets; the flip is a regime boundary, not a forecast."
@@ -30,7 +30,9 @@ def _n(v, nd=2):
 
 async def indicators(app, contract_id):
     """ATR14, ADX14, session VWAP/high/low from 5m bars. Cached; failures degrade to {} (shown as NA)."""
-    cache = app.state.__dict__.setdefault("ind_cache", {})
+    if not hasattr(app.state, "ind_cache"):
+        app.state.ind_cache = {}
+    cache = app.state.ind_cache
     hit = cache.get(contract_id)
     if hit and time.monotonic() - hit[0] < IND_TTL_S:
         return hit[1]
@@ -51,7 +53,7 @@ async def indicators(app, contract_id):
         shi, slo = None, None
         vwap_s, tms = [], []
         for b in bars:
-            ts = datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", b["t"].replace("Z", "+00:00")))
+            ts = parse_ts(b["t"])
             tms.append(int(ts.timestamp() * 1000))
             if ts >= t0:
                 tp = (b["h"] + b["l"] + b["c"]) / 3.0
@@ -164,6 +166,21 @@ async def scaled_risk(app, contract_id, risk_pct):
     return chosen * scale["multiplier"], scale
 
 
+def _levels_vs_live(levels, q):
+    """Distances are measured from the LIVE quote when there is one (bars end at the last bar close, which can lag)."""
+    live = q.get("lastPrice") if q else None
+    if not isinstance(live, (int, float)) or isinstance(live, bool):
+        return levels
+    out = []
+    for lv in levels:
+        lv = dict(lv)
+        if isinstance(lv.get("price"), (int, float)):
+            lv["dist_pt"] = _n(live - lv["price"])
+            lv["pos"] = "ABOVE" if live > lv["price"] else "BELOW"
+        out.append(lv)
+    return out
+
+
 def manage_block(guard, live, contract_id, rec, q, ind):
     """Open-trade management data: open R and stop suggestions. Suggestions only ever TIGHTEN a stop; each says
     whether it is currently valid (tightens and is clear of the market) and whether it is recommended."""
@@ -218,7 +235,7 @@ def kpis(live, now):
         if t.get("voided") or not isinstance(t.get("profitAndLoss"), (int, float)) or t["profitAndLoss"] == 0:
             continue
         try:
-            ts = datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", t["creationTimestamp"].replace("Z", "+00:00")))
+            ts = parse_ts(t["creationTimestamp"])
         except (KeyError, ValueError, AttributeError):
             continue
         if trade_date(ts) == today:
@@ -306,7 +323,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.03, stop_k
         "session": {"vwap": ind.get("vwap"), "hi": ind.get("hi"), "lo": ind.get("lo"), "volume": ind.get("volume")},
         "ind": {"atr": ind.get("atr"), "adx": ind.get("adx"), "atr_pctile": ind.get("atr_pctile"), "tf": ind.get("tf"),
                 "ema": ind.get("ema")},
-        "levels": ind.get("levels", []),
+        "levels": _levels_vs_live(ind.get("levels", []), q),
         "size": size_idea(lim, contract_id, rec, side, _n(ref, 4), ind.get("atr"), ind.get("adx"), risk_pct, stop_k, remaining,
                           guard.risk_dollars_for(risk_pct, now), scale_info, ind.get("atr_pctile"),
                           guard.behavior(now).get("risk_cap")),

@@ -10,12 +10,19 @@ from collections import deque
 
 import httpx
 
-API = os.getenv("PROJECTX_API", "https://api.topstepx.com")
+def _default_api():
+    return os.getenv("PROJECTX_API", "https://api.topstepx.com")   # read when a client is built, so .env.projectx applies
 
 # Documented limits: retrieveBars 50 / 30s, everything else 200 / 60s. Stay under both.
 GENERAL_LIMIT = (190, 60.0)
 BARS_LIMIT = (45, 30.0)
 BARS_PATH = "/api/History/retrieveBars"
+# post() is for READS. Anything not on this list is refused at runtime, so a path built dynamically (split
+# string, concatenation, config) still cannot reach an order-write endpoint through the retrying read path.
+READ_PATHS = frozenset({
+    "/api/Auth/loginKey", "/api/Account/search", "/api/Contract/search", "/api/Contract/searchById", BARS_PATH,
+    "/api/Position/searchOpen", "/api/Order/searchOpen", "/api/Order/search", "/api/Trade/search",
+})
 
 
 class PXError(Exception):
@@ -58,10 +65,10 @@ class _Window:
 
 
 class PXClient:
-    def __init__(self, http=None, username=None, api_key=None, api=API):
+    def __init__(self, http=None, username=None, api_key=None, api=None):
         self._http = http or httpx.AsyncClient(timeout=15.0)
         self._owns_http = http is None
-        self._user, self._key, self._api = username, api_key, api
+        self._user, self._key, self._api = username, api_key, api or _default_api()
         self._token = None
         self._login_lock = asyncio.Lock()
         self._general = _Window(*GENERAL_LIMIT)
@@ -88,12 +95,14 @@ class PXClient:
                 except (httpx.HTTPError, ValueError) as e:
                     raise PXError(f"login failed: {type(e).__name__}") from None
                 if not j.get("success") or not j.get("token"):
-                    raise PXAuthError(f"login failed: {j.get('errorMessage') or r.status_code}")
+                    raise PXAuthError(f"login failed (HTTP {r.status_code})")      # gateway error text is never repeated
                 self._token = j["token"]
             return self._token
 
     async def post(self, path, body, _retry=True):
-        """POST a Gateway endpoint, return the decoded JSON. One re-login on 401."""
+        """POST a READ endpoint, return the decoded JSON. One re-login on 401. Writes use write() (guard only)."""
+        if path not in READ_PATHS:
+            raise PXError("post() only serves read endpoints; order writes go through PXClient.write")
         await (self._bars if path == BARS_PATH else self._general).wait()
         t = await self.token()
         try:
@@ -153,7 +162,7 @@ class PXClient:
     async def bars(self, body):
         j = await self.post(BARS_PATH, body)
         if not j.get("success"):
-            raise PXError(str(j.get("errorMessage") or "bars failed"))
+            raise PXError("bars request failed")      # gateway error text is never repeated
         return j.get("bars", [])
 
     async def open_positions(self, account_id):

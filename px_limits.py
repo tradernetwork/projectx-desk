@@ -24,6 +24,19 @@ def _f(name, default):
         return 0.0  # a garbled limit must refuse, not default open
 
 
+def _rail(name, default):
+    """A behavioural rail: blank, garbled or negative falls back to the DEFAULT (never silently off).
+    Only an explicit `0` turns the rail off."""
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        v = int(raw.strip())
+    except ValueError:
+        return default
+    return v if v >= 0 else default
+
+
 def _i(name, default):
     try:
         return int(os.getenv(name, default))
@@ -93,8 +106,8 @@ class Limits:
             max_qty_total=_i("PX_MAX_QTY_TOTAL", 3),
             max_orders_day=_i("PX_MAX_ORDERS_DAY", 10),
             size_scalers=os.getenv("PX_SIZE_SCALERS", "1") != "0",
-            cooldown_after_loss_s=_i("PX_COOLDOWN_AFTER_LOSS_S", 300),
-            max_consecutive_losses=_i("PX_MAX_CONSEC_LOSSES", 3),
+            cooldown_after_loss_s=_rail("PX_COOLDOWN_AFTER_LOSS_S", 300),
+            max_consecutive_losses=_rail("PX_MAX_CONSEC_LOSSES", 3),
             size_after_loss_lock=os.getenv("PX_SIZE_AFTER_LOSS_LOCK", "1") != "0",
             daily_loss_limit=_f("PX_DAILY_LOSS_LIMIT", 0),
             dd_buffer=_f("PX_DRAWDOWN_BUFFER", 0),

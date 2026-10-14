@@ -27,3 +27,24 @@ def test_utc_midnight_does_not_split_a_session():
 def test_session_start_is_most_recent_1700_ct():
     assert session_start(datetime(2026, 1, 14, 15, 0, tzinfo=U)) == datetime(2026, 1, 13, 23, 0, tzinfo=U)
     assert session_start(datetime(2026, 1, 14, 23, 30, tzinfo=U)) == datetime(2026, 1, 14, 23, 0, tzinfo=U)
+
+
+def test_parse_ts_accepts_any_fraction_length_z_and_offsets_and_naive():
+    from px_time import parse_ts
+    base = datetime(2026, 1, 14, 22, 59, 5, tzinfo=timezone.utc)
+    for text, micro in (("2026-01-14T22:59:05Z", 0), ("2026-01-14T22:59:05.1Z", 100000), ("2026-01-14T22:59:05.12Z", 120000),
+                        ("2026-01-14T22:59:05.123Z", 123000), ("2026-01-14T22:59:05.12345Z", 123450),
+                        ("2026-01-14T22:59:05.1234567Z", 123456), ("2026-01-14T22:59:05.1234567890+00:00", 123456),
+                        ("2026-01-14T22:59:05.5", 500000), ("2026-01-14T16:59:05.25-06:00", 250000)):
+        got = parse_ts(text)
+        assert got.tzinfo is not None and got.replace(microsecond=0) == base and got.microsecond == micro, text
+
+
+def test_a_fill_with_an_odd_fraction_still_counts_toward_pnl_and_the_streak():
+    from px_state import LiveState
+    s = LiveState()
+    s.select_account(7)
+    now = datetime(2026, 1, 14, 20, 0, tzinfo=timezone.utc)
+    s.seed_trades([{"id": 1, "accountId": 7, "creationTimestamp": "2026-01-14T19:30:00.12Z", "profitAndLoss": -20.0, "fees": 0},
+                   {"id": 2, "accountId": 7, "creationTimestamp": "2026-01-14T19:40:00.12345Z", "profitAndLoss": -10.0, "fees": 0}])
+    assert s.day_pnl(now) == -30.0 and [round(p) for _, p in s.closed_trades(now)] == [-20, -10]

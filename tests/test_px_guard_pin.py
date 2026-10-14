@@ -11,9 +11,15 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 WRITE_ENDPOINT = re.compile(r"(Order/(place|modify|cancel)|Position/(close|partialClose))", re.I)
 GUARD_ONLY_NAMES = {"ORDER_PLACE", "ORDER_MODIFY", "ORDER_CANCEL", "POSITION_CLOSE", "POSITION_PARTIAL_CLOSE"}
 # attributes that reach the order path; only the web layer may touch them (UI buttons), never MCP/state/etc.
-MONEY_ATTRS = {"place", "flatten", "cancel_order", "close_position", "move_stop"}
+MONEY_ATTRS = {"place", "flatten", "cancel_order", "close_position", "move_stop",
+               # the guard's other writers and human-only controls: only the web layer (a human's click) may reach them
+               "clear_halt", "resolve_intent", "reconcile", "handle_position",
+               "_arm_stop", "_naked", "_resize_stop", "_verify_stop_after_unknown"}
 MONEY_ALLOWED_FILES = {"px_app.py"}           # px_guard.py itself is exempt from every rule
 WRITE_ALLOWED_FILES = {"px_client.py"}        # defines PXClient.write; may not CALL it
+DYNAMIC_NAMES = {"methodcaller", "attrgetter", "__import__", "import_module", "eval", "exec", "vars"}   # build a name or call at runtime
+BANNED_ATTRS = {"__dict__", "__getattribute__", "_http"}        # reach around the client wrapper or the attribute check
+TOKEN_ALLOWED_FILES = {"px_client.py", "px_hub.py"}              # only these may hold or mint the bearer token
 # Server-side mocks SERVE the endpoints and never call them. Exempt by name, and test_mock_is_server_only
 # proves they import no client code, so the exemption cannot quietly become a second order path.
 SERVER_SIDE_MOCKS = {"dev_gateway.py"}
@@ -24,30 +30,41 @@ def violations(source: str, filename: str):
         return []
     out, tree = [], ast.parse(source)
     for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and WRITE_ENDPOINT.search(node.value):
-            out.append(f"{filename}:{node.lineno} endpoint literal {node.value!r}")
-        if isinstance(node, ast.Name) and node.id in GUARD_ONLY_NAMES:
-            out.append(f"{filename}:{node.lineno} uses guard-only constant {node.id}")
-        if isinstance(node, ast.alias) and node.name in GUARD_ONLY_NAMES:
-            out.append(f"{filename} imports guard-only constant {node.name}")
+        if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)):
+            text = node.value.decode("utf-8", "ignore") if isinstance(node.value, bytes) else node.value
+            if WRITE_ENDPOINT.search(text):
+                out.append(f"{filename}:{node.lineno} endpoint literal {text!r}")
+        if isinstance(node, ast.Name) and node.id in GUARD_ONLY_NAMES | DYNAMIC_NAMES:
+            out.append(f"{filename}:{node.lineno} uses {node.id}")
+        if isinstance(node, ast.alias) and node.name in GUARD_ONLY_NAMES | DYNAMIC_NAMES:
+            out.append(f"{filename} imports {node.name}")
         if isinstance(node, ast.Attribute):
+            if node.attr in GUARD_ONLY_NAMES | DYNAMIC_NAMES:                      # px_guard.ORDER_PLACE, operator.methodcaller
+                out.append(f"{filename}:{node.lineno} touches .{node.attr}")
             if node.attr in MONEY_ATTRS and filename not in MONEY_ALLOWED_FILES:
                 out.append(f"{filename}:{node.lineno} touches .{node.attr}")
-            if node.attr == "write" and filename not in WRITE_ALLOWED_FILES:
-                recv = ast.unparse(node.value).lower()
-                if "client" in recv or recv in ("c", "gw", "self.client"):
-                    out.append(f"{filename}:{node.lineno} calls {recv}.write")
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("getattr", "hasattr"):
-            for a in node.args[1:2]:
-                if isinstance(a, ast.Constant) and a.value in MONEY_ATTRS | {"write"} and filename not in MONEY_ALLOWED_FILES:
-                    out.append(f"{filename}:{node.lineno} dynamic dispatch to {a.value!r}")
+            if node.attr in BANNED_ATTRS and filename not in WRITE_ALLOWED_FILES:
+                out.append(f"{filename}:{node.lineno} touches .{node.attr}")
+            if node.attr == "token" and filename not in TOKEN_ALLOWED_FILES:
+                out.append(f"{filename}:{node.lineno} touches .token (only the client and the hub may use the bearer token)")
+            if node.attr == "write" and filename not in WRITE_ALLOWED_FILES:       # ANY receiver: aliases do not help
+                out.append(f"{filename}:{node.lineno} touches .write on {ast.unparse(node.value)}")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("getattr", "hasattr", "setattr"):
+            nm = node.args[1] if len(node.args) > 1 else None
+            if nm is not None and not isinstance(nm, ast.Constant) and filename not in MONEY_ALLOWED_FILES:
+                out.append(f"{filename}:{node.lineno} {node.func.id} with a computed attribute name")
+            if isinstance(nm, ast.Constant) and nm.value in MONEY_ATTRS | {"write"} and filename not in MONEY_ALLOWED_FILES:
+                out.append(f"{filename}:{node.lineno} dynamic dispatch to {nm.value!r}")
     return out
 
 
 def test_no_module_but_the_guard_can_reach_the_order_path():
     bad = []
-    for f in sorted(ROOT.glob("*.py")):
-        bad += violations(f.read_text(), f.name)
+    for f in sorted(ROOT.rglob("*.py")) + sorted(ROOT.rglob("*.pyw")):
+        rel = f.relative_to(ROOT)
+        if rel.parts[0] in ("tests", ".venv", "venv", "node_modules") or any(part.startswith(".") for part in rel.parts):
+            continue
+        bad += violations(f.read_text(), f.name if len(rel.parts) == 1 else str(rel))
     assert not bad, "\n".join(bad)
 
 
@@ -69,9 +86,35 @@ def test_detector_catches_the_indirect_shapes():
         "guard constant by name": "x = ORDER_PLACE",
         "guard constant import": "from px_guard import ORDER_PLACE",
         "flatten from mcp": "await guard.flatten()",
+        "bytes literal": 'u = b"/api/Order/place"',
+        "guard constant by attribute": "import px_guard\nx = px_guard.ORDER_PLACE",
+        "write on an aliased receiver": "x = self.client\nawait x.write(p, b)",
+        "write on an unrelated name": "await px.write(p, b)",
+        "clear halt from mcp": "g.clear_halt()",
+        "reconcile from mcp": "await g.reconcile()",
+        "private stop writer": "await g._arm_stop(t, 1)",
+        "computed getattr": 'getattr(c, "wr" + "ite")',
+        "methodcaller": "import operator\noperator.methodcaller('write')",
+        "attrgetter": "from operator import attrgetter\nattrgetter('write')(c)",
+        "raw http client": 'await self.client._http.post(url, json=b)',
+        "minting a token": "t = await self.client.token()",
+        "dunder dict": 'type(c).__dict__["write"]',
+        "getattribute": 'c.__getattribute__("wr" + "ite")',
+        "eval": 'eval("c.wr" + "ite")',
+        "import_module": "import importlib\nimportlib.import_module('px_guard')",
     }
     for label, src in cases.items():
         assert violations(src, "px_mcp.py"), f"detector missed: {label}"
+
+
+def test_scan_is_recursive_and_ignores_tests_and_hidden_dirs(tmp_path):
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "sneaky.py").write_text('URL = "/api/Order/cancel"')
+    hits = []
+    for f in sorted(tmp_path.rglob("*.py")):
+        rel = f.relative_to(tmp_path)
+        hits += violations(f.read_text(), str(rel))
+    assert hits and "pkg/sneaky.py" in hits[0]
 
 
 def test_detector_allows_what_it_should():

@@ -5,6 +5,22 @@ implementer) argued the contested points. This is the reconciled ruling. Where t
 disagreed, the reasoning for the pick is given. Items marked UNVERIFIED must be proven
 against a sim account before they are relied on.
 
+> **Read this first: intent vs built.** This file records what was decided and why. Some rulings describe
+> behaviour that is **not built yet**. `AGENTS.md` and the code are the source of truth for what exists.
+>
+> | Ruling | Status |
+> |---|---|
+> | D1 600 ms hold, readback on screen 1.5 s | built (UI) |
+> | D1 out-of-band confirm code (`PX_CONFIRM_MODE=code`) and 3 s minimum stage-to-place delay for live or qty 2+ | **not built** |
+> | D3 UNKNOWN on an ambiguous entry write, persistent halt, flatten-and-halt on a missing stop | built |
+> | D3 auto-clear of UNKNOWN after a flat, consistent re-read | **not built**; only a human clears a halt |
+> | D4 stream mode removes account and dollar nodes from the DOM | built (UI), with the caveats in docs/LIMITATIONS.md |
+> | D5 reconcile by `customTag` on boot and on UNKNOWN | built as a manual call (`POST /api/reconcile`); **not automatic** |
+> | D5 `customTag` search actually returns the tag on a real gateway | **unverified** |
+> | D7 prefetch REST state at STAGE | **not built**; the fresh-state re-read happens at place |
+> | D9 MCP cannot place | built: no tool exists. `PX_MCP_PLACE` is a reserved flag that no route uses |
+> | Live-account refusal | **policy, plus** `PX_ALLOW_LIVE=1` and OCO-only market entries in code; there is no code block beyond those |
+
 ## Threat model, stated plainly
 
 Codex in Chrome drives the page with real browser input. **Nothing in the browser can tell its
@@ -56,7 +72,7 @@ the voice agent has no tool for.
 
 Built beyond the original cut: server-side quote pinning (so MCP/Codex work with no browser open), `stop_ticks` staging (server resolves the stop from the fresh quote), risk_pct applied to REMAINING budget, `UNKNOWN_ORDER` visible in state/digest, `dev_gateway.py` mock + e2e tests.
 
-Deferred: MCP place, stream-mode DOM removal (3b), SQLite capture, contract-roll drawings,
+Deferred: MCP place, out-of-band confirm for live, automatic reconcile, SQLite capture, contract-roll drawings,
 live-account cancel/flatten, trailing/multi-leg order types, Playwright schema test.
 Over-built for a single local user (cut): per-class checks (use one function returning a list of
 (name, ok, reason)), cross-process ticket atomicity (asyncio lock is enough), rotating CSRF, periodic

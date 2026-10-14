@@ -378,3 +378,25 @@ async def test_oco_bracket_mode_attaches_the_stop_on_fill_and_position_mode_reje
                      "stopLossBracket": {"ticks": 10, "type": 4}}, False)
     assert res["success"] is False and res["errorCode"] == 2 and isinstance(res["orderId"], int)
     assert gw.positions == {}                                         # the order exists but is rejected, no fill
+
+
+async def test_mock_history_joins_the_live_price_with_no_spike():
+    import json
+    from datetime import datetime, timedelta, timezone
+    import aiohttp
+    from dev_gateway import DevGateway
+    gw = DevGateway(walk=False)
+    port = await gw.start("127.0.0.1", 0)
+    cid = "CON.F.US.MES.Z26"
+    gw.px[cid] = gw.contracts[cid]["_base"] + 12.0                       # live price far from the history's anchor
+    now = datetime.now(timezone.utc)
+    body = {"contractId": cid, "live": False, "unit": 2, "unitNumber": 5, "limit": 120, "includePartialBar": True,
+            "startTime": (now - timedelta(days=2)).isoformat(), "endTime": now.isoformat()}
+    async with aiohttp.ClientSession() as s:
+        tok = (await (await s.post(f"http://127.0.0.1:{port}/api/Auth/loginKey", json={"userName": "u", "apiKey": "k"})).json())["token"]
+        rows = (await (await s.post(f"http://127.0.0.1:{port}/api/History/retrieveBars", json=body,
+                                    headers={"Authorization": f"Bearer {tok}"})).json())["bars"]
+    await gw.stop()
+    closes = [r["c"] for r in rows]                                      # newest first
+    assert abs(closes[0] - gw.px[cid]) <= 0.25 * 2                       # the latest bar sits at the live price
+    assert max(abs(a - b) for a, b in zip(closes, closes[1:])) <= 4.0    # and there is no spike anywhere in the ramp

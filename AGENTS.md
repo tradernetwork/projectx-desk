@@ -8,10 +8,11 @@ the guard: every rule below has a reason there.
 ```
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest -q                      # hermetic: no network, no broker, no credentials
+pytest -q                      # offline: runs against the mock gateway; no broker, no credentials. Python 3.10+
 ./run_dev.sh                   # offline desk + mock gateway: http://127.0.0.1:8613/?ai=1
 ```
 
+`python px_app.py` loads `.env.projectx` first (shell variables win; only key names are printed).
 Modules are flat at the repo root (`px_*.py`, `sizing.py`, `gex_futures.py`); `tests/conftest.py` puts the root on
 `sys.path`. Keep the `px_` prefix on new modules.
 
@@ -38,8 +39,9 @@ Modules are flat at the repo root (`px_*.py`, `sizing.py`, `gex_futures.py`); `t
 - **Only `px_guard.py` may name an order-write endpoint or call `PXClient.write`.** Pinned by AST in
   `tests/test_px_guard_pin.py` (attribute access, getattr, string literals). Do not narrow the pin or add a second
   order path. MCP and everything else may only `preview` and `halt`.
-- **Kill switches default OFF** (`PX_TRADING=0`, `PX_MCP_PLACE=0`). A zero or blank limit refuses opens. A blank
-  `PX_BRACKET_MODE` refuses opens: never guess, a wrong guess still creates a rejected order.
+- **Kill switches default OFF** (`PX_TRADING=0`, `PX_MCP_PLACE=0`). A zero or blank money or quantity limit refuses opens, as does
+  a blank account id, `PX_NO_NEW_AFTER` or `PX_BRACKET_MODE` (never guess: a wrong guess still creates a rejected order). The two
+  behavioral rails are the exception: `0` turns them off, blank or garbled falls back to the default.
 - **Never replay a write.** Any ambiguous outcome is UNKNOWN: persist, trip the halt file, reconcile by `customTag`.
   Only a human clears a halt (there is deliberately no MCP tool).
 - **Sizing is always computed** and rounds down. ADX/ATR scalers and the behavioral rails only ever refuse or reduce.

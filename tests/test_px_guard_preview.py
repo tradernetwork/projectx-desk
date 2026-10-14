@@ -281,3 +281,27 @@ async def test_halt_file_trip_and_clear(tmp_path):
     assert g.halted() and "halt" in failed(await prev(g))
     g.clear_halt()
     assert (await prev(g)).ok
+
+
+def test_rails_fall_back_to_defaults_on_blank_or_garbled_input_and_only_explicit_zero_turns_them_off(monkeypatch):
+    from px_limits import Limits
+    for raw, want_cd, want_n in ((None, 300, 3), ("", 300, 3), ("  ", 300, 3), ("three", 300, 3), ("-5", 300, 3), ("0", 0, 0), ("120", 120, 7)):
+        for k in ("PX_COOLDOWN_AFTER_LOSS_S", "PX_MAX_CONSEC_LOSSES"):
+            monkeypatch.delenv(k, raising=False)
+        if raw is not None:
+            monkeypatch.setenv("PX_COOLDOWN_AFTER_LOSS_S", raw)
+            monkeypatch.setenv("PX_MAX_CONSEC_LOSSES", "7" if raw == "120" else raw)
+        lim = Limits.from_env()
+        assert (lim.cooldown_after_loss_s, lim.max_consecutive_losses) == (want_cd, want_n), raw
+
+
+def test_env_file_can_set_the_port_and_api_because_they_are_read_at_call_time(monkeypatch):
+    import px_app
+    from px_client import PXClient
+    from px_hub import SignalRHub
+    monkeypatch.setenv("CHART_PORT", "9123")
+    monkeypatch.setenv("PROJECTX_API", "http://example.invalid")
+    monkeypatch.setenv("PROJECTX_HUB_BASE", "ws://example.invalid/hubs")
+    assert px_app._port() == 9123
+    assert PXClient(username="u", api_key="k")._api == "http://example.invalid"
+    assert SignalRHub(None, "user").url == "ws://example.invalid/hubs/user"

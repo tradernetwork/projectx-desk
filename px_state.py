@@ -8,7 +8,7 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 
-from px_time import trade_date
+from px_time import parse_ts, trade_date
 
 EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 RESYNC = object()  # ticks may have been lost; the page must re-seed from REST
@@ -19,11 +19,7 @@ def ts_ms(ts):
     """ISO string (any tz, 7-digit .NET fractions) or number -> int ms."""
     if isinstance(ts, (int, float)):
         return int(ts)
-    s = re.sub(r"(\.\d{6})\d+", r"\1", ts.replace("Z", "+00:00"))
-    dt = datetime.fromisoformat(s)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return (dt - EPOCH) // timedelta(milliseconds=1)
+    return (parse_ts(ts) - EPOCH) // timedelta(milliseconds=1)
 
 
 class LiveState:
@@ -215,7 +211,7 @@ class LiveState:
             if t.get("voided") or not isinstance(pnl, (int, float)) or isinstance(pnl, bool) or pnl == 0:
                 continue
             try:
-                ts = datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", t["creationTimestamp"].replace("Z", "+00:00")))
+                ts = parse_ts(t["creationTimestamp"])
             except (KeyError, ValueError, AttributeError):
                 continue
             if ts.tzinfo is None:
@@ -239,7 +235,7 @@ class LiveState:
             if t.get("voided"):
                 continue
             try:
-                ts = datetime.fromisoformat(re.sub(r"(\.\d{6})\d+", r"\1", t["creationTimestamp"].replace("Z", "+00:00")))
+                ts = parse_ts(t["creationTimestamp"])
             except (KeyError, ValueError, AttributeError):
                 continue
             if trade_date(ts) == today:

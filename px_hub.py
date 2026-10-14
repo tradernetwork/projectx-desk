@@ -13,7 +13,8 @@ import time
 import aiohttp
 
 RS = "\x1e"  # SignalR record separator
-HUB_BASE = os.getenv("PROJECTX_HUB_BASE", "wss://rtc.topstepx.com/hubs")  # override only for the offline mock gateway
+def _hub_base():
+    return os.getenv("PROJECTX_HUB_BASE", "wss://rtc.topstepx.com/hubs")   # override only for the offline mock gateway
 RECEIVE_TIMEOUT = 45  # silent half-open socket detector (server pings far more often)
 
 
@@ -25,7 +26,7 @@ def err_text(e):
 class SignalRHub:
     def __init__(self, client, name, url=None, session=None):
         self.client, self.name = client, name
-        self.url = url or f"{HUB_BASE}/{name}"
+        self.url = url or f"{_hub_base()}/{name}"
         self._session, self._owns_session = session, session is None
         self._subs = {}        # (target, args tuple) -> unsubscribe target or None
         self._handlers = {}    # event name -> [callables]

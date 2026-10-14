@@ -1,8 +1,8 @@
-"""ProjectX desk web app (FastAPI). Read-only in Phase 0: chart data, live ticks, desk state.
+"""ProjectX desk web app (FastAPI). Chart data, live ticks, the AI-readable surface, and the human desk actions (stage, place, flatten, stop, halt).
 
 Run:  PROJECTX_USERNAME=... PROJECTX_API_KEY=... python px_app.py   ->  http://127.0.0.1:8600
 Binds loopback only and rejects foreign Host / Origin headers (DNS-rebinding and drive-by guard).
-Order writes do not exist here; they will live in px_guard.py and nowhere else.
+Every order write lives in px_guard.py; the routes here only call it, and only a human click reaches place().
 """
 import asyncio
 import hmac
@@ -29,7 +29,8 @@ from px_state import DOWN, RESYNC, LiveState, order_view, position_view, ts_ms
 from px_time import session_start
 
 HERE = pathlib.Path(__file__).parent
-PORT = int(os.getenv("CHART_PORT", 8600))
+def _port():
+    return int(os.getenv("CHART_PORT", 8600))   # read at call time so .env.projectx can set it
 MAX_SSE = 16
 CONTRACT_RE = re.compile(r"^CON\.[A-Za-z0-9._]{1,40}$")
 UNIT_SECS = {1: 1, 2: 60, 3: 3600, 4: 86400, 5: 604800, 6: 2592000}
@@ -42,7 +43,7 @@ def _live_data():
 
 def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, connect=True, guard=None, limits=None, mcp_token=None):
     """Build the app. Tests inject a fake client / hubs and set connect=False."""
-    hosts = allowed_hosts or {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+    hosts = allowed_hosts or {f"127.0.0.1:{_port()}", f"localhost:{_port()}"}
     holder = {}   # the FastMCP server and its ASGI app, when a usable token is configured
 
     @asynccontextmanager
@@ -110,7 +111,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             raise HTTPException(429, headers={"Retry-After": str(e.retry_after)})
         except PXError as e:
             raise HTTPException(502, str(e))
-        return [{"id": c["id"], "name": c["name"], "desc": _safe_text(c.get("description"), c["name"]),
+        return [{"id": c["id"], "name": _safe_name(c.get("name"), c["id"]), "desc": "",   # the gateway's description is free text and is deliberately never forwarded
                  "tick": c["tickSize"], "tickValue": c.get("tickValue")} for c in cs]
 
     @app.get("/bars")
@@ -337,7 +338,16 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
     return app
 
 
+SAFE_NAME = re.compile(r"^[A-Z0-9]{2,12}$")
 SAFE_TEXT = re.compile(r"^[A-Za-z0-9 &./()\-]{1,60}$")
+
+
+def _safe_name(v, contract_id):
+    """A contract name like MESZ6 passes; anything else falls back to the root and expiry parsed from the id."""
+    if isinstance(v, str) and SAFE_NAME.match(v):
+        return v
+    parts = str(contract_id).split(".")
+    return "".join(parts[-2:]) if len(parts) >= 2 else "NA"
 
 
 def _safe_text(v, fallback):
@@ -420,7 +430,11 @@ async def _reseed(app, attempts=5):
 
 def main():
     import uvicorn
-    uvicorn.run(create_app(), host="127.0.0.1", port=PORT, log_level="info")
+    from px_env import load_env_file
+    loaded = load_env_file()
+    if loaded:
+        print(f"loaded {len(loaded)} settings from .env.projectx (names only): {', '.join(sorted(loaded))}", flush=True)
+    uvicorn.run(create_app(), host="127.0.0.1", port=_port(), log_level="info")
 
 
 if __name__ == "__main__":

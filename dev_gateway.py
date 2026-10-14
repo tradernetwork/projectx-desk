@@ -48,6 +48,7 @@ _HANG = object()
 # exempts it by name and separately asserts it imports no px_* client code.
 P_PLACE, P_MODIFY, P_CANCEL = "/api/Order/place", "/api/Order/modify", "/api/Order/cancel"
 P_CLOSE, P_PARTIAL = "/api/Position/closeContract", "/api/Position/partialCloseContract"
+RAMP_BARS = 60  # recent history eases toward the live price over this many bars
 BLOCK = 1024  # random-walk anchor spacing for bars: the walk restarts every BLOCK buckets
 
 # root -> (symbolId, name stem, description, tickSize, tickValue, base price)
@@ -464,13 +465,21 @@ class DevGateway:
             idx -= 1
         first = int(-(-start.timestamp() // period))
         t, rows = self.tick(cid), []
+        # The synthetic history is an independent walk, so by itself it ends nowhere near the live price and the
+        # join is a spike. Ease the most recent RAMP bars toward the live price so charts look continuous and the
+        # indicators agree with the quote. Older bars are untouched.
+        now_idx = int(self.now().timestamp() // period)
+        delta = self.px[cid] - self._level(cid, period, now_idx)
         while idx >= first and len(rows) < limit:
             o, c = self._level(cid, period, idx - 1), self._level(cid, period, idx)
             h = hashlib.blake2b(f"{self.seed}:{cid}:{period}:{idx}".encode(), digest_size=4).digest()
             wick_h, wick_l, vol = (h[0] % 3) * t, (h[1] % 3) * t, 50 + h[2] * 4 + h[3]
+            w = max(0.0, min(1.0, 1.0 - (now_idx - idx) / RAMP_BARS))
+            sh = self._snap(cid, delta * w) if w else 0.0
+            o2, c2 = o + sh, c + sh
             rows.append({"t": datetime.fromtimestamp(idx * period, timezone.utc).isoformat(),
-                         "o": o, "h": round(max(o, c) + wick_h, 6), "l": round(min(o, c) - wick_l, 6),
-                         "c": c, "v": vol})
+                         "o": round(o2, 6), "h": round(max(o2, c2) + wick_h, 6), "l": round(min(o2, c2) - wick_l, 6),
+                         "c": round(c2, 6), "v": vol})
             idx -= 1
         return self._ok(bars=rows)
 
@@ -697,7 +706,7 @@ class DevGateway:
 
 async def _main():
     port = int(os.getenv("DEV_GATEWAY_PORT", "8700"))
-    gw = DevGateway()
+    gw = DevGateway(walk=os.getenv("DEV_GATEWAY_WALK", "1") != "0")   # DEV_GATEWAY_WALK=0 holds the market still (use /dev/price)
     port = await gw.start("127.0.0.1", port)
     print(f"dev gateway on http://127.0.0.1:{port}  (SIM account {ACCOUNT_ID}, loopback only)", flush=True)
     print(f"  PROJECTX_API=http://127.0.0.1:{port} PROJECTX_HUB_BASE=ws://127.0.0.1:{port}/hubs", flush=True)

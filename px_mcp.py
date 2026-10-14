@@ -48,6 +48,17 @@ class BearerVerifier(TokenVerifier):
         return AccessToken(token=token, client_id="px-agent", scopes=["read"], expires_at=None)
 
 
+SAFE_NAME = re.compile(r"^[A-Z0-9]{2,12}$")
+
+
+def _safe_name(v, contract_id):
+    """Gateway names are free text. Only an uppercase code like MESZ6 passes; else root+expiry from the id."""
+    if isinstance(v, str) and SAFE_NAME.match(v):
+        return v
+    parts = str(contract_id).split(".")
+    return "".join(parts[-2:]) if len(parts) >= 2 else "NA"
+
+
 def _contract(c: Optional[str]):
     if c is not None and not CONTRACT_RE.match(c):
         raise ValueError("bad contract id")
@@ -122,7 +133,7 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
         if not re.fullmatch(r"[A-Za-z0-9 ]{1,20}", text or ""):
             raise ValueError("bad search text")
         cs = await st().client.search_contracts(text, live=False)
-        return [{"id": c["id"], "name": c.get("name"), "tick": c.get("tickSize"), "tick_value": c.get("tickValue")}
+        return [{"id": c["id"], "name": _safe_name(c.get("name"), c["id"]), "tick": c.get("tickSize"), "tick_value": c.get("tickValue")}
                 for c in cs if CONTRACT_RE.match(str(c.get("id", "")))]
 
     @mcp.tool

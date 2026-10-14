@@ -90,3 +90,11 @@ def test_kpi_na_and_zero_are_distinct():
     assert "KPI: NA" in format_digest(state(kpi={"n": None}))
     assert "KPI: n=0" in format_digest(state(kpi={"n": 0}))
     assert "TRADE: NONE" in format_digest(state(trade=None))
+
+
+def test_level_distances_use_the_live_quote_not_the_last_bar_close():
+    from px_digest import _levels_vs_live
+    lv = [{"name": "EMA21", "price": 100.0, "dist_pt": -3.0, "pos": "BELOW"}]
+    out = _levels_vs_live(lv, {"lastPrice": 112.5})
+    assert out[0]["dist_pt"] == 12.5 and out[0]["pos"] == "ABOVE" and lv[0]["dist_pt"] == -3.0   # input untouched
+    assert _levels_vs_live(lv, None) == lv and _levels_vs_live(lv, {"lastPrice": None}) == lv

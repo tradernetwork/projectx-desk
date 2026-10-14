@@ -883,7 +883,7 @@ klinecharts.registerOverlay({
     const [a, b] = overlay.points; if(a?.value == null || b?.value == null) return [];
     const d = b.value - a.value, up = d >= 0, ticks = Math.round(d / cur.tick), bars = Math.abs((b.dataIndex ?? 0) - (a.dataIndex ?? 0));
     const lines = [`${up ? '+' : ''}${d.toFixed(2)}  (${up ? '+' : ''}${ticks} ticks)`,
-      cur.tickValue != null ? `${up ? '+' : '-'}$${Math.abs(ticks * cur.tickValue).toFixed(2)} / contract` : null, `${bars} bars`].filter(Boolean);
+      cur.tickValue != null && !streaming() ? `${up ? '+' : '-'}$${Math.abs(ticks * cur.tickValue).toFixed(2)} / contract` : null, `${bars} bars`].filter(Boolean);
     const col = up ? 'rgba(34,197,94,.13)' : 'rgba(244,63,94,.13)';
     const x0 = Math.min(cs[0].x, cs[1].x), x1 = Math.max(cs[0].x, cs[1].x), y0 = Math.min(cs[0].y, cs[1].y), y1 = Math.max(cs[0].y, cs[1].y);
     return [
@@ -1153,7 +1153,7 @@ async function search(){
     const cs = await j('/contracts?q=' + encodeURIComponent($('q').value));
     const sel = $('c'); sel.replaceChildren();
     for(const c of cs){
-      const o = mk('option', '', `${c.name} ${c.desc}`); o.value = c.id; o.dataset.tick = c.tick; o.dataset.tv = c.tickValue ?? ''; o.dataset.name = c.name; sel.append(o);
+      const o = mk('option', '', c.desc ? `${c.name} ${c.desc}` : c.name); o.value = c.id; o.dataset.tick = c.tick; o.dataset.tv = c.tickValue ?? ''; o.dataset.name = c.name; sel.append(o);
     }
     const last = LS.get('px.contract'); if(last && [...sel.options].some(o => o.value === last)) sel.value = last;
     if(!cs.length) $('msg').textContent = 'no contracts';

@@ -1,8 +1,12 @@
 Third-party material shipped in this repository
 
-static/klinecharts.min.js   KLineChart v10 (https://github.com/klinecharts/KLineChart), Apache License 2.0.
-static/aggregator.js        @klinecharts/data-aggregator (https://github.com/klinecharts/data-aggregator), Apache License 2.0.
-static/fonts/Inter_*        Inter, SIL Open Font License 1.1 (see static/fonts/OFL-Inter.txt).
-static/fonts/JetBrainsMono_* JetBrains Mono, SIL Open Font License 1.1 (see static/fonts/OFL-JetBrainsMono.txt).
+static/klinecharts.min.js     KLineChart v10 (https://github.com/klinecharts/KLineChart), Apache License 2.0.
+static/aggregator.js          @klinecharts/data-aggregator (https://github.com/klinecharts/data-aggregator), Apache License 2.0.
+                              The full Apache License 2.0 text is in LICENSES/Apache-2.0.txt.
+static/fonts/Inter_*          Inter, SIL Open Font License 1.1 (see static/fonts/OFL-Inter.txt).
+static/fonts/JetBrainsMono_*  JetBrains Mono, SIL Open Font License 1.1 (see static/fonts/OFL-JetBrainsMono.txt).
+
+Trademarks: the TraderMatrix name and logos (assets/brand/, static/brand-mark.png) are NOT covered by the MIT
+license in LICENSE. See assets/brand/README.md.
 
 This project is not affiliated with, endorsed by, or sponsored by ProjectX, TopstepX, or Topstep.

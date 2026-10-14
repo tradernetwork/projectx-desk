@@ -136,6 +136,12 @@ class Eval:
         return self.d is not None and all(ok for _, ok, _ in self.verdict)
 
 
+def _expiry_code(contract_id: str) -> str:
+    """'CON.F.US.MES.Z26' -> 'Z26'. Built from the id, never from the gateway's free-text name field."""
+    last = str(contract_id).split(".")[-1]
+    return last if re.fullmatch(r"[A-Z]\d{2}", last) else ""
+
+
 def canonical(obj) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
 
@@ -493,7 +499,7 @@ class Guard:
         digest = hashlib.sha256(canonical({"entry": body, "stop": stop_plan}).encode()).hexdigest()
         readback = OrderedDict([
             ("account_kind", "SIM" if ev.simulated else "LIVE"),
-            ("contract", f"{spec.root} {rec.get('name', '')}".strip()),
+            ("contract", f"{spec.root} {_expiry_code(contract_id)}".strip()),
             ("side", "BUY (long)" if side == "long" else "SELL (short)"),
             ("size", size), ("order_type", order_type.upper()), ("entry_ref", ev.entry_px),
             ("stop_price", stop_price), ("stop_ticks", stop_ticks),

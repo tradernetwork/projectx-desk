@@ -21,11 +21,17 @@ but it is not the real thing. Not yet confirmed on a real account:
 
 ## Known limitations
 
-**The local HTTP API has no operator authentication.** `GET /api/csrf` is open and the `Origin` header can be set by any
-non-browser client. Host/Origin/CSRF checks defeat web pages and DNS rebinding; they do not stop a local process. Anything
-that can reach `127.0.0.1:<port>`, including an AI agent with shell or browser-automation access, can stage and place within
-the caps. The MCP server cannot place, but an agent that also has a shell is not bounded by it. Run agents without access
-to the desk's port, or accept that your caps are the real limit.
+**On loopback (the default) the HTTP API has no operator login.** `GET /api/csrf` is open and the `Origin` header can be set by any
+non-browser client. Host, Origin and CSRF checks defeat web pages and DNS rebinding; they do not stop a local process. Anything
+that can reach `127.0.0.1:<port>`, including an AI agent with shell or browser-automation access, can stage and place within the
+caps. The MCP server cannot place, but an agent that also has a shell is not bounded by it. Run agents without access to the
+desk's port, or accept that your caps are the real limit.
+
+**Any other bind needs the operator token, and the token is the whole gate.** `PX_HOST` other than loopback refuses to start
+without `PX_OPERATOR_TOKEN` (32+ characters) and `PX_ALLOWED_HOSTS`. The token is a login (HTTP Basic) for every route except
+`/mcp/` and `/healthz`, and whoever has it can place orders within your caps. HTTP Basic is cleartext, so TLS must sit in front of
+anything beyond a network you fully control (see [DEPLOY.md](DEPLOY.md)). There is no rate limit on login attempts beyond the
+token's length. If you front a loopback-bound desk with a reverse proxy, set the token too: the refusal only triggers on the bind.
 
 **P&L and drawdown are realised-only and static.** Daily P&L excludes unrealised P&L. `PX_DRAWDOWN_BUFFER` is a number you
 type; it does not track your firm's trailing floor, your high-water mark, or a consistency rule. A large open loser is not

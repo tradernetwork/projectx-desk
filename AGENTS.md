@@ -27,6 +27,7 @@ Modules are flat at the repo root (`px_*.py`, `sizing.py`, `gex_futures.py`); `t
 | `px_limits.py` | config (every limit fails closed) and persisted day state |
 | `px_digest.py` | the AI surface: one state dict, `/ai/state` JSON and `/ai/digest` text |
 | `px_mcp.py` | FastMCP tools (read, size, stage, halt). No place/flatten/cancel/clear |
+| `px_net.py` | bind and exposure rules: loopback detection, host/origin allowlists, the operator login, the refusal to start unsafe |
 | `px_app.py` | FastAPI: chart data, SSE ticks, CSRF-gated POST routes, mounts MCP |
 | `px_levels.py` | EMA stack, ATR series, level-reaction statistics with a random-line baseline |
 | `px_time.py` | the one definition of the trading day (17:00 CT roll) |
@@ -53,7 +54,8 @@ Modules are flat at the repo root (`px_*.py`, `sizing.py`, `gex_futures.py`); `t
   sim-first.
 - **Stream-safe:** never commit a screenshot, fixture or log with account IDs, balances, P&L or tokens. `data/` and
   `.env.projectx` are gitignored.
-- Loopback only (`127.0.0.1`); foreign Host/Origin get 403; every POST needs Origin + JSON + a CSRF header.
+- Loopback by default (`127.0.0.1`); foreign Host/Origin get 403; every POST needs Origin + JSON + a CSRF header. A non-loopback
+  bind refuses to start without `PX_OPERATOR_TOKEN` and `PX_ALLOWED_HOSTS` (`px_net.py`, `docs/DEPLOY.md`); keep that refusal and its tests.
 - Generate secrets, never copy them: `openssl rand -hex 32`. A weak or placeholder `PX_MCP_TOKEN` means MCP is not
   mounted.
 

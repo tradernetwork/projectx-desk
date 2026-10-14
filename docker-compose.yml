@@ -1,0 +1,25 @@
+# docker compose up --build
+# 1. cp .env.projectx.example .env.projectx and fill it in. This file REQUIRES PX_OPERATOR_TOKEN (openssl rand -hex 32)
+#    and PX_ALLOWED_HOSTS, or the desk refuses to start.
+# 2. Open http://127.0.0.1:8600 and log in (any username, the operator token as the password).
+services:
+  desk:
+    build: .
+    image: projectx-desk
+    env_file: .env.projectx
+    environment:
+      PX_HOST: 0.0.0.0
+    ports:
+      # Published on the HOST's loopback only. To reach it from another machine, change this deliberately (for example to
+      # a Tailscale address) and add that name to PX_ALLOWED_HOSTS. Put TLS in front of anything that leaves the host.
+      - "127.0.0.1:8600:8600"
+    volumes:
+      - px-data:/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  px-data: {}

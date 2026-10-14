@@ -19,7 +19,7 @@ and locks you out after a losing streak. Free, MIT, runs offline on a practice m
 </p>
 
 <p align="center">
-  Built by <a href="https://github.com/mphinance">Michael</a> at <a href="https://www.traderdaddy.pro"><b>TraderMatrix</b></a>.
+  Built by <a href="https://github.com/mphinance">Michael</a> at <a href="https://www.tradermatrix.pro"><b>TraderMatrix</b></a>.
   Unofficial: not affiliated with ProjectX, TopstepX or Topstep.
 </p>
 
@@ -160,10 +160,16 @@ RULE: agent reads and stages; the operator places. Voice never confirms.
 | Writes are never re-sent | The client makes exactly one HTTP attempt per order write and never replays it. An ambiguous entry becomes `UNKNOWN`, writes a persistent halt, and waits for a human. Flatten and stop handling can send further, different orders; see [limitations](docs/LIMITATIONS.md). |
 | Fresh state at place | Feed up, quote under 2 seconds old, broker positions match the desk's view, and market entries are refused if price moved more than 8 ticks since staging. |
 | Stops only tighten | Toward price only, never into the market. Simulated accounts only. |
-| Local only | Binds `127.0.0.1`. Foreign hosts and origins get a 403. **There is no operator login:** anything that can reach the port can stage and place within your caps, including an AI agent with a shell. See [limitations](docs/LIMITATIONS.md). |
+| Loopback by default | Binds `127.0.0.1`; foreign hosts and origins get a 403. **On loopback there is no login:** anything that can reach the port can stage and place within your caps, including an AI agent with a shell. Any other bind (Docker, an LXC) refuses to start without `PX_OPERATOR_TOKEN` and `PX_ALLOWED_HOSTS`; the token is then a login in front of everything except MCP. Put TLS in front. See [docs/DEPLOY.md](docs/DEPLOY.md). |
 
 Nothing in a browser can tell an AI extension's click from a human's, so the 600 ms hold is anti-fat-finger, not security.
 The reasoning behind every rule, including what is decided but not yet built, is in [docs/DECISIONS.md](docs/DECISIONS.md).
+
+## Run it in Docker or an LXC
+
+Set `PX_HOST=0.0.0.0` and the desk insists on a strong `PX_OPERATOR_TOKEN` and a `PX_ALLOWED_HOSTS` list before it will start.
+Compose file, systemd unit, Tailscale and Caddy setups: [docs/DEPLOY.md](docs/DEPLOY.md). The container files have not been run on
+my machine yet; CI builds them.
 
 ## Use it for real
 
@@ -181,7 +187,7 @@ Sizing details: [docs/SIZING.md](docs/SIZING.md).
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q            # 300 tests; run offline against the practice market, no broker and no credentials
+pytest -q            # 312 tests; run offline against the practice market, no broker and no credentials
 ```
 </details>
 
@@ -190,7 +196,7 @@ pytest -q            # 300 tests; run offline against the practice market, no br
 
 `gex_futures.py` converts dealer-gamma levels (flip, pin, walls) from SPX, SPY, QQQ, IWM and DIA into ES, NQ, RTY and YM
 price space. It refuses stale data, never picks between two flips, and fetches nothing: bring your own levels.
-[TraderMatrix](https://www.traderdaddy.pro) computes GEX, and its free AI-tool (MCP) integration lets developers pull its
+[TraderMatrix](https://www.tradermatrix.pro) computes GEX, and its free AI-tool (MCP) integration lets developers pull its
 GEX data into their own assistant. The desk does not ship a provider yet. See [docs/GEX_FUTURES.md](docs/GEX_FUTURES.md).
 </details>
 

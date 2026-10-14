@@ -19,7 +19,8 @@ against a sim account before they are relied on.
 > | D5 `customTag` search actually returns the tag on a real gateway | **unverified** |
 > | D7 prefetch REST state at STAGE | **not built**; the fresh-state re-read happens at place |
 > | D9 MCP cannot place | built: no tool exists. `PX_MCP_PLACE` is a reserved flag that no route uses |
-> | Live-account refusal | **policy, plus** `PX_ALLOW_LIVE=1` and OCO-only market entries in code; there is no code block beyond those |
+> | Loopback only | **changed**: loopback is the default; a non-loopback bind is allowed only with `PX_OPERATOR_TOKEN` and `PX_ALLOWED_HOSTS` (built, tested). The 2026-10 decision to allow container and LXC deployment is why. |
+| Live-account refusal | **policy, plus** `PX_ALLOW_LIVE=1` and OCO-only market entries in code; there is no code block beyond those |
 
 ## Threat model, stated plainly
 

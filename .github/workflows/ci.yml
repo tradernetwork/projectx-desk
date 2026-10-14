@@ -25,3 +25,19 @@ jobs:
           if git grep -nIE "sk-ant-|td_live_|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}" -- . ':!static/klinecharts.min.js' ':!tests' ':!.github/workflows/ci.yml'; then
             echo "credential-looking string found"; exit 1; fi
           for f in .env.projectx data; do test ! -e "$f" || { echo "$f must not be committed"; exit 1; }; done
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t projectx-desk .
+      - name: It refuses to start on 0.0.0.0 without a token
+        run: |
+          if docker run --rm projectx-desk; then echo "started without an operator token"; exit 1; fi
+      - name: It starts with a token and answers the health check
+        run: |
+          TOKEN=$(openssl rand -hex 32)
+          docker run -d --name desk -e PX_OPERATOR_TOKEN=$TOKEN -e PX_ALLOWED_HOSTS=localhost -p 127.0.0.1:8600:8600 projectx-desk
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8600/healthz && break; sleep 1; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8600/state.json)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -u me:$TOKEN http://127.0.0.1:8600/state.json)" = 200
+          docker logs desk | grep -q "$TOKEN" && { echo "token leaked into the log"; exit 1; } || true

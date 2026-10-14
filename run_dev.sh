@@ -22,8 +22,8 @@ export PROJECTX_API=http://127.0.0.1:$GWP PROJECTX_HUB_BASE=ws://127.0.0.1:$GWP/
   PX_DAILY_LOSS_LIMIT=1000 PX_DRAWDOWN_BUFFER=2000 PX_NO_NEW_AFTER=16:55 PX_TRADING=1 CHART_PORT=$APPP \
   PX_STATE_PATH="$D/day.json" PX_INTENT_PATH="$D/intents.json" PX_AUDIT_PATH="$D/audit.jsonl" PX_HALT_FILE="$D/HALT"
 "$PY" px_app.py > "$D/app.log" 2>&1 & APP=$!
-for _ in $(seq 1 80); do curl -fs "http://127.0.0.1:$APPP/llms.txt" >/dev/null 2>&1 && break; kill -0 $APP 2>/dev/null || break; sleep 0.25; done
-if ! curl -fs "http://127.0.0.1:$APPP/llms.txt" >/dev/null 2>&1; then
+for _ in $(seq 1 80); do curl -fs "http://127.0.0.1:$APPP/healthz" >/dev/null 2>&1 && break; kill -0 $APP 2>/dev/null || break; sleep 0.25; done
+if ! curl -fs "http://127.0.0.1:$APPP/healthz" >/dev/null 2>&1; then
   echo "The desk did not start. Last lines of its log ($D/app.log):" >&2; tail -n 15 "$D/app.log" >&2; exit 1
 fi
 echo "desk: http://127.0.0.1:$APPP/?ai=1   (mock gateway, SIM account; PX_TRADING=1 applies to the mock only)"

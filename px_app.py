@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 import px_digest
 import px_mcp
+import px_net
 from px_guard import Guard, GuardError
 from px_limits import Limits
 from px_client import PXAuthError, PXClient, PXError, PXNotConfigured, PXRateLimited
@@ -41,9 +42,14 @@ def _live_data():
     return os.getenv("PX_LIVE_DATA", "0") == "1"
 
 
-def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, connect=True, guard=None, limits=None, mcp_token=None):
+def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, connect=True, guard=None, limits=None, mcp_token=None,
+               operator_token=None, allowed_origins=None):
     """Build the app. Tests inject a fake client / hubs and set connect=False."""
-    hosts = allowed_hosts or {f"127.0.0.1:{_port()}", f"localhost:{_port()}"}
+    hosts = set(allowed_hosts) if allowed_hosts else px_net.allowed_hosts(_port(), os.getenv("PX_ALLOWED_HOSTS"))
+    origins = set(allowed_origins) if allowed_origins else px_net.allowed_origins(hosts, os.getenv("PX_ALLOWED_ORIGINS"))
+    op_token = operator_token if operator_token is not None else (os.getenv("PX_OPERATOR_TOKEN") or None)
+    if op_token and px_mcp.weak_token_reason(op_token):
+        raise SystemExit(f"PX_OPERATOR_TOKEN is not usable ({px_mcp.weak_token_reason(op_token)}); generate one with: openssl rand -hex 32")
     holder = {}   # the FastMCP server and its ASGI app, when a usable token is configured
 
     @asynccontextmanager
@@ -86,13 +92,26 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             app.state.mcp = srv
 
     @app.middleware("http")
+    async def operator_login(request: Request, call_next):
+        """With PX_OPERATOR_TOKEN set, every route except /mcp (own bearer) and /healthz needs the login."""
+        if op_token and px_net.needs_operator_login(request.url.path) \
+                and not px_net.operator_ok(request.headers.get("authorization"), op_token):
+            return JSONResponse({"detail": "operator login required"}, status_code=401,
+                                headers={"WWW-Authenticate": 'Basic realm="projectx-desk", charset="UTF-8"'})
+        return await call_next(request)
+
+    @app.middleware("http")           # defined last, so it runs FIRST: a bad Host never reaches anything else
     async def host_guard(request: Request, call_next):
         if request.headers.get("host") not in hosts:
             return JSONResponse({"detail": "bad host"}, status_code=403)
         origin = request.headers.get("origin")
-        if origin and origin != f"http://{request.headers.get('host')}":
+        if origin and origin not in origins:
             return JSONResponse({"detail": "bad origin"}, status_code=403)
         return await call_next(request)
+
+    @app.get("/healthz", response_class=PlainTextResponse)
+    async def healthz():
+        return "ok"
 
     def contract_arg(c):
         if not CONTRACT_RE.match(c or ""):
@@ -238,8 +257,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
 
     def post_gate(request: Request):
         """Every POST: Origin present and equal, JSON only, per-session token, not cross-site."""
-        host = request.headers.get("host")
-        if request.headers.get("origin") != f"http://{host}":
+        if request.headers.get("origin") not in origins:
             raise HTTPException(403, "origin required")
         if request.headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
             raise HTTPException(403, "cross-site")
@@ -434,7 +452,14 @@ def main():
     loaded = load_env_file()
     if loaded:
         print(f"loaded {len(loaded)} settings from .env.projectx (names only): {', '.join(sorted(loaded))}", flush=True)
-    uvicorn.run(create_app(), host="127.0.0.1", port=_port(), log_level="info")
+    host = os.getenv("PX_HOST", "127.0.0.1")
+    problem = px_net.bind_problem(host, os.getenv("PX_OPERATOR_TOKEN"), os.getenv("PX_ALLOWED_HOSTS"), px_mcp.weak_token_reason)
+    if problem:
+        raise SystemExit(problem)
+    if not px_net.is_loopback(host):
+        print(f"WARNING: bound to {host}. The operator login is HTTP Basic; without TLS in front it sends the token in the clear. "
+              "Use Tailscale or a TLS reverse proxy (docs/DEPLOY.md).", flush=True)
+    uvicorn.run(create_app(), host=host, port=_port(), log_level="info")
 
 
 if __name__ == "__main__":

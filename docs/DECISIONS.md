@@ -166,3 +166,9 @@ are kept as written; where one is superseded, this section says so. Still tested
   hold rate fell with length (66% at 8, 39% at 89). On 1h and 15m the longer averages looked best among the MAs but not
   significantly (SMA 50 on 1h: 9 of 12, stable, small sample). One ticker, small samples: a prompt to run it across a basket
   of megacaps and the index futures, not a finding.
+- **Basket check (10 tickers: SPY, QQQ, NVDA, AAPL, MSFT, AMZN, GOOGL, META, AVGO, TSLA; 5y daily, 6 months of 1h, 1 month of 15m).**
+  No EMA length is reliably respected. Hits per timeframe vs luck (about 2% of candidates): 8 vs 4.8 on daily, 5 vs 5.0 on 1h, 12 vs 5.0
+  on 15m; zero long-EMA hits stable on any timeframe. The one consistent signal runs the other way: EMA 8 reads 17 to 21 points
+  below its placebo on every timeframe, and 8/13/21/34 average -7 to -9 points of edge against about -1 to +0.5 for 55/89/200. Price
+  slices through the fast EMAs more often than through a shifted line, and the long EMAs are roughly neutral. The ten tickers are
+  correlated and tests per level are small, so this is a prompt, not a finding.

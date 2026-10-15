@@ -29,7 +29,7 @@ class Hub:
 
 
 def good_limits(tmp_path, **over):
-    base = dict(trading=False, size_scalers=False, account_id=7, account_kind="sim", bracket_mode="position",
+    base = dict(trading=False, size_scalers=False, risk_base="remaining", account_id=7, account_kind="sim", bracket_mode="position",
                 daily_loss_limit=1000.0, dd_buffer=2000.0, no_new_after="15:45",
                 halt_path=tmp_path / "HALT", state_path=tmp_path / "day.json", audit_path=tmp_path / "audit.jsonl",
                 intent_path=tmp_path / "intents.json")

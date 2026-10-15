@@ -12,7 +12,7 @@ const q = new URLSearchParams(location.search);
 /* ================= state ================= */
 const S = {
   contractId: null, tf: LS.get('px.tf', 'minute,5'), side: 'long',
-  riskPct: LS.get('px.riskPct', 0.03), stopK: LS.get('px.stopK', 1.5), sizeFor: 'AUTO',
+  riskPct: LS.get('px.riskPct3', 0.05), stopK: LS.get('px.stopK', 1.5), sizeFor: 'AUTO',
   stream: q.get('stream') === '1',      // never persisted
   revealUntil: 0, aiOpen: q.get('ai') === '1',
   ai: null, st: null, digest: '', aiFails: 0, inflight: false, seq: 0,
@@ -124,7 +124,7 @@ function syncSizeInputs(){
   for(const b of $('side').querySelectorAll('[data-v]')) b.setAttribute('aria-pressed', String(S.side === b.dataset.v));
   for(const b of $('size-contract').querySelectorAll('[data-v]')) b.setAttribute('aria-pressed', String(S.sizeFor === b.dataset.v));
   $('risk-val').textContent = (S.riskPct * 100).toFixed(S.riskPct * 100 % 1 ? 1 : 0) + '%';
-  LS.set('px.riskPct', S.riskPct); LS.set('px.stopK', S.stopK);
+  LS.set('px.riskPct3', S.riskPct); LS.set('px.stopK', S.stopK);
 }
 function inputChanged(){syncSizeInputs(); schedule(100)}
 $('risk-pct').onclick = e => {const b = e.target.closest('[data-v]'); if(b){S.riskPct = +b.dataset.v; inputChanged()}};

@@ -376,11 +376,15 @@ class Guard:
         return min(room, dd - ob), room
 
     def risk_dollars_for(self, risk_pct: float, now=None) -> float:
-        """risk_pct of the REMAINING budget (min of daily room and drawdown buffer), never above either."""
+        """1R in dollars. Base (PX_RISK_BASE=drawdown, default): risk_pct of the live drawdown room (balance minus the MLL
+        floor): the firm's loss limit is the base, not the account size, and it shrinks as you lose. Never above the remaining
+        daily or drawdown room. Legacy base: risk_pct of the remaining budget. Unreadable inputs fail closed to 0."""
         remaining, room = self.budget(now)
         if remaining is None or remaining <= 0:
             return 0.0
-        return sizing.risk_budget(remaining, risk_pct, room, self.dd_room() or 0.0)
+        dd = self.dd_room() or 0.0
+        base = dd if self.limits.risk_base == "drawdown" else remaining
+        return sizing.risk_budget(base, risk_pct, room, dd)
 
     async def stop_from_ticks(self, contract_id: str, side: str, ticks: int):
         """Absolute stop price `ticks` away from the FRESH quote the guard will size from. None if unknowable.

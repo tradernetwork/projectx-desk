@@ -60,6 +60,7 @@ class Limits:
     cooldown_after_loss_s: int = 300      # PX_COOLDOWN_AFTER_LOSS_S: no new opens for this long after a losing trade (0 = off)
     max_consecutive_losses: int = 3       # PX_MAX_CONSEC_LOSSES: locked for the session after this many losses in a row (0 = off)
     size_after_loss_lock: bool = True     # PX_SIZE_AFTER_LOSS_LOCK=0 to disable: after a loss, risk may not exceed the last trade's risk
+    risk_base: str = "drawdown"          # PX_RISK_BASE: "drawdown" (1R = risk_pct of the live drawdown room, balance minus the MLL floor; the loss limit is the base, not the account size) or "remaining" (old: risk_pct of min(daily, drawdown) room)
     size_scalers: bool = True             # PX_SIZE_SCALERS=0 disables the ADX/ATR risk cuts (they only ever reduce)
     daily_loss_limit: float = 0.0         # dollars; 0 = refuse
     dd_buffer: float = 0.0                # dollars of trailing-drawdown room; 0 = refuse
@@ -108,6 +109,7 @@ class Limits:
             max_qty_symbol=_i("PX_MAX_QTY_SYMBOL", 2),
             max_qty_total=_i("PX_MAX_QTY_TOTAL", 3),
             max_orders_day=_i("PX_MAX_ORDERS_DAY", 10),
+            risk_base="remaining" if os.getenv("PX_RISK_BASE", "drawdown").strip().lower() == "remaining" else "drawdown",
             size_scalers=os.getenv("PX_SIZE_SCALERS", "1") != "0",
             cooldown_after_loss_s=_rail("PX_COOLDOWN_AFTER_LOSS_S", 300),
             max_consecutive_losses=_rail("PX_MAX_CONSEC_LOSSES", 3),

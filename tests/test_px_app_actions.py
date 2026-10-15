@@ -1,3 +1,5 @@
+import dataclasses
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -225,3 +227,24 @@ def test_active_trade_block_follows_the_ticket_through_stop_ack(tmp_path):
         tr = c.get("/ai/state").json()["trade"]
         assert tr["state"] == "PLACED" and tr["acked"] and tr["stop_state"] == "PENDING" and tr["stop_price"] == 4994.0
         assert "stream" and "risk_usd" not in c.get("/ai/state", params={"stream": 1}).json()["trade"]
+
+
+def test_drawdown_base_is_risk_pct_of_the_live_drawdown_room_capped_by_the_daily_room(tmp_path):
+    # Base = balance - MLL floor (2000 here); the account size is irrelevant. Cap = min(daily room 1000, drawdown room).
+    app, g, live, gw = make_app(tmp_path)
+    g.limits = dataclasses.replace(g.limits, risk_base="drawdown", mll_floor=48000.0, dd_buffer=0.0)
+    g.live.account["balance"] = 50000.0
+    assert g.risk_dollars_for(0.05) == 100.0            # 5% of 2000
+    assert g.risk_dollars_for(0.6) == 1000.0            # 1200 wanted, capped at the 1000 daily room
+    g.live.account["balance"] = 49000.0                 # lost 1000: room 1000, so 1R shrinks
+    assert g.risk_dollars_for(0.05) == 50.0
+
+
+def test_drawdown_base_fails_closed_on_an_unreadable_balance(tmp_path):
+    app, g, live, gw = make_app(tmp_path)
+    g.limits = dataclasses.replace(g.limits, risk_base="drawdown", mll_floor=48000.0, dd_buffer=0.0)
+    for bad in (None, "50000", float("nan"), float("inf"), True):
+        g.live.account["balance"] = bad
+        assert g.risk_dollars_for(0.05) == 0.0
+    g.live.account.pop("balance", None)
+    assert g.risk_dollars_for(0.05) == 0.0

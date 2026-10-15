@@ -58,7 +58,8 @@ Modules are flat at the repo root (`px_*.py`, `sizing.py`, `gex_futures.py`); `t
   A broker rejection that carries an `orderId` is still possible exposure: if a position appears it is protected and the desk halts.
 - **`PXClient` read wrappers raise** on `success:false` or a non-list payload; an empty list means empty. MCP preview cannot supersede a
   ticket staged at the desk (`ui_ticket_pending`). `POST /api/intent/resolve` is human-only; give it no MCP tool.
-- **Sizing is always computed** and rounds down. ADX/ATR scalers and the behavioral rails only ever refuse or reduce.
+- **Sizing is always computed** and rounds down. 1R is `risk_pct` of the live drawdown room (balance minus `PX_MLL_FLOOR`), never of the account
+  balance and never above the remaining daily or drawdown room; unreadable inputs size to 0 (`PX_RISK_BASE`, `docs/DECISIONS.md` Round 4). ADX/ATR scalers and the behavioral rails only ever refuse or reduce.
 - **Stops only tighten** (`move_stop`): toward price, never wider, never into the market, simulated accounts only.
 - **The AI surface is an allowlist** of numbers, enums and validated names. No account id, no balance, no gateway free
   text: a hostile contract name or order tag must never become a prompt.

@@ -71,7 +71,7 @@ the voice agent has no tool for.
 | I7 | Desk UI, POST routes with Origin required + per-session CSRF header, hold-to-confirm bar | **DONE** |
 | I8 | Sim end-to-end rehearsal; doubles as Phase 1 live-read verification | needs the operator + credentials |
 
-Built beyond the original cut: server-side quote pinning (so MCP/Codex work with no browser open), `stop_ticks` staging (server resolves the stop from the fresh quote), risk_pct applied to REMAINING budget, `UNKNOWN_ORDER` visible in state/digest, `dev_gateway.py` mock + e2e tests.
+Built beyond the original cut: server-side quote pinning (so MCP/Codex work with no browser open), `stop_ticks` staging (server resolves the stop from the fresh quote), risk_pct applied to REMAINING budget (superseded in Round 4: now the drawdown room), `UNKNOWN_ORDER` visible in state/digest, `dev_gateway.py` mock + e2e tests.
 
 Deferred: MCP place, out-of-band confirm for live, automatic reconcile, SQLite capture, contract-roll drawings,
 live-account cancel/flatten, trailing/multi-leg order types, Playwright schema test.
@@ -123,3 +123,17 @@ are kept as written; where one is superseded, this section says so. Still tested
 - **Bind rule.** `create_app()` applies the same non-loopback refusal as `main()`.
 - **Not fixed** is listed under "Known gaps" in `LIMITATIONS.md`.
 
+
+## Round 4: the size base is the loss limit, not the balance or the remaining room
+
+- **Tried:** `risk_pct` (default 3%) of the REMAINING budget, min(daily room, drawdown room). On a 50K Combine with a $500 daily
+  limit that is $15 of 1R, so even one MES (about $40 at a 1.5 ATR stop) was refused as GRANULARITY. The desk could never trade.
+- **Rejected:** Tharp's percent of account equity. A Combine balance is not the risk: the firm kills the account after a
+  $2,000 loss (the MLL), so 1% of the $50,000 balance would be a quarter of the whole life of the account.
+- **Went with:** 1R = `risk_pct` x live drawdown room (balance minus `PX_MLL_FLOOR`), capped by the remaining daily and drawdown
+  room. Default 5% (chips 2/3/5/6): $100 while the room is $2,000. The stop (1.5 x ATR) sets the contract count as before.
+  The room shrinks as you lose, so 1R shrinks with it. `PX_RISK_BASE=remaining` restores the old base.
+- **Fails closed:** an unreadable balance, or no floor and no `PX_DRAWDOWN_BUFFER`, sizes to 0.
+- **Kept:** micros only (`allowed_roots`), qty cap 1, the 25% max-loss-per-trade rule and the 2x remaining-budget rule (D6).
+- **Open:** 5% is a hypothesis to review against the sim rehearsal, not a finding. `PX_DAILY_LOSS_LIMIT` is the operator's own
+  number; the repo example of $500 is a starting point under Topstep's $1,000, not a recommendation.

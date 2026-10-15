@@ -6,11 +6,16 @@ UI, the digest and the MCP tools comes from it.
 ## The rule
 
 ```
-risk_budget   = risk_pct x min(daily loss room, drawdown buffer)        # remaining budget, not account balance
-stop_ticks    = ceil(k x ATR(14, 5m) / tick_size)                       # k = 1.5 by default
+loss_room     = balance - PX_MLL_FLOOR                                  # the firm's loss limit is the base, not the account size
+risk_budget   = min(risk_pct x loss_room, daily loss room, loss_room)   # 1R in dollars; shrinks as you lose; PX_RISK_BASE=remaining restores the old base
+stop_ticks    = ceil(k x ATR(14, 5m) / tick_size)                       # k = 1.5 by default: the stop (ATR) sets the size
 risk_per_ct   = stop_ticks x tick_value                                 # live tickValue from the contract record wins
 contracts     = floor(risk_budget / risk_per_ct)                        # ALWAYS rounds down, never up
 ```
+
+Default `risk_pct` is 5% of the loss room (chips 2/3/5/6). On a 50K Combine that is $100 of 1R while the room is $2,000,
+which fits one MNQ at a 1.5 ATR stop but not two. An unreadable balance or floor sizes to 0. Micros only (`PX_ALLOWED_ROOTS`
+defaults to MES, MNQ, MCL, MGC).
 
 If `contracts` is 0 the answer is **REFUSED (granularity)**: one contract risks more than the budget. It is never
 rounded up to 1. The trader's options are shown (tighter stop, the micro, or skip), not applied.

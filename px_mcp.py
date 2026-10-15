@@ -91,7 +91,7 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
         return get_app().state
 
     @mcp.tool
-    async def get_digest(contract: Optional[str] = None, side: str = "long", risk_pct: float = 0.03,
+    async def get_digest(contract: Optional[str] = None, side: str = "long", risk_pct: float = 0.05,
                          stop_k: float = 1.5, stream: bool = False) -> str:
         """The whole desk as terse text: mode, feed, quote, VWAP, ATR/ADX, size idea, ticket, risk, GEX, positions."""
         _contract(contract)
@@ -99,7 +99,7 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
         return px_digest.format_digest(s)
 
     @mcp.tool
-    async def get_state(contract: Optional[str] = None, side: str = "long", risk_pct: float = 0.03,
+    async def get_state(contract: Optional[str] = None, side: str = "long", risk_pct: float = 0.05,
                         stop_k: float = 1.5, stream: bool = False) -> dict:
         """The same facts as get_digest, as JSON (schema v1)."""
         _contract(contract)
@@ -162,7 +162,7 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
         return {"mode": s["mode"], "risk": s["risk"], "feed": s["feed"]}
 
     @mcp.tool
-    async def size_trade(contract: str, side: str, stop_price: float, risk_pct: float = 0.03) -> dict:
+    async def size_trade(contract: str, side: str, stop_price: float, risk_pct: float = 0.05) -> dict:
         """What size would the desk allow for this idea? Pure calculation: stages nothing, always rounds down."""
         _contract(contract)
         app = get_app()
@@ -188,7 +188,7 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
                 "scale": {"multiplier": scale["multiplier"], "reasons": scale["reasons"]}}
 
     @mcp.tool
-    async def preview_order(contract: str, side: str, stop_price: Optional[float] = None, risk_pct: float = 0.03,
+    async def preview_order(contract: str, side: str, stop_price: Optional[float] = None, risk_pct: float = 0.05,
                             order_type: str = "market", entry: Optional[float] = None,
                             stop_ticks: Optional[int] = None) -> dict:
         """STAGE a ticket for the operator. This does not place anything and you cannot place it. Tell the operator to review

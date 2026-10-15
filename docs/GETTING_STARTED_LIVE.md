@@ -32,6 +32,7 @@ its default.
 | `PX_COOLDOWN_AFTER_LOSS_S`, `PX_MAX_CONSEC_LOSSES`, `PX_SIZE_AFTER_LOSS_LOCK` | the behavioral rails. |
 | `PX_MAX_ORDERS_DAY` | orders per trading day (default 10). The day rolls at 17:00 Central. |
 | `PX_ALLOW_LIVE`, `PX_ACCOUNT_KIND` | a live account needs `PX_ACCOUNT_KIND=live`, `PX_ALLOW_LIVE=1`, `PX_BRACKET_MODE=oco` and market entries. Never run. Do not enable. |
+| `PX_RISK_BASE` | `drawdown` (default): 1R is `risk_pct` of the live drawdown room (balance minus `PX_MLL_FLOOR`), capped by the daily and drawdown room. `remaining` restores the old base, `risk_pct` of the smaller of the two rooms. |
 | `PX_SIZE_SCALERS` | `0` switches off the ADX/ATR risk cuts (default on). |
 | `PX_LIVE_DATA` | `1` asks for the live data subscription on bars; unverified. |
 | `PX_MCP_TOKEN` | enables the MCP server when strong (32+ characters, no placeholder words). |

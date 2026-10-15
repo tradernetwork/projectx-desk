@@ -116,8 +116,12 @@ def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pc
         by_risk, cap = int(free["contracts"]), int(limits.max_qty_order)
         rpc = d["risk_per_contract"]
         why, why_s = [], []
-        why.append(f"Risk: {risk_pct * 100:g}% of ${remaining:,.0f} remaining = ${chosen:,.2f}")
-        why_s.append(f"Risk: {risk_pct * 100:g}% of remaining budget")
+        if limits.risk_base == "drawdown":
+            why.append(f"Risk: 1R = {risk_pct * 100:g}% of drawdown room = ${chosen:,.2f} (capped by ${remaining:,.0f} loss room)")
+            why_s.append(f"Risk: 1R = {risk_pct * 100:g}% of drawdown room (capped by loss room)")
+        else:
+            why.append(f"Risk: {risk_pct * 100:g}% of ${remaining:,.0f} remaining = ${chosen:,.2f}")
+            why_s.append(f"Risk: {risk_pct * 100:g}% of remaining budget")
         for r in scale["reasons"]:
             why.append(r)
             why_s.append(r)
@@ -269,7 +273,7 @@ def active_trade(guard):
             "risk_usd": _n(t.readback.get("risk_usd")), "id8": t.hash8}
 
 
-async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.03, stop_k=1.5, stream=False):
+async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.05, stop_k=1.5, stream=False):
     st = app.state
     live, guard = st.live, st.guard
     lim = guard.limits

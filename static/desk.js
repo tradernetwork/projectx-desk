@@ -984,7 +984,7 @@ chart.setDataLoader({
       if(stale()){callback([], false); return}
       $('msg').textContent = '';
       callback(bars, {forward: bars.length > 0, backward: false});
-      if(type === 'init') setTimeout(() => {restoreOverlays(); drawDesk(true); drawReact(true)}, 0);
+      if(type === 'init') setTimeout(() => {restoreOverlays(); drawDesk(true); drawReact(true); drawRespect(true)}, 0);
     }catch(e){err(e); callback([], false)}
   },
   subscribeBar: async ({symbol, period, callback}) => {
@@ -1077,9 +1077,273 @@ function drawReact(force){
   }catch(x){err(x)}
 }
 
+/* ---- respected levels: per timeframe, the level price has actually been respecting (GET /api/respect). Prices and enums only. ---- */
+const RSP_TFS = ['5m', '15m', '1h', '4h', '1d'];
+const RSP_TF_OF = {'minute,5': '5m', 'minute,15': '15m', 'hour,1': '1h', 'hour,4': '4h', 'day,1': '1d'};
+/* Okabe-Ito based: colorblind-safe on the dark theme; dash pattern is a second channel (solid, long, short, dot-dash, dotted) */
+const RSP_STYLE = {'5m': {c: '#56b4e9', dv: [1, 0]}, '15m': {c: '#f0e442', dv: [10, 4]}, '1h': {c: '#cc79a7', dv: [4, 3]},
+                   '4h': {c: '#ff8a3d', dv: [10, 3, 2, 3]}, '1d': {c: '#e8eef7', dv: [2, 3]}};
+const RSP_POLL_MS = 60000;
+const R = {on: LS.get('px.respect', true) !== false, data: null, status: 'loading', code: '', pick: {}, sig: '', seq: 0, timer: null};   // pick: tf -> level id, or null for "off"; session only
+klinecharts.registerOverlay({
+  name: 'respectLevel', totalStep: 2, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: true,
+  createPointFigures: ({coordinates: cs, bounding, overlay}) => {
+    if(!cs.length || !isFinite(cs[0].y)) return [];
+    const ed = overlay.extendData || {}, y = cs[0].y, a = ed.stable ? 1 : .55;
+    return [
+      {type: 'line', attrs: {coordinates: [{x: 0, y}, {x: bounding.width, y}]}, styles: {style: ed.stable ? 'solid' : 'dashed', color: ed.color, size: ed.stable ? 1.5 : 1, dashedValue: ed.stable ? [1, 0] : ed.dv}},
+      {type: 'text', ignoreEvent: true, attrs: {x: 6, y: y - 2, text: String(ed.label || ''), align: 'left', baseline: 'bottom'},
+       styles: {color: ed.color, size: 10, family: MONO, weight: ed.stable ? '700' : '500', backgroundColor: `rgba(8,10,15,${.78 * a + .1})`, borderSize: 0, borderRadius: 2,
+                paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, style: 'fill'}},
+    ];
+  }});
+const rspNum = v => typeof v === 'number' && isFinite(v);
+const rspName = v => String(v == null ? '' : v).replace(/[^\w .\-\/+%()]/g, '').slice(0, 24) || 'level';
+const rspLevels = tf => {
+  const t = R.data && R.data.tfs && R.data.tfs[tf];
+  return t && Array.isArray(t.levels) ? t.levels.filter(l => l && typeof l.id === 'string' && l.id.length <= 40) : [];
+};
+const rspOk = l => !!l && (l.verdict === 'ABOVE_RANDOM' || l.verdict === 'RESPECTED');   // ABOVE_RANDOM is the scanner's respected state
+function rspDrawn(tf){   // the level drawn for this timeframe: session pick, else the best RESPECTED (stable preferred)
+  const ok = rspLevels(tf).filter(l => rspOk(l) && rspNum(l.price));
+  if(Object.prototype.hasOwnProperty.call(R.pick, tf)) return R.pick[tf] === null ? null : ok.find(l => l.id === R.pick[tf]) || null;
+  return ok.find(l => l.stable === true) || ok[0] || null;
+}
+function respectLines(){
+  const out = [];
+  if(!R.on || !R.data || R.data.contract !== S.contractId) return out;
+  for(const tf of RSP_TFS){
+    const l = rspDrawn(tf); if(!l) continue;
+    const st = RSP_STYLE[tf];
+    out.push({price: l.price, color: st.c, dv: st.dv, stable: l.stable === true,
+      label: `${tf} ${rspName(l.label)}${rspNum(l.held) && rspNum(l.tests) ? ` ${l.held}/${l.tests}` : ''}`});
+  }
+  return out;
+}
+function drawRespect(force){
+  const lines = respectLines(), sig = JSON.stringify(lines);
+  if(sig === R.sig && !force) return;
+  const last = chart.getDataList().slice(-1)[0];
+  if(!last && lines.length) return;   // retry once bars exist
+  R.sig = sig;
+  try{
+    chart.removeOverlay({groupId: 'respect'});
+    for(const l of lines) chart.createOverlay({name: 'respectLevel', groupId: 'respect', lock: true, points: [{timestamp: last.timestamp, value: l.price}], extendData: l});
+  }catch(e){err(e)}
+}
+function renderRespect(){
+  const list = $('rsp-list'), cvt = RSP_TF_OF[S.tf] || null;
+  const tg = $('rsp-toggle'); tg.setAttribute('aria-pressed', String(R.on));
+  const ok = R.status === 'ok' && R.data;
+  $('rsp-state').textContent = R.status === 'loading' ? 'loading...' : R.status === 'error' ? 'unavailable' + (R.code ? ' (' + R.code + ')' : '') : '';
+  list.replaceChildren();
+  for(const tf of RSP_TFS){
+    const t = ok && R.data.tfs ? R.data.tfs[tf] : null, st = RSP_STYLE[tf];
+    const box = mk('div', 'rsptf' + (tf === cvt ? ' cur' : '')); box.dataset.tf = tf; box.style.setProperty('--tfc', st.c);
+    if(tf === cvt) box.setAttribute('aria-current', 'true');
+    const th = mk('div', 'th'); th.append(mk('b', '', tf));
+    const lv = ok && t ? rspLevels(tf).slice(0, 3) : [];
+    if(ok && t){
+      th.append(mk('span', '', rspNum(t.bars) ? t.bars + ' bars' : ''));
+      th.append(mk('span', 'tested', rspNum(t.tested) ? 'tested ' + t.tested + ' candidates' : ''));
+    }
+    box.append(th);
+    if(!ok){box.append(mk('p', 'none', R.status === 'loading' ? 'loading...' : 'respect data unavailable'))}
+    else if(!t){box.append(mk('p', 'none', 'no data for this timeframe'))}
+    else{
+      if(!lv.some(rspOk)) box.append(mk('p', 'none', 'nothing respected yet' + (typeof t.note === 'string' && t.note ? ' (' + t.note.slice(0, 80) + ')' : '')));
+      const drawn = rspDrawn(tf);
+      for(const l of lv){
+        const resp = rspOk(l);
+        const row = mk('button', 'rsprow'); row.type = 'button'; row.dataset.tf = tf; row.dataset.id = l.id; row.disabled = !resp;
+        row.setAttribute('aria-pressed', String(!!drawn && drawn.id === l.id && R.on));
+        row.title = resp ? 'Show or hide this level on the chart (this session)' : 'Not respected: never drawn';
+        const hr = rspNum(l.hold_rate) ? Math.round(l.hold_rate) + '%' : 'NA', pr = rspNum(l.placebo_rate) ? Math.round(l.placebo_rate) + '%' : 'NA';
+        const vk = resp ? 'RESPECTED' : Object.prototype.hasOwnProperty.call(VERDICT, l.verdict) ? l.verdict : null;
+        row.append(mk('span', 'rn', rspName(l.label)),
+          mk('span', '', `held ${rspNum(l.held) ? l.held : 'NA'}/${rspNum(l.tests) ? l.tests : 'NA'}`),
+          mk('span', '', `hold ${hr} vs placebo ${pr}`),
+          mk('span', 'vd vd-' + (vk ? vk.toLowerCase() : 'na'), vk === 'RESPECTED' ? 'RESPECTED' : vk ? VERDICT[vk] : 'NA'));
+        if(l.stable === true) row.append(mk('span', 'stb y', 'STABLE'));
+        else if(l.stable === false) row.append(mk('span', 'stb n', 'NOT STABLE'));
+        if(rspNum(l.tests) && l.tests < 30) row.append(mk('span', 'ss', 'SMALL SAMPLE'));
+        box.append(row);
+      }
+    }
+    list.append(box);
+  }
+}
+async function respectFetch(){
+  const cid = S.contractId; if(!cid || !R.on) return;
+  const my = ++R.seq;
+  try{
+    const r = await fetch('/api/respect?contract=' + encodeURIComponent(cid), {headers: {accept: 'application/json'}});
+    let body = null; try{body = await r.json()}catch{}
+    if(my !== R.seq) return;   // a newer request or a contract change superseded this one
+    if(!r.ok || !body || body.v !== 1 || typeof body.tfs !== 'object' || body.tfs === null){
+      const c = body && typeof body.error === 'string' && /^[a-z0-9_]{1,32}$/.test(body.error) ? body.error : String(r.status);
+      throw Object.assign(new Error('respect'), {code: c});
+    }
+    if(body.contract !== cid) return;
+    R.data = body; R.status = 'ok'; R.code = '';
+  }catch(e){
+    if(my !== R.seq) return;
+    R.status = 'error'; R.code = e && e.code ? e.code : 'network'; R.data = null;
+  }
+  renderRespect(); drawRespect(false); mnSync();
+}
+function respectLoad(newContract){   // on load/contract change; a timeframe change only re-highlights
+  if(newContract){R.data = null; R.status = 'loading'; R.code = ''; R.pick = {}; R.seq++; R.sig = ''; try{chart.removeOverlay({groupId: 'respect'})}catch(e){err(e)}}
+  renderRespect();
+  if(newContract){respectFetch(); mnLoad()} else mnSync();
+}
+function respectSetOn(on){
+  R.on = on; LS.set('px.respect', on);
+  if(on){R.status = R.data ? R.status : 'loading'; renderRespect(); respectFetch()}
+  else{R.seq++; renderRespect(); drawRespect(true); mnSync()}
+}
+$('rsp-toggle').onclick = () => respectSetOn(!R.on);
+$('rsp-list').addEventListener('click', e => {
+  const b = e.target.closest('button[data-id]'); if(!b || b.disabled) return;
+  const tf = b.dataset.tf, d = rspDrawn(tf);
+  R.pick[tf] = d && d.id === b.dataset.id ? null : b.dataset.id;
+  if(!R.on){R.on = true; LS.set('px.respect', true); respectFetch()}
+  renderRespect(); drawRespect(false); mnSync();
+});
+R.timer = setInterval(() => {if(document.visibilityState === 'visible') respectFetch()}, RSP_POLL_MS);
+
+/* ---- timeframe mini charts: plain canvas candles, last ~60 bars, EMA 8/21/34, the respected level. Prices only. ---- */
+const MN = {open: LS.get('px.minis', true) !== false, tfs: ['5m', '15m', '1h'], unit: {'5m': [2, 5, 300000], '15m': [2, 15, 900000], '1h': [3, 1, 3600000]},
+  bars: {}, seq: {}, at: {}, cv: {}, box: {}, px: {}};
+const MN_SHOW = 60, MN_FETCH = 250, MN_MIN_MS = 30000, MN_PER = [8, 13, 21, 34, 55, 89];
+const MN_COL = [EMA_COL[0], '#7fb08a', EMA_COL[1], EMA_COL[2], '#c9a227', '#94a3b8'];   // 8/21/34 as on the main chart; 13/55/89 muted
+const MN_DASH = [[], [], [], [], [4, 3], [4, 3]];
+function mnEma(closes, p){   // same recurrence as the main chart's EMA indicator (seeded with the first close)
+  const out = []; let prev = null;
+  for(const c of closes){prev = prev == null ? c : (2 * c + (p - 1) * prev) / (p + 1); out.push(prev)}
+  return out;
+}
+function mnDraw(tf){
+  const cv = MN.cv[tf]; if(!cv) return;
+  const w = cv.clientWidth, h = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+  if(!w || !h) return;
+  if(cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)){cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr)}
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const all = MN.bars[tf] || [];
+  if(!all.length){g.fillStyle = C.text; g.font = `11px ${MONO}`; g.fillText(MN.px[tf] === 'err' ? 'unavailable' : 'loading...', 6, 16); return}
+  const closes = all.map(b => b.close), emas = MN_PER.map(p => mnEma(closes, p));
+  const from = Math.max(0, all.length - MN_SHOW), bars = all.slice(from);
+  const rl = R.on && R.data && R.data.contract === S.contractId ? rspDrawn(tf) : null;
+  let lo = Infinity, hi = -Infinity;
+  for(const b of bars){lo = Math.min(lo, b.low); hi = Math.max(hi, b.high)}
+  if(rl && rspNum(rl.price) && rl.price > lo - (hi - lo) * .25 && rl.price < hi + (hi - lo) * .25){lo = Math.min(lo, rl.price); hi = Math.max(hi, rl.price)}
+  const pad = (hi - lo) * .06 || 1; lo -= pad; hi += pad;
+  const axW = 44, pw = w - axW, step = pw / bars.length, y = v => 4 + (hi - v) / (hi - lo) * (h - 8);
+  const dec = cur.dec ?? 2;
+  g.strokeStyle = C.grid; g.lineWidth = 1; g.fillStyle = C.text; g.font = `9.5px ${MONO}`; g.textBaseline = 'middle';
+  for(const f of [.15, .5, .85]){const v = lo + (hi - lo) * f, yy = Math.round(y(v)) + .5; g.beginPath(); g.moveTo(0, yy); g.lineTo(pw, yy); g.stroke(); g.fillText(v.toFixed(dec), pw + 3, yy)}
+  bars.forEach((b, i) => {
+    const x = i * step + step / 2, up = b.close >= b.open, col = up ? C.up : C.dn, bw = Math.max(1, step * .62);
+    g.strokeStyle = g.fillStyle = col; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(Math.round(x) + .5, y(b.high)); g.lineTo(Math.round(x) + .5, y(b.low)); g.stroke();
+    const t = y(Math.max(b.open, b.close)), bh = Math.max(1, Math.abs(y(b.open) - y(b.close)));
+    g.fillRect(x - bw / 2, t, bw, bh);
+  });
+  emas.forEach((e, k) => {
+    g.strokeStyle = MN_COL[k]; g.lineWidth = 1; g.setLineDash(MN_DASH[k]); g.beginPath();
+    e.slice(from).forEach((v, i) => {const x = i * step + step / 2; i ? g.lineTo(x, y(v)) : g.moveTo(x, y(v))});
+    g.stroke(); g.setLineDash([]);
+  });
+  if(rl && rspNum(rl.price)){
+    const st = RSP_STYLE[tf], yy = y(rl.price);
+    g.strokeStyle = st.c; g.lineWidth = rl.stable === true ? 1.5 : 1; g.setLineDash(rl.stable === true ? [] : st.dv); g.beginPath(); g.moveTo(0, yy); g.lineTo(pw, yy); g.stroke(); g.setLineDash([]);
+    const txt = rspName(rl.label) + (rspNum(rl.held) && rspNum(rl.tests) ? ` ${rl.held}/${rl.tests}` : '');
+    g.font = `600 9.5px ${MONO}`; g.textBaseline = 'bottom'; const tw = g.measureText(txt).width;
+    g.fillStyle = 'rgba(8,10,15,.78)'; g.fillRect(4, yy - 14, tw + 6, 13); g.fillStyle = st.c; g.fillText(txt, 7, yy - 3);
+  }
+}
+function mnBias(tf){   // client-side read of the timeframe's own bars (full 8/13/21/34/55/89 ribbon); text + glyph, never colour alone
+  const all = MN.bars[tf] || [], r = {stack: 'NA', pos: 'NA', bias: 'NA', ribbon: 'NA', note: ''};
+  if(all.length >= 89){
+    const closes = all.map(b => b.close), e = MN_PER.map(p => mnEma(closes, p).slice(-1)[0]), c = closes[closes.length - 1];
+    let n = 0, broke = null;
+    for(let i = 0; i < 5; i++){if(e[i] > e[i + 1]) n++; else if(broke == null) broke = MN_PER[i] + '/' + MN_PER[i + 1]}
+    r.ribbon = String(n);
+    r.stack = n === 5 ? 'BULL' : n === 0 ? 'BEAR' : 'MIXED';
+    r.note = `ribbon ${n}/5 ${r.stack}` + (r.stack === 'MIXED' ? `, broke at ${broke}` : '');
+    const ab = MN_PER.filter((p, i) => c > e[i]);
+    r.pos = ab.length === 6 ? 'above all' : ab.length === 0 ? 'below all' : ab.length === 1 ? `above ${ab[0]} only` : 'above ' + ab.join(', ');
+    r.bias = n === 5 && ab.length === 6 ? 'BULLISH' : n === 0 && ab.length === 0 ? 'BEARISH' : 'NEUTRAL';
+  }
+  return r;
+}
+const MN_GLYPH = {BULLISH: '▲', BEARISH: '▼', NEUTRAL: '◆', BULL: '▲', BEAR: '▼', MIXED: '◆'};
+function mnMeta(tf){
+  const box = MN.box[tf]; if(!box) return;
+  const all = MN.bars[tf] || [], last = all[all.length - 1];
+  box.querySelector('.mp').textContent = last && rspNum(last.close) ? last.close.toFixed(cur.dec ?? 2) : '';
+  const bz = mnBias(tf), bl = box.querySelector('.mb');
+  bl.dataset.stack = bz.stack; bl.dataset.ribbon = bz.ribbon; bl.dataset.pos = bz.pos; bl.dataset.bias = bz.bias;
+  const kids = bl.children;
+  kids[0].textContent = bz.bias === 'NA' ? 'NA' : MN_GLYPH[bz.bias] + ' ' + bz.bias;
+  kids[0].className = 'bz bz-' + bz.bias.toLowerCase();
+  kids[1].textContent = bz.stack === 'NA' ? '' : MN_GLYPH[bz.stack] + ' ' + bz.note;
+  kids[2].textContent = bz.pos === 'NA' ? '' : bz.pos;
+  box.classList.toggle('cur', RSP_TF_OF[S.tf] === tf);
+  if(RSP_TF_OF[S.tf] === tf) box.setAttribute('aria-current', 'true'); else box.removeAttribute('aria-current');
+}
+function mnSync(){for(const tf of MN.tfs){mnMeta(tf); if(MN.open) mnDraw(tf)}}
+async function mnFetch(tf){
+  const cid = S.contractId; if(!cid || !MN.open) return;
+  const [unit, n] = MN.unit[tf], my = MN.seq[tf] = (MN.seq[tf] || 0) + 1;
+  MN.at[tf] = Date.now();
+  try{
+    const bs = await j(`/bars?contract=${encodeURIComponent(cid)}&unit=${unit}&n=${n}&limit=${MN_FETCH}`);
+    if(my !== MN.seq[tf] || cid !== S.contractId) return;
+    MN.bars[tf] = (Array.isArray(bs) ? bs : []).filter(b => b && [b.timestamp, b.open, b.high, b.low, b.close].every(rspNum)).slice(-MN_FETCH);
+    MN.px[tf] = 'ok';
+  }catch(e){
+    if(my !== MN.seq[tf]) return;
+    MN.px[tf] = 'err';
+  }
+  mnMeta(tf); mnDraw(tf);
+  $('mn-state').textContent = MN.tfs.some(t => MN.px[t] === 'err') ? 'some feeds unavailable' : '';
+}
+function mnLoad(){   // contract change: drop old bars, one fetch per timeframe
+  for(const tf of MN.tfs){MN.seq[tf] = (MN.seq[tf] || 0) + 1; MN.bars[tf] = []; MN.px[tf] = ''; MN.at[tf] = 0}
+  mnSync(); if(MN.open) for(const tf of MN.tfs) mnFetch(tf);
+}
+function mnTick(){   // only when a new bar of that timeframe should exist, never faster than MN_MIN_MS
+  if(!MN.open || document.visibilityState !== 'visible') return;
+  const now = Date.now();
+  for(const tf of MN.tfs){
+    const all = MN.bars[tf] || [], last = all[all.length - 1];
+    if(now - (MN.at[tf] || 0) < MN_MIN_MS) continue;
+    if(!last || MN.px[tf] === 'err' || now >= last.timestamp + MN.unit[tf][2]) mnFetch(tf);
+  }
+}
+for(const tf of MN.tfs){
+  const box = mk('div', 'mn'); box.dataset.tf = tf; box.style.setProperty('--tfc', RSP_STYLE[tf].c);
+  const mh = mk('div', 'mh'); mh.append(mk('b', '', tf), mk('span', 'mp', ''));
+  const cv = mk('canvas'); cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', tf + ' candles with EMA 8, 13, 21, 34, 55, 89');
+  const mb = mk('div', 'mb'); mb.append(mk('span', 'bz bz-na', 'NA'), mk('span', 'bs', ''), mk('span', 'bp', ''));
+  box.append(mh, cv, mb); $('mn-body').append(box); MN.cv[tf] = cv; MN.box[tf] = box;
+}
+function mnApplyOpen(){
+  $('mn-body').hidden = !MN.open; $('mn-toggle').textContent = MN.open ? 'Hide' : 'Show'; $('mn-toggle').setAttribute('aria-expanded', String(MN.open));
+}
+$('mn-toggle').onclick = () => {
+  MN.open = !MN.open; LS.set('px.minis', MN.open); mnApplyOpen();
+  if(MN.open){mnSync(); for(const tf of MN.tfs) if(!(MN.bars[tf] || []).length || Date.now() - (MN.at[tf] || 0) >= MN_MIN_MS) mnFetch(tf)}
+};
+mnApplyOpen();
+new ResizeObserver(() => {if(MN.open) for(const tf of MN.tfs) mnDraw(tf)}).observe($('mn-body'));
+setInterval(mnTick, MN_MIN_MS);
+
 /* ---- drawing toolbar ---- */
 const TOOLS = [['Trend', 'segment'], ['Ray', 'rayLine'], ['H-line', 'horizontalStraightLine'], ['V-line', 'verticalStraightLine'],
   ['Chan', 'parallelStraightLine'], ['Fib', 'fibonacciLine'], ['Zone', 'zoneBand'], ['Meas', 'measure'], ['Note', 'simpleAnnotation']];
+const NONUSER = ['desk', 'react', 'respect'];   // overlay groups that are never saved as user drawings
 let magnet = LS.get('px.magnet', 0), locked = false, hidden = false;
 const MODES = ['normal', 'weak_magnet', 'strong_magnet'];
 function mkOv(o){
@@ -1095,7 +1359,7 @@ function setActive(n){
 }
 function saveOverlays(){
   if(restoring || !cur.ticker) return;
-  const list = chart.getOverlays().filter(o => !['desk', 'react'].includes(o.groupId) && o.name !== 'measure' && o.points?.length >= (o.totalStep - 1 || 1) && o.points.every(p => p.value != null))
+  const list = chart.getOverlays().filter(o => !NONUSER.includes(o.groupId) && o.name !== 'measure' && o.points?.length >= (o.totalStep - 1 || 1) && o.points.every(p => p.value != null))
     .map(o => ({name: o.name, points: o.points.map(p => ({timestamp: p.timestamp, value: p.value})), extendData: o.extendData ?? null, lock: !!o.lock}));
   LS.set('px.ov.' + cur.ticker, list);
 }
@@ -1116,10 +1380,10 @@ function toolbar(){
   t.onclick = e => {
     const b = e.target.closest('button'); if(!b) return;
     if(b.dataset.tool) setActive(active === b.dataset.tool ? null : b.dataset.tool);
-    else if(b.id === 'mag'){magnet = (magnet + 1) % 3; LS.set('px.magnet', magnet); magLabel(); chart.getOverlays().filter(o => !['desk', 'react'].includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, mode: MODES[magnet]}))}
-    else if(b.id === 'lock'){locked = !locked; b.classList.toggle('on', locked); chart.getOverlays().filter(o => !['desk', 'react'].includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, lock: locked}))}
-    else if(b.id === 'hide'){hidden = !hidden; b.classList.toggle('on', hidden); chart.getOverlays().filter(o => !['desk', 'react'].includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, visible: !hidden}))}
-    else if(b.id === 'clear'){chart.removeOverlay(); LS.set('px.ov.' + cur.ticker, []); drawDesk(true); drawReact(true)}
+    else if(b.id === 'mag'){magnet = (magnet + 1) % 3; LS.set('px.magnet', magnet); magLabel(); chart.getOverlays().filter(o => !NONUSER.includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, mode: MODES[magnet]}))}
+    else if(b.id === 'lock'){locked = !locked; b.classList.toggle('on', locked); chart.getOverlays().filter(o => !NONUSER.includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, lock: locked}))}
+    else if(b.id === 'hide'){hidden = !hidden; b.classList.toggle('on', hidden); chart.getOverlays().filter(o => !NONUSER.includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, visible: !hidden}))}
+    else if(b.id === 'clear'){chart.removeOverlay(); LS.set('px.ov.' + cur.ticker, []); drawDesk(true); drawReact(true); drawRespect(true)}
     else if(b.id === 'shot'){const a = document.createElement('a'); a.href = chart.getConvertPictureUrl(true, 'png', '#0d121d'); a.download = `${cur.name || 'chart'}-${Date.now()}.png`; a.click()}
   };
 }
@@ -1152,7 +1416,7 @@ $('ind').onchange = e => {const n = e.target.dataset.ind; indOn[n] = e.target.ch
 const TFS = [['second,15', '15s'], ['minute,1', '1m'], ['minute,5', '5m'], ['minute,15', '15m'], ['minute,30', '30m'], ['hour,1', '1h'], ['hour,4', '4h'], ['day,1', '1D']];
 if(!TFS.some(t => t[0] === S.tf)) S.tf = 'minute,5';
 for(const [v, l] of TFS){const b = mk('button', '', l); b.dataset.v = v; b.setAttribute('aria-pressed', 'false'); $('tfs').append(b)}
-const syncTf = () => [...$('tfs').children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.tf)));
+const syncTf = () => {[...$('tfs').children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.tf))); if(typeof renderRespect === 'function' && typeof R !== 'undefined'){renderRespect(); mnSync()}};
 $('tfs').onclick = e => {const b = e.target.closest('button'); if(b){S.tf = b.dataset.v; syncTf(); load()}};
 async function search(){
   try{
@@ -1173,7 +1437,7 @@ function load(){
   LS.set('px.contract', o.value); LS.set('px.tf', S.tf);
   const sym = want?.ticker !== o.value, pp = chart.getPeriod(), per = pp?.type !== type || pp?.span !== +span;
   cur = {ticker: o.value, tick, tickValue: o.dataset.tv === '' ? null : +o.dataset.tv, name: o.dataset.name, dec};
-  S.contractId = o.value; syncTf(); deskSig = ''; reactSig = '';
+  S.contractId = o.value; syncTf(); deskSig = ''; reactSig = ''; respectLoad(sym);
   want = {ticker: o.value, type, span: +span}; lastPx = null; $('price').textContent = 'NA'; $('price').className = 'price';
   if(sym) chart.setSymbol({ticker: o.value, pricePrecision: dec, volumePrecision: 0});
   if(per) chart.setPeriod({span: +span, type});
@@ -1188,6 +1452,6 @@ toolbar(); magLabel(); syncTf(); syncSizeInputs();
 for(const [n] of INDS) if(indOn[n]) applyInd(n, true);
 new ResizeObserver(() => chart.resize()).observe($('chart'));
 
-applySlots(); renderAll();
+applySlots(); renderAll(); renderRespect();
 search();
 schedule(0);

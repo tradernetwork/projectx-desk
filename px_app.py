@@ -171,6 +171,16 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         cache[key] = (time.time(), out)
         return out
 
+    @app.get("/api/respect")
+    async def respect(request: Request, contract: str):
+        """Read-only multi-timeframe 'what is price respecting' scan. Cached per closed bar; fixed error codes only."""
+        cid = contract_arg(contract)
+        try:
+            return await px_digest.respect_result(request.app, cid)
+        except px_digest.RespectError as e:
+            hdr = {"Retry-After": "30"} if e.code == "RATE_LIMITED" else None
+            return JSONResponse({"error": e.code}, status_code=429 if e.code == "RATE_LIMITED" else 502, headers=hdr)
+
     @app.get("/ticks")
     async def ticks(request: Request, contract: str):
         """SSE: `data: {t,p,v,s}` per trade; `event: resync` / `event: down` on interruption."""

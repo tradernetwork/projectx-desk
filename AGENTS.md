@@ -30,6 +30,7 @@ Modules are flat at the repo root (`px_*.py`, `sizing.py`, `gex_futures.py`); `t
 | `px_net.py` | bind and exposure rules: loopback detection, host/origin allowlists, the operator login, the refusal to start unsafe |
 | `px_app.py` | FastAPI: chart data, SSE ticks, CSRF-gated POST routes, mounts MCP |
 | `px_levels.py` | EMA stack, ATR series, level-reaction statistics with a random-line baseline |
+| `px_respect.py` | which levels each timeframe (5m/15m/1h/4h/1d) respects: ~25 candidate levels scored against a calibrated placebo, with a no-lookahead guarantee and a half/half stability check. Pure, no I/O |
 | `px_time.py` | the one definition of the trading day (17:00 CT roll) |
 | `sizing.py`, `gex_futures.py` | pure sizing math; GEX levels converted to futures price space |
 | `dev_gateway.py` | a mock ProjectX gateway (REST + SignalR) for offline development and end-to-end tests |

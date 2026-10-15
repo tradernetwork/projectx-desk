@@ -137,3 +137,32 @@ are kept as written; where one is superseded, this section says so. Still tested
 - **Kept:** micros only (`allowed_roots`), qty cap 1, the 25% max-loss-per-trade rule and the 2x remaining-budget rule (D6).
 - **Open:** 5% is a hypothesis to review against the sim rehearsal, not a finding. `PX_DAILY_LOSS_LIMIT` is the operator's own
   number; the repo example of $500 is a starting point under Topstep's $1,000, not a recommendation.
+
+## Round 5: which levels is price respecting, per timeframe
+
+- **Ask:** instead of the trader picking EMAs or fibs by eye, scan each timeframe (5m, 15m, 1h, 4h, 1d) and draw only the levels
+  price has actually reacted to. `px_respect.py` (pure) runs the `px_levels` bounce statistics over about 25 candidates per
+  timeframe: EMA 8/13/21/34/55/89/200, SMA 20/50/200, Keltner, Bollinger, session VWAP, prior day or week high/low/close, swing fibs.
+- **Selection bias is the enemy.** 25 candidates will always crown a lucky winner. So every winner shows `tested=K`, a level is only
+  `stable` if it passes in both the earlier and the later half of the data, and anything under 30 tests carries SMALL_SAMPLE.
+  The UI draws only levels with verdict ABOVE_RANDOM and dims the ones that are not stable.
+- **Found and fixed a baseline bias.** The `px_levels` placebo (lines shifted by fixed ATR offsets) is wrong for bands: on pure random
+  walks Bollinger bands came out ABOVE_RANDOM in about 90% of runs, because bands sit at price extremes and the shifted placebo
+  lines do not. `px_respect` also scores each candidate on shuffled-return copies of the same bars and raises the placebo by any
+  positive gap it shows there (it only ever raises the bar). Random walks then gave about 2% ABOVE_RANDOM and none stable.
+  `px_levels.py` itself is unchanged, so the existing `LEVEL:` lines still use the raw baseline. Known gap, see LIMITATIONS.
+- **No lookahead:** a level's value on bar i uses bars up to i only; pivots for fibs count only after the lookback has confirmed
+  them. Tests pin both.
+- **Cost:** `GET /api/respect` and the digest `RESPECT:` block share one cache keyed on the last closed bar. A cold start is 5
+  `retrieveBars` calls against a 50 per 30 s budget; steady state is one 5m refetch per 5 minutes. The AI surface carries only
+  allowlisted ids, verdict enums and finite numbers; `get_respect` is read-only.
+- **Not a forecast.** It says how price reacted, never where it will go. The UI and the digest both say so.
+- **UI.** The chart draws the top ABOVE_RANDOM level per timeframe (solid when stable, dashed when not) and a "Respected levels"
+  panel lists the top three per timeframe with held/tests, hold rate against placebo, SMALL SAMPLE under 30 tests and K tested.
+  A "Timeframes" panel shows 5m, 15m and 1h mini charts. Its bias line scores the full EMA ribbon (8/13/21/34/55/89), not
+  8/21/34: on NVDA the 3-EMA stack called a trend 38 to 49% of the time and the full ribbon 30 to 37%, so the short stack is
+  the looser signal. A cold page load costs 3 extra `/bars` calls (250 bars each).
+- **First evidence (NVDA, 5y daily, ~3 months of 1h, ~1 month of 15m).** On daily, no EMA from 8 to 89 beat its placebo and the
+  hold rate fell with length (66% at 8, 39% at 89). On 1h and 15m the longer averages looked best among the MAs but not
+  significantly (SMA 50 on 1h: 9 of 12, stable, small sample). One ticker, small samples: a prompt to run it across a basket
+  of megacaps and the index futures, not a finding.

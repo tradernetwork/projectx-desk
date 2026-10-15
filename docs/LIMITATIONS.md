@@ -103,6 +103,12 @@ POST routes do not, for the reason given above.
 
 ## Known gaps
 
+- The existing `LEVEL:` lines (EMA 8/21/34, VWAP on the current timeframe) still use the raw `px_levels` placebo, which is biased
+  for tight or self-referential levels (EMA 8 reads about 19 points low on random walks). `px_respect.py` recalibrates; the old lines
+  do not yet. Level-reaction events are also capped at 12 and pending events in the last 6 bars are never counted.
+- The respect scan is descriptive history on 25 hand-picked candidate levels. It is not backtested for trade outcomes, and a
+  level that was respected is not evidence that it will be.
+
 - `PX_NO_NEW_AFTER` only blocks new entries. Set `PX_FLAT_BY` to get the auto-flatten (Topstep requires flat by 3:10 PM CT); it is off until you set it, and it does not know holiday or early-close schedules.
 - Drawdown room is the live balance minus `PX_MLL_FLOOR` if you set it, otherwise the number you type. The desk does not compute Topstep's end-of-day trailing floor or its lock; you update the floor. Unrealised loss counts only through each open trade's stop. The daily loss limit is your own number, not read from Topstep.
 - Topstep objectives (profit target, 55% and 40% consistency, payout rules, the scaling plan) and conduct rules (news, hedging across accounts, prohibited strategies) are not enforced. See [TOPSTEP_RULES.md](TOPSTEP_RULES.md).

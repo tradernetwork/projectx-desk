@@ -14,7 +14,7 @@ from test_px_guard_protect import Broker
 
 GOOD = "9f2c61b7a04e83d5c7b1e690a3f48d2e5b7c9a10d6e4f3b2a1c8d7e6f5a49b30"
 EXPECTED_TOOLS = {"get_digest", "get_state", "get_positions", "get_orders", "get_quote", "get_bars",
-                  "search_contracts", "get_risk_status", "size_trade", "preview_order", "halt"}
+                  "search_contracts", "get_risk_status", "get_respect", "size_trade", "preview_order", "halt"}
 FORBIDDEN_WORDS = ("place", "flatten", "cancel", "clear", "resume", "approve", "confirm", "submit", "close", "send", "execute")
 
 

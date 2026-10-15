@@ -106,6 +106,18 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
         return await px_digest.build_ai_state(get_app(), contract, side=side, risk_pct=risk_pct, stop_k=stop_k, stream=stream)
 
     @mcp.tool
+    async def get_respect(contract: Optional[str] = None) -> dict:
+        """What price has been respecting, per timeframe (5m 15m 1h 4h 1d): top levels with held/failed counts, hold rate vs a
+        placebo baseline, verdict and stability. History, not a forecast. Read-only; small samples are flagged by `tests`."""
+        _contract(contract)
+        if contract is None:
+            raise ValueError("contract is required")
+        try:
+            return await px_digest.respect_result(get_app(), contract)
+        except px_digest.RespectError as e:
+            return {"error": e.code}
+
+    @mcp.tool
     def get_positions() -> list:
         """Open positions (side, size, average price). Numbers and enums only."""
         return [position_view(p) for p in st().live.positions.values()]

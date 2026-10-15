@@ -300,27 +300,87 @@ class Guard:
         if cutoff > SESSION_OPEN:
             return "cutoff must be at or before the 17:00 CT session open"
         t = now_ct.time()
+        why = self._flat_by_window(now_ct)
+        if why:
+            return why
         if t >= SESSION_OPEN or t < cutoff:
             return None
         return f"no new entries after {cut} CT"
 
+    FLAT_LEAD = timedelta(minutes=2)
+
+    def _flat_by_time(self) -> Optional[dtime]:
+        fb = self.limits.flat_by
+        if not fb:
+            return None
+        try:
+            hh, mm = fb.split(":")
+            t = dtime(int(hh), int(mm))
+        except (ValueError, AttributeError):
+            return None
+        return t if t <= SESSION_OPEN else None
+
+    def _flat_by_window(self, now_ct) -> Optional[str]:
+        """A configured PX_FLAT_BY must parse (else every open is refused), and no new entry is allowed in the last 2 minutes."""
+        if self.limits.flat_by and self._flat_by_time() is None:
+            return "PX_FLAT_BY is not HH:MM at or before 17:00 CT"
+        fb = self._flat_by_time()
+        if fb is None:
+            return None
+        start = (datetime.combine(now_ct.date(), fb) - self.FLAT_LEAD).time()
+        t = now_ct.time()
+        if start <= t < SESSION_OPEN:
+            return f"inside the last 2 minutes before the {self.limits.flat_by} CT flat-by deadline"
+        return None
+
+    def flat_by_due(self, now=None) -> bool:
+        """True from PX_FLAT_BY until the 17:00 CT session open: everything must be flat."""
+        fb = self._flat_by_time()
+        if fb is None:
+            return False
+        t = (now or self.wall()).astimezone(CT).time()
+        return fb <= t < SESSION_OPEN
+
+    async def enforce_flat_by(self, now=None):
+        """Called about once a second by the app. At the deadline, flatten any position or working order. Reduces only."""
+        if not self.flat_by_due(now):
+            return None
+        has_pos = any(abs(p.get("size") or 0) for p in self.live.positions.values())
+        if not has_pos and not self.live.orders:
+            return None
+        self._audit("flatten", origin="deadline", state="DEADLINE")
+        return await self.flatten(origin="deadline")
+
     # ---- shared budget and stop helpers (one definition, used by the UI, MCP and digest) -----------
+
+    def dd_room(self) -> Optional[float]:
+        """Drawdown room in dollars, or None if unknown. With PX_MLL_FLOOR it is the LIVE balance minus the firm's floor
+        (so it follows the account); otherwise the typed PX_DRAWDOWN_BUFFER. A floor with an unreadable balance is None."""
+        lim = self.limits
+        if lim.mll_floor > 0:
+            bal = (self.live.account or {}).get("balance")
+            if not isinstance(bal, (int, float)) or isinstance(bal, bool) or not math.isfinite(bal):
+                return None
+            return float(bal) - lim.mll_floor
+        return lim.dd_buffer if lim.dd_buffer > 0 else None
 
     def budget(self, now=None):
         """(remaining, daily_room) in dollars, or (None, None) if P&L or limits are unknown. Fails closed."""
         lim = self.limits
         pnl = self.live.day_pnl(now or self.wall())
-        if pnl is None or lim.daily_loss_limit <= 0 or lim.dd_buffer <= 0:
+        dd = self.dd_room()
+        if pnl is None or lim.daily_loss_limit <= 0 or dd is None:
             return None, None
-        room = lim.daily_loss_limit + pnl - self._open_risk()
-        return min(room, lim.dd_buffer - self._open_risk()), room
+        ob = self._open_risk()
+        room = lim.daily_loss_limit + pnl - ob
+        return min(room, dd - ob), room
 
     def risk_dollars_for(self, risk_pct: float, now=None) -> float:
         """risk_pct of the REMAINING budget (min of daily room and drawdown buffer), never above either."""
         remaining, room = self.budget(now)
         if remaining is None or remaining <= 0:
             return 0.0
-        return sizing.risk_budget(remaining, risk_pct, room, self.limits.dd_buffer)
+        return sizing.risk_budget(remaining, risk_pct, room, self.dd_room() or 0.0)
 
     async def stop_from_ticks(self, contract_id: str, side: str, ticks: int):
         """Absolute stop price `ticks` away from the FRESH quote the guard will size from. None if unknowable.
@@ -455,12 +515,14 @@ class Guard:
 
         pnl = self.live.day_pnl(now)
         chk("day_pnl_known", pnl is not None, "today's P&L is unknown (trades not read from REST)")
-        chk("limits_configured", lim.daily_loss_limit > 0 and lim.dd_buffer > 0,
-            "PX_DAILY_LOSS_LIMIT and PX_DRAWDOWN_BUFFER must be set")
+        dd = self.dd_room()
+        chk("limits_configured", lim.daily_loss_limit > 0 and (lim.dd_buffer > 0 or lim.mll_floor > 0),
+            "PX_DAILY_LOSS_LIMIT and PX_DRAWDOWN_BUFFER (or PX_MLL_FLOOR) must be set")
+        chk("drawdown_known", lim.mll_floor <= 0 or dd is not None, "PX_MLL_FLOOR is set but the account balance is unreadable")
         remaining = None
-        if pnl is not None and lim.daily_loss_limit > 0 and lim.dd_buffer > 0:
+        if pnl is not None and lim.daily_loss_limit > 0 and dd is not None:
             ob = self._open_risk()
-            remaining = min(lim.daily_loss_limit + pnl - ob, lim.dd_buffer - ob)
+            remaining = min(lim.daily_loss_limit + pnl - ob, dd - ob)
             chk("budget_remaining", remaining > 0, "no loss room left today")
         chk("orders_today", self.day.orders_today(now) < lim.max_orders_day, "daily order count reached")
         b = self.behavior(now)

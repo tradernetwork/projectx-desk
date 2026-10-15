@@ -284,8 +284,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.03, stop_k
     q = live.quotes.get(contract_id) if contract_id else None
     ind = await indicators(app, contract_id) if (contract_id and rec) else {}
     pnl = live.day_pnl(now)
-    daily_room = (lim.daily_loss_limit + pnl) if (pnl is not None and lim.daily_loss_limit > 0) else None
-    remaining = min(daily_room, lim.dd_buffer) if (daily_room is not None and lim.dd_buffer > 0) else None
+    remaining, daily_room = guard.budget(now)        # the guard's own number, including open stop risk
     ref = None
     if q:
         ref = q.get("bestAsk" if side == "long" else "bestBid") or q.get("lastPrice")
@@ -328,7 +327,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.03, stop_k
                           guard.risk_dollars_for(risk_pct, now), scale_info, ind.get("atr_pctile"),
                           guard.behavior(now).get("risk_cap")),
         "ticket": ticket,
-        "risk": {"daily_limit": _n(lim.daily_loss_limit), "daily_room": _n(daily_room), "dd_buffer": _n(lim.dd_buffer),
+        "risk": {"daily_limit": _n(lim.daily_loss_limit), "daily_room": _n(daily_room), "dd_buffer": _n(guard.dd_room()),
                  "remaining": _n(remaining), "binding": ("DAILY" if daily_room is not None and remaining == daily_room
                                                          else "DRAWDOWN" if remaining is not None else None),
                  "orders_today": guard.day.orders_today(now), "orders_max": lim.max_orders_day,

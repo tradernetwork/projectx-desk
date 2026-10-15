@@ -103,8 +103,9 @@ POST routes do not, for the reason given above.
 
 ## Known gaps
 
-- No auto-flatten at the `PX_NO_NEW_AFTER` cutoff; it only blocks new entries.
-- The budget uses the static daily-loss and drawdown numbers you type in, not the firm's live floor, and ignores unrealised loss.
+- `PX_NO_NEW_AFTER` only blocks new entries. Set `PX_FLAT_BY` to get the auto-flatten (Topstep requires flat by 3:10 PM CT); it is off until you set it, and it does not know holiday or early-close schedules.
+- Drawdown room is the live balance minus `PX_MLL_FLOOR` if you set it, otherwise the number you type. The desk does not compute Topstep's end-of-day trailing floor or its lock; you update the floor. Unrealised loss counts only through each open trade's stop. The daily loss limit is your own number, not read from Topstep.
+- Topstep objectives (profit target, 55% and 40% consistency, payout rules, the scaling plan) and conduct rules (news, hedging across accounts, prohibited strategies) are not enforced. See [TOPSTEP_RULES.md](TOPSTEP_RULES.md).
 - `last_risk` (the size-after-loss lock) is replaced at commit time by a subsequent order even if the broker then rejects it.
 - External trades (placed outside the desk) have no known risk cap.
 - No calendar for holiday early closes.

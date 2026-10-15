@@ -71,12 +71,15 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         async with AsyncExitStack() as stack:
             if holder.get("mcp_app") is not None:
                 await stack.enter_async_context(holder["mcp_app"].lifespan(app))
+            deadline = asyncio.create_task(_deadline_loop(app)) if connect else None
             if connect:
                 try:
                     await _boot(app)
                 except (PXError, KeyError, IndexError) as e:  # UI still loads; /state.json says why
                     app.state.boot_error = _boot_code(e)
             yield
+            if deadline is not None:
+                deadline.cancel()
         for h in (m, u):
             await h.stop()
         if client is None:
@@ -440,6 +443,21 @@ async def _boot(app):
     await _snapshot(app)
     # Any user-hub reconnect may have missed events: re-seed from REST.
     user.listen(lambda kind: _schedule_reseed(app) if kind == "resync" else None)
+
+
+async def _deadline_loop(app):
+    """Once a second: at PX_FLAT_BY, flatten. A failed flatten halts and is retried every 5 seconds while exposure remains."""
+    while True:
+        try:
+            await asyncio.sleep(1.0)
+            g = getattr(app.state, "guard", None)
+            r = await g.enforce_flat_by() if g is not None else None
+            if r is not None and not r.flat:
+                await asyncio.sleep(4.0)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 - the loop must survive anything
+            print(f"deadline loop: {type(e).__name__}", flush=True)
 
 
 def _schedule_reseed(app):

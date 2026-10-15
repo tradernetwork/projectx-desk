@@ -73,6 +73,8 @@ class Limits:
     stop_ack_s: float = 5.0
     min_stop_ticks: int = 4
     max_stop_ticks: int = 200
+    flat_by: Optional[str] = None         # PX_FLAT_BY "HH:MM" CT: auto-flatten everything at this time, and refuse opens 2 min before. Topstep's hard rule is 15:10 CT
+    mll_floor: float = 0.0                # PX_MLL_FLOOR dollars: the firm's maximum-loss floor. Drawdown room = live balance - floor. 0 = use PX_DRAWDOWN_BUFFER
     no_new_after: Optional[str] = None    # "HH:MM" in America/Chicago; unset refuses opens
     intent_block_s: float = 60.0
     flatten_fallback: bool = False        # PX_FLATTEN_FALLBACK=1: after a failed closeContract, send a capped opposite market order. OFF: halt and tell a human
@@ -114,6 +116,8 @@ class Limits:
             daily_loss_limit=_f("PX_DAILY_LOSS_LIMIT", 0),
             dd_buffer=_f("PX_DRAWDOWN_BUFFER", 0),
             no_new_after=os.getenv("PX_NO_NEW_AFTER") or None,
+            flat_by=os.getenv("PX_FLAT_BY") or None,
+            mll_floor=_f("PX_MLL_FLOOR", 0),
             **d,
         )
 

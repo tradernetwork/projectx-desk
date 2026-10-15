@@ -37,6 +37,7 @@ Modules are flat at the repo root (`px_*.py`, `sizing.py`, `gex_futures.py`); `t
 
 ## Rules with teeth
 
+- **Topstep rules live in `docs/TOPSTEP_RULES.md`** with sources and a per-rule status. `PX_FLAT_BY` (auto-flatten, refuse opens in the last 2 minutes) and `PX_MLL_FLOOR` (drawdown room = live balance minus the firm's floor; unreadable balance refuses) are enforced by the guard; do not weaken either. Orders must originate from the trader's own device (Topstep API terms): never document or ship a cloud-VPS deployment as the recommended path.
 - **Only `px_guard.py` may name an order-write endpoint or call `PXClient.write`.** Pinned by AST in
   `tests/test_px_guard_pin.py` (attribute access, getattr, string literals). Do not narrow the pin or add a second
   order path. MCP and everything else may only `preview` and `halt`.

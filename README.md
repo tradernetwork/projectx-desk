@@ -150,6 +150,10 @@ RULE: agent reads and stages; the operator places. Voice never confirms.
 ```
 </details>
 
+## Topstep rules
+
+The desk was built for TopstepX. [docs/TOPSTEP_RULES.md](docs/TOPSTEP_RULES.md) lists each Topstep rule with its official source and says plainly whether the desk enforces it, takes a number from you, or leaves it to you. The ones that can end an account: the maximum loss limit (`PX_MLL_FLOOR`), flat by 3:10 PM CT (`PX_FLAT_BY`), and where an order may originate from (your own device, not a cloud server).
+
 ## How it fits together
 
 <p align="center"><img src="docs/img/architecture.svg" alt="Architecture: browser desk and AI assistant reach the FastAPI app; only px_guard.py sends order writes to the ProjectX gateway or the mock" width="900"></p>
@@ -199,7 +203,7 @@ Sizing details: [docs/SIZING.md](docs/SIZING.md).
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q            # 350 tests; run offline against the practice market, no broker and no credentials
+pytest -q            # 361 tests; run offline against the practice market, no broker and no credentials
 ```
 </details>
 

@@ -1,5 +1,11 @@
 # Running it in Docker, an LXC, or on another machine
 
+> **Topstep: where the desk may run.** Topstep's API terms say all trading must originate from your personal device, and that a
+> VPS, VPN or remote server may read and log but **cannot place, modify, cancel or route orders**
+> ([source and caveats](TOPSTEP_RULES.md)). A cloud server or any machine you do not physically control is the case that rule
+> forbids. A Docker or LXC host on your own hardware at home is probably fine, but get Topstep support to confirm it in
+> writing before you rely on it. For the safest reading, run the desk on the machine you trade from.
+
 By default the desk binds `127.0.0.1` and accepts only loopback Host headers. That is the safe default because the desk can place
 orders. To run it anywhere else you must give it a login and an allowlist, or it **refuses to start**.
 

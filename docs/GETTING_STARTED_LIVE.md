@@ -12,7 +12,12 @@ $EDITOR .env.projectx
 python px_app.py                           # loads .env.projectx automatically; existing shell variables win
 ```
 
-At minimum set `PROJECTX_USERNAME`, `PROJECTX_API_KEY`, `PX_ACCOUNT_ID`, and leave `PX_ACCOUNT_KIND=sim`. The desk talks to
+At minimum set `PROJECTX_USERNAME`, `PROJECTX_API_KEY`, `PX_ACCOUNT_ID`, and leave `PX_ACCOUNT_KIND=sim`.
+
+The API logs in with a **pair**, not the key alone. `PROJECTX_USERNAME` is the username you sign in to the firm's platform with
+(not your email, not an account name or id). The key-generation screen does not show it, so use your login name. A wrong username
+fails the same way a wrong key does (`AUTH_FAILED`). `PX_ACCOUNT_ID` is the numeric id of the one account the desk may touch; until
+it is set, every order is refused, but you can still read. The desk talks to
 exactly one account and refuses any other. Money and quantity limits fail closed: a zero or blank value refuses opens, and so does a blank account id, bracket mode or
 `PX_NO_NEW_AFTER`. The two behavioral rails are different: `0` turns that rail off, and a blank or garbled value falls back to
 its default.

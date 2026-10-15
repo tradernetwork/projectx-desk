@@ -45,6 +45,10 @@ def _live_data():
 def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, connect=True, guard=None, limits=None, mcp_token=None,
                operator_token=None, allowed_origins=None):
     """Build the app. Tests inject a fake client / hubs and set connect=False."""
+    problem = px_net.bind_problem(os.getenv("PX_HOST", "127.0.0.1"), operator_token or os.getenv("PX_OPERATOR_TOKEN"),
+                                  os.getenv("PX_ALLOWED_HOSTS"), px_mcp.weak_token_reason)
+    if problem:       # same rule as main(), so an alternate launcher (uvicorn px_app:...) cannot skip it
+        raise SystemExit(problem)
     hosts = set(allowed_hosts) if allowed_hosts else px_net.allowed_hosts(_port(), os.getenv("PX_ALLOWED_HOSTS"))
     origins = set(allowed_origins) if allowed_origins else px_net.allowed_origins(hosts, os.getenv("PX_ALLOWED_ORIGINS"))
     op_token = operator_token if operator_token is not None else (os.getenv("PX_OPERATOR_TOKEN") or None)
@@ -352,6 +356,14 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         await body(request)
         return await request.app.state.guard.reconcile()
 
+    @app.post("/api/intent/resolve")
+    async def api_intent_resolve(request: Request):
+        """Human-only. Closes intents that reconcile could not find at the broker, so the desk is not stuck forever
+        after a send that never landed. No MCP equivalent."""
+        await body(request)
+        n = request.app.state.guard.resolve_not_found()
+        return {"resolved": n, "unreconciled": request.app.state.guard.unreconciled()}
+
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     return app
 
@@ -400,6 +412,14 @@ async def _snapshot(app):
         raise
     live.seed(positions, orders)
     live.seed_trades(trades)
+    guard = getattr(app.state, "guard", None)
+    if guard is not None:       # a REST seed raises no position event: make sure nothing it found is naked
+        try:
+            await guard.protect_open_positions()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 - recovery must never break the reseed
+            print(f"protect failed: {type(e).__name__}", flush=True)
 
 
 async def _boot(app):

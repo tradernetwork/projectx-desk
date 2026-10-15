@@ -93,3 +93,33 @@ reconcile job.
 - [ ] Daily count/loss persist across restart and fail closed on missing data
 - [ ] Audit log has no token or account number
 - [ ] Observed on the TopstepX UI: order, fill, stop, flatten
+
+## Round 3: after independent reviews (2026-10-15)
+
+Three independent model reviews (see `reviews/`) found real gaps. These are the changes made in response. Earlier rulings above
+are kept as written; where one is superseded, this section says so. Still tested only against the mock gateway.
+
+- **D3, fallback now opt-in.** The ruling above ends a failed flatten with a capped opposite market order. That order is now
+  OFF by default (`PX_FLATTEN_FALLBACK=0`). A timed-out `closeContract` can still execute, so an automatic opposite order can flip
+  the position. With the fallback off, an unconfirmed close halts and tells the human to close in the TopstepX UI.
+- **Flatten verifies the book.** On sim it cancels working orders on the contract even with no position, then re-reads the book. A
+  failed cancel is an orphan: `flat=False` and halt.
+- **New check `contract_flat`.** One protection owner per net position: a second entry is refused while the contract has a position,
+  a working order or an entry in flight. Scale-in is not supported.
+- **Protection after restart.** `Guard.protect_open_positions()` runs after boot and every REST resync (known ticket arms or resizes,
+  broker stop covers it, own intent without a provable stop flattens and halts, unknown positions are reported `EXTERNAL_UNPROTECTED`).
+- **Budget.** Open stop risk of live tickets is subtracted from the remaining budget used for sizing.
+- **Stops.** A resize after a partial fill re-sends the current stop price (never widens a tightened stop) and takes the stop lock. A stop
+  that ACKs after the watchdog flattened is cancelled (sim) or reported as an orphan (live), and the desk halts. The watchdog depends
+  on exposure, not on the entry reply state.
+- **Commit point.** `place()` re-checks halt, ticket expiry and quote freshness synchronously after its awaited REST reads. A broker
+  rejection carrying an `orderId` is treated as possible exposure: a position that then appears is protected and the desk halts.
+- **Reads fail loudly.** `PXClient` read wrappers raise on `success:false` or a non-list payload instead of returning an empty list.
+- **Losses.** Fills are de-duplicated by id and grouped by `orderId`, so one stop-out filled in pieces counts as one loss.
+- **MCP.** Preview cannot supersede a ticket the human staged at the desk. `get_quote`, `get_bars` and `search_contracts` emit only
+  finite numbers and re-emitted timestamps.
+- **Intent resolve.** New human-only `POST /api/intent/resolve` (desk button "Resolve not-found") closes intents that reconcile marked
+  NOT_FOUND. It has no MCP tool. Before, the desk stayed blocked until `data/intents.json` was deleted by hand.
+- **Bind rule.** `create_app()` applies the same non-loopback refusal as `main()`.
+- **Not fixed** is listed under "Known gaps" in `LIMITATIONS.md`.
+

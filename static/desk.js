@@ -839,6 +839,12 @@ $('reconcile-btn').onclick = async () => {
   actMsg('Reconcile: ' + Object.entries(d).filter(([, v]) => ['string', 'number', 'boolean'].includes(typeof v)).map(([k, v]) => k + '=' + v).join(' ').slice(0, 160));
   schedule(0);
 };
+$('resolve-btn').onclick = async () => {
+  if(!confirm('Only after you checked the TopstepX platform and saw NO such order. Resolve the not-found orders?')) return;
+  const r = await post('/api/intent/resolve', {});
+  actMsg(r.ok ? 'Resolved ' + Number((r.data || {}).resolved || 0) + ' not-found order(s).' : 'Resolve FAILED: ' + detailOf(r));
+  schedule(0);
+};
 $('clear-halt-btn').onclick = async () => {const r = await post('/api/halt/clear', {}); actMsg(r.ok ? (r.data.halted ? 'Halt still set.' : 'Halt cleared.') : 'Clear FAILED: ' + detailOf(r)); S.placed = null; schedule(0)};
 $('ai-toggle').onclick = () => {S.aiOpen = !S.aiOpen; renderAiPanel(); schedule(0)};
 

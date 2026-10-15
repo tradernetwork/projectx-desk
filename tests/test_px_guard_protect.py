@@ -203,8 +203,8 @@ async def test_flatten_works_with_trading_off_and_while_halted(tmp_path):
     assert r.flat and gw.pos == [] and [p for p, _ in gw.writes] == [POSITION_CLOSE]
 
 
-async def test_flatten_falls_back_to_an_opposite_market_order_capped_at_net(tmp_path):
-    g, live, clock, gw = build2(tmp_path)
+async def test_flatten_falls_back_to_an_opposite_market_order_capped_at_net_only_when_enabled(tmp_path):
+    g, live, clock, gw = build2(tmp_path, flatten_fallback=True)
     gw.close_works = False
     gw.pos = [{"id": 1, "contractId": CID, "type": 1, "size": 2}]
     r = await g.flatten(contract_id=CID)
@@ -218,7 +218,17 @@ async def test_flatten_that_cannot_confirm_flat_halts(tmp_path):
     gw.close_works = gw.market_close_works = False
     gw.pos = [{"id": 1, "contractId": CID, "type": 1, "size": 1}]
     r = await g.flatten()
-    assert not r.flat and g.halted() and any("not confirmed flat" in x for x in r.reasons)
+    assert not r.flat and g.halted() and any("not confirmed clear" in x for x in r.reasons)
+
+
+async def test_flatten_fallback_is_off_by_default_so_a_late_close_cannot_flip_the_position(tmp_path):
+    g, live, clock, gw = build2(tmp_path)
+    gw.close_works = False
+    gw.pos = [{"id": 1, "contractId": CID, "type": 1, "size": 1}]
+    r = await g.flatten(contract_id=CID)
+    assert not r.flat and g.halted()
+    assert [p for p, _ in gw.writes if p == ORDER_PLACE] == []        # no opposite order was ever sent
+    assert any("close it in the TopstepX UI" in x for x in r.reasons)
 
 
 async def test_flatten_on_sim_cancels_working_orders_first_live_reports_orphans(tmp_path):

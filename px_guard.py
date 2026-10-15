@@ -41,6 +41,8 @@ SESSION_OPEN = dtime(17, 0)
 
 STAGED, PLACING, PLACED = "STAGED", "PLACING", "PLACED"
 REJECTED, EXPIRED, SUPERSEDED, UNKNOWN = "REJECTED", "EXPIRED", "SUPERSEDED", "UNKNOWN"
+RESOLVED = "RESOLVED"        # a human checked the platform and closed an UNKNOWN ticket
+REJECTED_LIVE_S = 60.0       # a rejection that carried an order id may still fill, but only for this long
 # Persisted intent states that still block new opens until reconciled or resolved by a human.
 PENDING_INTENT = ("SENDING", "UNKNOWN", "NOT_FOUND")
 
@@ -77,6 +79,9 @@ class Ticket:
     stop_price: float = 0.0
     order_type: str = "market"
     entry_limit: Optional[float] = None
+    rejected_at: float = 0.0        # clock() when a rejection carrying an order id came back
+    acked_at: float = 0.0           # clock() when the broker ACKed the entry (in-flight exposure window)
+    abandoned: bool = False         # the naked-position path flattened this ticket; a late stop ACK must be cancelled
     account_suffix: str = ""        # sensitive: confirm screen only, never in the AI surface or audit
 
     @property
@@ -166,6 +171,7 @@ class Guard:
         self._intents, self._intents_ok = self._load_intents()
         self.sleep, self.verify_tries, self.verify_interval = sleep, verify_tries, verify_interval
         self._watchdogs: dict[str, asyncio.Task] = {}
+        self.protection: dict = {}
         if hasattr(live, "listen"):
             live.listen(self._on_live_event)
 
@@ -253,6 +259,35 @@ class Guard:
                 by_root += n
         return by_root, total
 
+    IN_FLIGHT_S = 10.0
+
+    def _ticket_exposed(self, t: Ticket) -> bool:
+        """True while this ticket may still hold or create exposure, judged from broker-fed live state."""
+        if t.state in (PLACING, UNKNOWN):
+            return True
+        if t.state != PLACED:
+            return False
+        if getattr(t, "filled_size", 0) and any(abs(p.get("size") or 0) and p.get("contractId") == t.contract_id
+                                 for p in self.live.positions.values()):
+            return True
+        if getattr(t, "broker_order_id", None) is not None and t.broker_order_id in self.live.orders:
+            return True
+        return self.clock() - getattr(t, "acked_at", 0.0) < self.IN_FLIGHT_S      # ACKed a moment ago: the hub may not have caught up
+
+    def _open_risk(self) -> float:
+        """Worst-case dollars already committed by orders that may be live (their staged risk, never reduced)."""
+        return sum(float((getattr(t, "readback", None) or {}).get("risk_usd") or 0.0)
+                   for t in self.tickets.values() if self._ticket_exposed(t))
+
+    def _contract_busy(self, contract_id: str) -> bool:
+        """A second entry in a contract that has a position, a working order or an entry in flight is refused:
+        one protection owner per net position, so stops can never add up to more than the position."""
+        if any(p.get("contractId") == contract_id and abs(p.get("size") or 0) for p in self.live.positions.values()):
+            return True
+        if any(o.get("contractId") == contract_id for o in self.live.orders.values()):
+            return True
+        return any(getattr(t, "contract_id", None) == contract_id and self._ticket_exposed(t) for t in self.tickets.values())
+
     def _past_cutoff(self, now_ct) -> Optional[str]:
         cut = self.limits.no_new_after
         if not cut:
@@ -277,8 +312,8 @@ class Guard:
         pnl = self.live.day_pnl(now or self.wall())
         if pnl is None or lim.daily_loss_limit <= 0 or lim.dd_buffer <= 0:
             return None, None
-        room = lim.daily_loss_limit + pnl
-        return min(room, lim.dd_buffer), room
+        room = lim.daily_loss_limit + pnl - self._open_risk()
+        return min(room, lim.dd_buffer - self._open_risk()), room
 
     def risk_dollars_for(self, risk_pct: float, now=None) -> float:
         """risk_pct of the REMAINING budget (min of daily room and drawdown buffer), never above either."""
@@ -424,13 +459,16 @@ class Guard:
             "PX_DAILY_LOSS_LIMIT and PX_DRAWDOWN_BUFFER must be set")
         remaining = None
         if pnl is not None and lim.daily_loss_limit > 0 and lim.dd_buffer > 0:
-            remaining = min(lim.daily_loss_limit + pnl, lim.dd_buffer)
+            ob = self._open_risk()
+            remaining = min(lim.daily_loss_limit + pnl - ob, lim.dd_buffer - ob)
             chk("budget_remaining", remaining > 0, "no loss room left today")
         chk("orders_today", self.day.orders_today(now) < lim.max_orders_day, "daily order count reached")
         b = self.behavior(now)
         chk("cooldown_after_loss", b["cooldown_left_s"] == 0,
             f"cooldown after a loss: {b['cooldown_left_s'] // 60}m{b['cooldown_left_s'] % 60:02d}s left. Walk away.")
         chk("loss_lockout", not b["locked"], f"locked for the session: {b['consecutive_losses']} losses in a row")
+        chk("contract_flat", not self._contract_busy(contract_id),
+            "this contract already has a position, a working order or an entry in flight")
         chk("no_unknown", self._intents_ok and not self._pending_intents()
             and not any(t.state == UNKNOWN for t in self.tickets.values()),
             "an earlier order is UNKNOWN or unreconciled")
@@ -461,6 +499,9 @@ class Guard:
     async def preview(self, *, contract_id: str, side: str, stop_price: float, risk_dollars: float,
                       order_type: str = "market", entry: Optional[float] = None, origin: str = "ui") -> Preview:
         """Run every check; stage a ticket only if all pass. Never raises on a refusal."""
+        if origin == "mcp" and any(t.state == STAGED and t.origin == "ui" and self.clock() < t.expires
+                                   for t in self.tickets.values()):
+            return self._refuse([("ui_ticket_pending", False, "a ticket staged at the desk is waiting; the desk owns it")], origin)
         if isinstance(contract_id, str) and CONTRACT_RE.match(contract_id) and hasattr(self.live, "ensure_quote"):
             await self.live.ensure_quote(contract_id)
         ev = await self._evaluate(contract_id=contract_id, side=side, stop_price=stop_price, risk_dollars=risk_dollars,
@@ -591,10 +632,17 @@ class Guard:
                 t.state = REJECTED          # a refused place consumes the ticket; restage against the new world
                 return self._deny(t, reasons, origin, REJECTED)
 
+            # Awaited reads above can outlast a halt, the ticket's life, or the quote. Re-check, synchronously, at the commit point.
+            q = self.live.quotes.get(t.contract_id)
+            if self.halted() or self.clock() >= t.expires or not isinstance(q, dict) \
+                    or self.clock() - q.get("_rx", -1e9) > lim.max_quote_age_s:
+                t.state = REJECTED
+                return self._deny(t, ["recheck: halted, expired or quote stale during the broker read"], origin, REJECTED)
+
             # ---- commit point: from here a crash or timeout means UNKNOWN, never "probably not sent"
             try:
                 self.day.count_order(self.wall(), risk=t.readback.get("risk_usd"))
-                self._set_intent(t.custom_tag, state="SENDING", hash8=t.hash8, root=t.root, size=t.payload["size"],
+                self._set_intent(t.custom_tag, state="SENDING", hash8=t.hash8, root=t.root, contract=t.contract_id, size=t.payload["size"],
                                  ts=self.wall().isoformat(timespec="seconds"))
             except OSError:
                 t.state = REJECTED
@@ -621,12 +669,12 @@ class Guard:
             code = resp.get("errorCode") if isinstance(resp.get("errorCode"), int) else None
             t.broker_order_id = oid
             if resp["success"] and oid is not None:
-                t.state, t.acked = PLACED, True
+                t.state, t.acked, t.acked_at = PLACED, True, self.clock()
                 self._set_intent(t.custom_tag, state="ACKED", order_id=oid)
                 self._audit("ack", ticket=t.hash8, state=PLACED, code=str(code))
                 return PlaceResult(True, PLACED, order_id=oid, acked=True, error_code=code)
             if resp["success"] is False:       # definitive refusal; the docs say the order may still exist (orderId kept)
-                t.state = REJECTED
+                t.state, t.rejected_at = REJECTED, self.clock()
                 self._set_intent(t.custom_tag, state="REJECTED", order_id=oid)
                 self._audit("reject", ticket=t.hash8, state=REJECTED, code=str(code))
                 return PlaceResult(False, REJECTED, order_id=oid, error_code=code, reasons=("broker rejected",))
@@ -667,10 +715,23 @@ class Guard:
             self._audit("reconcile", code=out[tag], state=out[tag])
         return out
 
+    def resolve_not_found(self) -> int:
+        """Human action: close every intent reconcile could not find at the broker (after checking the platform).
+        Only NOT_FOUND ones; an UNKNOWN or FOUND intent still needs a real answer. Returns how many were resolved."""
+        n = 0
+        for tag, rec in list(self._intents.items()):
+            if rec.get("state") == "NOT_FOUND":
+                self.resolve_intent(tag, "operator_checked_not_found")
+                n += 1
+        return n
+
     def resolve_intent(self, tag: str, note: str = "resolved") -> None:
         """Human action: mark an unreconciled intent as dealt with (e.g. after checking TopstepX)."""
         if tag in self._intents:
             self._set_intent(tag, state="RESOLVED")
+            for t in self.tickets.values():
+                if t.custom_tag == tag and t.state == UNKNOWN:
+                    t.state = RESOLVED
             self._audit("reconcile", code=note, state="RESOLVED")
 
     # ---- stop handling, watchdog, flatten, cancel ---------------------------------------------
@@ -688,27 +749,110 @@ class Guard:
         # PositionType: 1 = Long (documented). 2 = Short is UNVERIFIED until a sim fill confirms it.
         return {1: "long", 2: "short"}.get(p.get("type"))
 
+    def _close_intents(self, t: Ticket) -> None:
+        """The position this ticket owned is gone: its intents no longer describe live exposure."""
+        for tag in (t.custom_tag, f"px-{t.hash8}-2"):
+            if tag in self._intents and self._intents[tag].get("state") in ("ACKED", "FOUND"):
+                try:
+                    self._set_intent(tag, state="CLOSED")
+                except OSError:
+                    pass
+
     async def handle_position(self, p: dict) -> None:
         """React to a position event: protect a fresh fill, resize the stop, or close out the ticket."""
         cid, size = p.get("contractId"), abs(p.get("size") or 0)
+        active = [t for t in self.tickets.values() if t.contract_id == cid and t.state in (PLACING, PLACED, UNKNOWN)]
+        recent_rej = [t for t in self.tickets.values() if t.contract_id == cid and t.state == REJECTED
+                      and t.broker_order_id is not None and self.clock() - t.rejected_at < REJECTED_LIVE_S]
+        newest_rej = max(recent_rej, key=lambda x: x.rejected_at) if recent_rej else None    # one owner, never two stops
         for t in list(self.tickets.values()):
-            # A fill can land while place() is still awaiting the POST reply (PLACING), or after an
-            # ambiguous reply (UNKNOWN). A real position must be protected in every one of those states.
-            if t.contract_id != cid or t.state not in (PLACING, PLACED, UNKNOWN):
+            if t.contract_id != cid:
+                continue
+            # A fill can land while place() is still awaiting the POST reply (PLACING), after an ambiguous reply
+            # (UNKNOWN), or after a rejection that carried an order id (the docs say the order may still exist).
+            # A real position must be protected in every one of those states.
+            rejected_live = t is newest_rej and not active
+            if t.state not in (PLACING, PLACED, UNKNOWN) and not rejected_live:
                 continue
             if size == 0:
                 if t.filled_size and t.state == PLACED:
                     t.state = "CLOSED"
                     self._cancel_watchdog(t)
+                    self._close_intents(t)
                 continue
             if self._pos_side(p) != t.side:
                 continue
+            if rejected_live and not t.filled_size:
+                self.trip_halt("rejected_but_filled")       # protect it, then a human looks at why a rejection filled
             t.filled_size = size
             if t.stop_plan["mode"] == "separate_after_fill":
                 if t.stop_state is None:
                     await self._arm_stop(t, size)
                 elif t.stop_state == "ACKED" and size != t.stop_size:
                     await self._resize_stop(t, size)
+
+    async def protect_open_positions(self) -> dict:
+        """Run after boot and after every resync: every open position must be a protected one.
+
+        The hub can drop or the process restart between an entry ACK and its fill; a REST re-seed records the
+        position but raises no event, so without this the position sits naked. For each open position:
+          known ticket       -> handle_position (arms or resizes its stop)
+          broker stop covers -> fine
+          our own intent     -> flatten and halt (we placed it and cannot prove it has a stop)
+          anything else      -> an external position (placed by hand); reported, never touched
+        """
+        out = {}
+        if not (self.live.positions_seeded and self.live.account_id is not None):
+            return out
+        positions = [p for p in list(self.live.positions.values()) if abs(p.get("size") or 0) and p.get("contractId")]
+        held = {p["contractId"] for p in positions}
+        for tag, rec in list(self._intents.items()):        # entries whose exposure is gone are no longer ours
+            if tag.endswith("-1") and rec.get("state") in ("ACKED", "FOUND") and rec.get("contract") not in held \
+                    and rec.get("order_id") not in self.live.orders:
+                try:
+                    self._set_intent(tag, state="CLOSED")
+                except OSError:
+                    pass
+        try:
+            working = await self.client.open_orders(self.live.account_id)
+        except Exception:  # noqa: BLE001 - cannot prove coverage
+            working = None
+        for p in positions:
+            cid, size = p["contractId"], abs(p["size"])
+            side = self._pos_side(p)
+            owner = next((t for t in self.tickets.values() if t.contract_id == cid
+                          and t.state in (PLACING, PLACED, UNKNOWN)), None)
+            if owner is not None and owner.stop_state == "ACKED" and working is not None \
+                    and owner.stop_order_id not in {o.get("id") for o in working}:
+                # The ticket thinks it has a stop, but the broker has none (it filled or was cancelled while we were
+                # blind). Retire the ticket and judge this position afresh instead of trusting a dead stop.
+                owner.state = "CLOSED"
+                self._cancel_watchdog(owner)
+                self._close_intents(owner)
+                owner = None
+            if owner is not None:
+                await self.handle_position(p)
+                out[cid] = "TICKET"
+                continue
+            covered = working is not None and side is not None and any(
+                o.get("contractId") == cid and o.get("type") == 4 and o.get("side") == (1 if side == "long" else 0)
+                and abs(o.get("size") or 0) >= size for o in working)
+            if covered:
+                out[cid] = "COVERED"
+                continue
+            mine = any(rec.get("state") in ("ACKED", "FOUND", "SENDING", "UNKNOWN") and tag.endswith("-1")
+                       and rec.get("contract") == cid for tag, rec in self._intents.items())
+            if mine:
+                self._audit("halt", code="unprotected_position")
+                try:
+                    await self.flatten(contract_id=cid, origin="ui")
+                finally:
+                    self.trip_halt("unprotected_position")
+                out[cid] = "FLATTENED"
+            else:
+                out[cid] = "EXTERNAL_UNPROTECTED"
+        self.protection = out
+        return out
 
     def _cancel_watchdog(self, t):
         w = self._watchdogs.pop(t.ticket_id, None)
@@ -722,7 +866,7 @@ class Guard:
         body = {"accountId": self.live.account_id, "contractId": t.contract_id, "type": 4,
                 "side": t.stop_plan["side"], "size": size, "limitPrice": None,
                 "stopPrice": t.stop_plan["stop_price"], "trailPrice": None, "customTag": tag}
-        ok = False
+        ok = late = False
         try:   # no global lock: a hung stop write must not be able to block the watchdog's flatten
             self._set_intent(tag, state="SENDING", hash8=t.hash8, root=t.root, size=size,
                              ts=self.wall().isoformat(timespec="seconds"))
@@ -730,10 +874,16 @@ class Guard:
             resp = await self.client.write(ORDER_PLACE, body)
             oid = resp.get("orderId") if isinstance(resp, dict) else None
             if isinstance(resp, dict) and resp.get("success") is True and isinstance(oid, int):
-                t.stop_state, t.stop_order_id, t.stop_size, ok = "ACKED", oid, size, True
-                t.stop_current = t.stop_plan["stop_price"]
-                self._set_intent(tag, state="ACKED", order_id=oid)
-                self._audit("stop", ticket=t.hash8, state="ACKED")
+                if t.abandoned:       # the watchdog already flattened and halted; this stop is now an orphan
+                    late = True
+                    t.stop_state = "ABANDONED"
+                    self._set_intent(tag, state="ORPHAN", order_id=oid)
+                    await self._cancel_late_stop(t, oid)
+                else:
+                    t.stop_state, t.stop_order_id, t.stop_size, ok = "ACKED", oid, size, True
+                    t.stop_current = t.stop_plan["stop_price"]
+                    self._set_intent(tag, state="ACKED", order_id=oid)
+                    self._audit("stop", ticket=t.hash8, state="ACKED")
             else:
                 t.stop_state = "FAILED"
                 self._set_intent(tag, state="UNKNOWN")
@@ -745,6 +895,8 @@ class Guard:
             t.stop_state = "FAILED"
             self._set_intent(tag, state="UNKNOWN")
             self._audit("stop", ticket=t.hash8, state="FAILED")
+        if late:
+            return
         if ok:
             self._cancel_watchdog(t)
             now = sum(abs(q.get("size") or 0) for q in self.live.positions.values()
@@ -754,28 +906,47 @@ class Guard:
         else:
             await self._naked(t, "stop_failed")
 
+    async def _cancel_late_stop(self, t: Ticket, order_id: int) -> None:
+        """A stop ACKed after its position was flattened. Left alone it can open the opposite position."""
+        cancelled = False
+        if self.limits.account_kind == "sim":
+            try:
+                r = await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id, "orderId": order_id})
+                cancelled = isinstance(r, dict) and r.get("success") is True
+            except Exception:  # noqa: BLE001
+                cancelled = False
+        self._audit("stop", ticket=t.hash8, state="LATE_CANCELLED" if cancelled else "LATE_ORPHAN")
+        self.trip_halt("late_stop_cancelled" if cancelled else "late_stop_orphan")
+
     async def _resize_stop(self, t: Ticket, size: int) -> None:
-        """Keep the stop equal to the position. A stop larger than the position flips you on a stop-out."""
-        try:
-            resp = await self.client.write(ORDER_MODIFY, {"accountId": self.live.account_id,
-                                                          "orderId": t.stop_order_id, "size": size,
-                                                          "limitPrice": None, "stopPrice": t.stop_plan["stop_price"],
-                                                          "trailPrice": None})
-            if isinstance(resp, dict) and resp.get("success") is True:
-                t.stop_size = size
-                self._audit("stop", ticket=t.hash8, size=size, state="RESIZED")
-                return
-        except Exception:  # noqa: BLE001
-            pass
-        await self._naked(t, "stop_resize_failed")
+        """Keep the stop equal to the position, AT ITS CURRENT PRICE. A stop larger than the position flips you on a
+        stop-out, and re-sending the original price would undo a tightening the trader already made."""
+        failed = True
+        async with self._stop_lock:
+            price = t.stop_current if t.stop_current is not None else t.stop_plan["stop_price"]
+            try:
+                resp = await self.client.write(ORDER_MODIFY, {"accountId": self.live.account_id,
+                                                              "orderId": t.stop_order_id, "size": size,
+                                                              "limitPrice": None, "stopPrice": price,
+                                                              "trailPrice": None})
+                if isinstance(resp, dict) and resp.get("success") is True:
+                    t.stop_size = size
+                    self._audit("stop", ticket=t.hash8, size=size, state="RESIZED")
+                    failed = False
+            except Exception:  # noqa: BLE001
+                pass
+        if failed:
+            await self._naked(t, "stop_resize_failed")
 
     async def _watchdog(self, t: Ticket) -> None:
         await self.sleep(self.limits.stop_ack_s)
-        if t.stop_state != "ACKED" and t.state == PLACED:
+        # Armed only once exposure exists, so it must not depend on the entry's reply state (PLACING, UNKNOWN, rejected).
+        if t.stop_state != "ACKED" and not t.abandoned and t.state != "CLOSED":
             await self._naked(t, "stop_timeout")
 
     async def _naked(self, t: Ticket, code: str) -> None:
         """A position without a confirmed stop: flatten, then freeze everything for a human."""
+        t.abandoned = True
         self._audit("halt", ticket=t.hash8, code=code)
         try:
             await self.flatten(contract_id=t.contract_id, origin="ui")
@@ -785,6 +956,10 @@ class Guard:
     async def _positions_rest(self, contract_id):
         pos = await self.client.open_positions(self.live.account_id)
         return [p for p in pos if contract_id is None or p.get("contractId") == contract_id]
+
+    async def _working_rest(self, contract_id):
+        ords = await self.client.open_orders(self.live.account_id)
+        return [o for o in ords if contract_id is None or o.get("contractId") == contract_id]
 
     async def _verify_flat(self, contract_id) -> bool:
         for _ in range(max(1, self.verify_tries)):
@@ -797,10 +972,13 @@ class Guard:
         return False
 
     async def flatten(self, *, contract_id: Optional[str] = None, origin: str = "ui") -> FlattenResult:
-        """Close position(s). Always allowed: ignores PX_TRADING and the halt file (it only reduces exposure).
+        """Close position(s) and, on a simulated account, cancel working orders. Always allowed: ignores PX_TRADING
+        and the halt file (it only reduces exposure).
 
-        Order: (sim only) cancel working orders; closeContract; verify flat by REST re-reads; if still
-        open, an opposite market order capped at the net position read immediately before sending.
+        Order: (sim) cancel working orders on the contract EVEN WITH NO POSITION (a resting entry can fill later) and
+        verify they are gone; closeContract; verify flat by REST re-reads. If still open the default is to halt and say
+        so: a timed-out close can still execute, so an automatic opposite order could flip the position. That
+        fallback (capped at the net position read just before sending) exists only behind PX_FLATTEN_FALLBACK=1.
         Live accounts cannot cancel via API, so leftover working orders are reported as orphans.
         """
         async with self._flatten_lock:
@@ -811,19 +989,27 @@ class Guard:
                 targets = [p for p in self.live.positions.values()
                            if contract_id is None or p.get("contractId") == contract_id]
                 reasons.append("positions read from desk view: REST unavailable")
-            if not targets:
-                return FlattenResult(True, (), 0, tuple(reasons))
             sim = self.limits.account_kind == "sim"
+            orphans, unread = 0, False
             if sim:
                 try:
-                    for o in await self.client.open_orders(self.live.account_id):
-                        if contract_id is None or o.get("contractId") == contract_id:
-                            try:
-                                await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id,
-                                                                       "orderId": o["id"]})
-                            except Exception:  # noqa: BLE001
-                                reasons.append("a working order could not be cancelled")
+                    for o in await self._working_rest(contract_id):
+                        ok = False
+                        try:
+                            r = await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id, "orderId": o["id"]})
+                            ok = isinstance(r, dict) and r.get("success") is True
+                        except Exception:  # noqa: BLE001
+                            ok = False
+                        if not ok:
+                            orphans += 1
+                            reasons.append("a working order could not be cancelled")
+                    if not orphans:
+                        left = await self._working_rest(contract_id)      # cancel replies are not proof; read the book
+                        if left:
+                            orphans = len(left)
+                            reasons.append("working orders remain after cancel")
                 except Exception:  # noqa: BLE001
+                    unread = True
                     reasons.append("working orders could not be read")
             for p in targets:
                 try:
@@ -832,28 +1018,31 @@ class Guard:
                     closed.append("close")
                 except Exception:  # noqa: BLE001 - outcome checked by re-read below
                     reasons.append("closeContract outcome unclear")
-            flat = await self._verify_flat(contract_id)
-            if not flat:
-                try:
-                    for p in await self._positions_rest(contract_id):          # fresh read, then cap at the net
-                        net = abs(p.get("size") or 0)
-                        side = self._pos_side(p)
-                        if net < 1 or side is None:
-                            continue
-                        await self.client.write(ORDER_PLACE, {
-                            "accountId": self.live.account_id, "contractId": p["contractId"], "type": 2,
-                            "side": 1 if side == "long" else 0, "size": net, "limitPrice": None,
-                            "stopPrice": None, "trailPrice": None,
-                            "customTag": f"px-{uuid.uuid4().hex[:8]}-9"})
-                        closed.append("market")
-                except Exception:  # noqa: BLE001
-                    reasons.append("opposite market order outcome unclear")
-                flat = await self._verify_flat(contract_id)
-            orphans = 0
+            flat = await self._verify_flat(contract_id) if targets else True
+            if targets and not flat:
+                if self.limits.flatten_fallback:
+                    try:
+                        for p in await self._positions_rest(contract_id):          # fresh read, then cap at the net
+                            net = abs(p.get("size") or 0)
+                            side = self._pos_side(p)
+                            if net < 1 or side is None:
+                                continue
+                            await self.client.write(ORDER_PLACE, {
+                                "accountId": self.live.account_id, "contractId": p["contractId"], "type": 2,
+                                "side": 1 if side == "long" else 0, "size": net, "limitPrice": None,
+                                "stopPrice": None, "trailPrice": None,
+                                "customTag": f"px-{uuid.uuid4().hex[:8]}-9"})
+                            closed.append("market")
+                    except Exception:  # noqa: BLE001
+                        reasons.append("opposite market order outcome unclear")
+                    flat = await self._verify_flat(contract_id)
+                else:
+                    reasons.append("closeContract not confirmed and the automatic fallback is off: close it in the TopstepX UI")
+            if sim and (orphans or unread):
+                flat = False                    # a working order can still fill: not flat
             if not sim:
                 try:
-                    orphans = len([o for o in await self.client.open_orders(self.live.account_id)
-                                   if contract_id is None or o.get("contractId") == contract_id])
+                    orphans = len(await self._working_rest(contract_id))
                 except Exception:  # noqa: BLE001
                     orphans = -1
                 if orphans:
@@ -861,7 +1050,7 @@ class Guard:
             self._audit("flatten", origin=origin, state="FLAT" if flat else "NOT_FLAT", size=len(closed))
             if not flat:
                 self.trip_halt("flatten_failed")
-                reasons.append("position not confirmed flat: halted")
+                reasons.append("exposure not confirmed clear: halted")
             return FlattenResult(flat, tuple(closed), orphans, tuple(reasons))
 
     async def cancel(self, order_id: int, *, origin: str = "ui") -> bool:

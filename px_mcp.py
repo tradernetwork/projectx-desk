@@ -6,6 +6,7 @@ that moves money or lifts a safety. Tools never register those names at all (the
 `unknown tool`, not a refusal). `halt` is allowed because it can only reduce exposure.
 """
 import hmac
+import math
 import re
 import time
 from typing import Optional
@@ -16,6 +17,7 @@ from fastmcp.server.auth import AccessToken, TokenVerifier
 
 import px_digest
 from px_state import order_view, position_view
+from px_time import parse_ts
 
 CONTRACT_RE = re.compile(r"^CON\.[A-Za-z0-9._]{1,40}$")
 PLACEHOLDERS = ("your_", "changeme", "change_me", "example", "placeholder", "secret", "token", "password")
@@ -57,6 +59,19 @@ def _safe_name(v, contract_id):
         return v
     parts = str(contract_id).split(".")
     return "".join(parts[-2:]) if len(parts) >= 2 else "NA"
+
+
+def _n(v):
+    """A finite number or None. A gateway string in a numeric field must never reach the model."""
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
+
+
+def _ts(v):
+    """A parsed ISO timestamp, re-emitted by us, or None. Never the gateway's raw string."""
+    try:
+        return parse_ts(v).isoformat()
+    except (ValueError, AttributeError, TypeError):
+        return None
 
 
 def _contract(c: Optional[str]):
@@ -108,7 +123,7 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
         q = st().live.quotes.get(contract)
         if not q:
             return {"status": "NO_QUOTE"}
-        return {"status": "OK", "last": q.get("lastPrice"), "bid": q.get("bestBid"), "ask": q.get("bestAsk"),
+        return {"status": "OK", "last": _n(q.get("lastPrice")), "bid": _n(q.get("bestBid")), "ask": _n(q.get("bestAsk")),
                 "age_s": round(time.monotonic() - q.get("_rx", 0), 1)}
 
     @mcp.tool
@@ -124,7 +139,11 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
         raw = await st().client.bars({"contractId": contract, "live": False, "unit": unit, "unitNumber": n,
                                       "limit": limit, "startTime": (now - timedelta(seconds=max(secs * limit * 3, 864000))).isoformat(),
                                       "endTime": now.isoformat(), "includePartialBar": True})
-        rows = [[b["t"], b["o"], b["h"], b["l"], b["c"], b["v"]] for b in reversed(raw)]
+        rows = []
+        for b in reversed(raw):
+            row = [_ts(b.get("t")), _n(b.get("o")), _n(b.get("h")), _n(b.get("l")), _n(b.get("c")), _n(b.get("v"))]
+            if all(x is not None for x in row):          # a row with any non-numeric field is dropped, not forwarded
+                rows.append(row)
         return {"cols": ["t", "o", "h", "l", "c", "v"], "rows": rows[-limit:]}
 
     @mcp.tool
@@ -133,7 +152,7 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
         if not re.fullmatch(r"[A-Za-z0-9 ]{1,20}", text or ""):
             raise ValueError("bad search text")
         cs = await st().client.search_contracts(text, live=False)
-        return [{"id": c["id"], "name": _safe_name(c.get("name"), c["id"]), "tick": c.get("tickSize"), "tick_value": c.get("tickValue")}
+        return [{"id": c["id"], "name": _safe_name(c.get("name"), c["id"]), "tick": _n(c.get("tickSize")), "tick_value": _n(c.get("tickValue"))}
                 for c in cs if CONTRACT_RE.match(str(c.get("id", "")))]
 
     @mcp.tool

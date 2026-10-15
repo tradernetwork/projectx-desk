@@ -42,10 +42,10 @@ fill time, no stop is sent and no watchdog runs. In `oco` mode the bracket is at
 "UNPROTECTED UNTIL STOP ACKED" while the stop is pending.
 
 **Ambiguity is handled per write, not uniformly.** An ambiguous entry becomes `UNKNOWN`, writes a persistent halt file, and
-blocks new opens until a human reconciles. An ambiguous or failed stop flattens and halts. `FLATTEN` can send a second,
-different closing order (an opposite-side market order sized to the net position) if the first close cannot be confirmed,
-so a late-executing first close followed by the second order could flip a position. Writes are never retried or re-sent
-byte for byte.
+blocks new opens until a human reconciles. An ambiguous or failed stop flattens and halts. `FLATTEN` halts and tells you to close in
+the TopstepX UI if the close cannot be confirmed. Only with `PX_FLATTEN_FALLBACK=1` (default 0) does it send a second, different
+closing order (an opposite-side market order capped at the net position read just before sending), and a late-executing first
+close followed by that order could flip a position. Writes are never retried or re-sent byte for byte.
 
 **Reconcile is manual.** `POST /api/reconcile` searches for the order by `customTag`; it never runs automatically and nothing
 auto-clears a halt. Deleting `data/` clears the halt, the day's order count and the persisted intents.
@@ -100,3 +100,15 @@ the code (`applySlots` swaps the figures out of the page) but no browser test pi
 
 **The digest and the desk are open to anything on loopback.** The MCP server has a bearer token; `/ai/*`, `/state.json` and the
 POST routes do not, for the reason given above.
+
+## Known gaps
+
+- No auto-flatten at the `PX_NO_NEW_AFTER` cutoff; it only blocks new entries.
+- The budget uses the static daily-loss and drawdown numbers you type in, not the firm's live floor, and ignores unrealised loss.
+- `last_risk` (the size-after-loss lock) is replaced at commit time by a subsequent order even if the broker then rejects it.
+- External trades (placed outside the desk) have no known risk cap.
+- No calendar for holiday early closes.
+- A missing day-state file resets the order count.
+- `/state.json` and `/contracts` still forward some raw gateway fields (quote timestamps, contract id fallback names) that should be type-validated.
+- A position held at restart that was placed by hand is reported (`EXTERNAL_UNPROTECTED`) but not protected.
+- Scale-in is not supported: a second entry on a contract with a position, working order or entry in flight is refused.

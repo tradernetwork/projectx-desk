@@ -161,7 +161,10 @@ RULE: agent reads and stages; the operator places. Voice never confirms.
 | One module places orders | Every order write is in `px_guard.py`. A test fails if another module names an order endpoint, reaches the raw HTTP client or token, or calls the write method. It is a tripwire, not a proof: review new network code by hand. |
 | Nothing is on by default | `PX_TRADING=0`. A zero or blank money or quantity limit refuses opens. Brackets are never guessed: `PX_BRACKET_MODE` must be set. (The two behavioral rails can be switched off by setting them to 0.) |
 | Preview, then place | A hashed, single-use, 120 second ticket. `place()` takes a ticket id, never an order. |
-| Writes are never re-sent | The client makes exactly one HTTP attempt per order write and never replays it. An ambiguous entry becomes `UNKNOWN`, writes a persistent halt, and waits for a human. Flatten and stop handling can send further, different orders; see [limitations](docs/LIMITATIONS.md). |
+| Writes are never re-sent | The client makes exactly one HTTP attempt per order write and never replays it. An ambiguous entry becomes `UNKNOWN`, writes a persistent halt, and waits for a human. Stop handling can send further, different orders, and so can flatten if you opt in to the fallback; see [limitations](docs/LIMITATIONS.md). |
+| Protection after a restart | After boot and every REST resync the desk checks each open position. One with a known ticket gets its stop armed or resized; one already covered by a broker-side stop is left alone; one from the desk's own persisted intent with no provable stop is flattened and the desk halts. A position the desk never placed is reported `EXTERNAL_UNPROTECTED` and never touched. Not run against the real gateway. |
+| One owner per position | A second entry on a contract is refused while it has a position, a working order or an entry in flight. Scale-in is not supported. |
+| Flatten fallback is opt-in | Flatten cancels working orders on a sim contract (even with no position), then re-reads the book to verify. If `closeContract` cannot be confirmed the desk halts and tells you to close in the TopstepX UI. The automatic opposite-side market order exists only behind `PX_FLATTEN_FALLBACK=1`, default `0`. |
 | Fresh state at place | Feed up, quote under 2 seconds old, broker positions match the desk's view, and market entries are refused if price moved more than 8 ticks since staging. |
 | Stops only tighten | Toward price only, never into the market. Simulated accounts only. |
 | Loopback by default | Binds `127.0.0.1`; foreign hosts and origins get a 403. **On loopback there is no login:** anything that can reach the port can stage and place within your caps, including an AI agent with a shell. Any other bind (Docker, an LXC) refuses to start without `PX_OPERATOR_TOKEN` and `PX_ALLOWED_HOSTS`; the token is then a login in front of everything except MCP. Put TLS in front. See [docs/DEPLOY.md](docs/DEPLOY.md). |
@@ -179,6 +182,9 @@ my machine yet; CI builds them.
 
 ## Use it for real
 
+Login needs the pair `PROJECTX_USERNAME` + `PROJECTX_API_KEY`. `PROJECTX_USERNAME` is the username you sign in to your firm's
+platform with (TopstepX): not your email, not an account name or id. Both go in `.env.projectx`.
+
 Start on a simulated account with `PX_TRADING=0` so the desk can look but not place. Step-by-step:
 [docs/GETTING_STARTED_LIVE.md](docs/GETTING_STARTED_LIVE.md). Check your firm's rules on automation first.
 
@@ -193,7 +199,7 @@ Sizing details: [docs/SIZING.md](docs/SIZING.md).
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q            # 312 tests; run offline against the practice market, no broker and no credentials
+pytest -q            # 350 tests; run offline against the practice market, no broker and no credentials
 ```
 </details>
 

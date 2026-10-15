@@ -75,6 +75,7 @@ class Limits:
     max_stop_ticks: int = 200
     no_new_after: Optional[str] = None    # "HH:MM" in America/Chicago; unset refuses opens
     intent_block_s: float = 60.0
+    flatten_fallback: bool = False        # PX_FLATTEN_FALLBACK=1: after a failed closeContract, send a capped opposite market order. OFF: halt and tell a human
     halt_path: pathlib.Path = field(default_factory=lambda: HERE / "data" / "HALT")
     state_path: pathlib.Path = field(default_factory=lambda: HERE / "data" / "day_state.json")
     audit_path: pathlib.Path = field(default_factory=lambda: HERE / "data" / "audit.jsonl")
@@ -109,6 +110,7 @@ class Limits:
             cooldown_after_loss_s=_rail("PX_COOLDOWN_AFTER_LOSS_S", 300),
             max_consecutive_losses=_rail("PX_MAX_CONSEC_LOSSES", 3),
             size_after_loss_lock=os.getenv("PX_SIZE_AFTER_LOSS_LOCK", "1") != "0",
+            flatten_fallback=os.getenv("PX_FLATTEN_FALLBACK", "0") == "1",
             daily_loss_limit=_f("PX_DAILY_LOSS_LIMIT", 0),
             dd_buffer=_f("PX_DRAWDOWN_BUFFER", 0),
             no_new_after=os.getenv("PX_NO_NEW_AFTER") or None,

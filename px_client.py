@@ -87,7 +87,7 @@ class PXClient:
                 user = self._user or os.environ.get("PROJECTX_USERNAME")
                 key = self._key or os.environ.get("PROJECTX_API_KEY")
                 if not user or not key:
-                    raise PXNotConfigured("PROJECTX_USERNAME / PROJECTX_API_KEY not set")
+                    raise PXNotConfigured("set both PROJECTX_USERNAME (your platform login name, not email) and PROJECTX_API_KEY")
                 try:
                     r = await self._http.post(f"{self._api}/api/Auth/loginKey",
                                               json={"userName": user, "apiKey": key})
@@ -165,21 +165,30 @@ class PXClient:
             raise PXError("bars request failed")      # gateway error text is never repeated
         return j.get("bars", [])
 
+    @staticmethod
+    def _rows(j, key):
+        """Rows of a safety-critical read. An HTTP 200 with success:false, or a missing or non-list payload, is an
+        UNREADABLE book, never an empty one: callers would otherwise seed zero P&L or declare flat."""
+        rows = j.get(key) if isinstance(j, dict) else None
+        if not isinstance(j, dict) or j.get("success") is False or not isinstance(rows, list):
+            raise PXError(f"{key} read failed")          # gateway error text is never repeated
+        return rows
+
     async def open_positions(self, account_id):
         j = await self.post("/api/Position/searchOpen", {"accountId": account_id})
-        return j.get("positions", [])
+        return self._rows(j, "positions")
 
     async def open_orders(self, account_id):
         j = await self.post("/api/Order/searchOpen", {"accountId": account_id})
-        return j.get("orders", [])
+        return self._rows(j, "orders")
 
     async def search_orders(self, account_id, start, end):
         """All orders in a window, any status. Used to reconcile an UNKNOWN write by customTag."""
         j = await self.post("/api/Order/search", {"accountId": account_id,
                                                   "startTimestamp": start, "endTimestamp": end})
-        return j.get("orders", [])
+        return self._rows(j, "orders")
 
     async def trades(self, account_id, start, end):
         j = await self.post("/api/Trade/search", {"accountId": account_id,
                                                   "startTimestamp": start, "endTimestamp": end})
-        return j.get("trades", [])
+        return self._rows(j, "trades")

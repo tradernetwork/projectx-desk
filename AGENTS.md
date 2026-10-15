@@ -45,6 +45,18 @@ Modules are flat at the repo root (`px_*.py`, `sizing.py`, `gex_futures.py`); `t
   behavioral rails are the exception: `0` turns them off, blank or garbled falls back to the default.
 - **Never replay a write.** Any ambiguous outcome is UNKNOWN: persist, trip the halt file, reconcile by `customTag`.
   Only a human clears a halt (there is deliberately no MCP tool).
+- **One protection owner per net position.** The `contract_flat` check refuses a second entry while the contract has a position,
+  a working order or an entry in flight. No scale-in. Open stop risk of live tickets is subtracted from the budget used for sizing.
+- **Every open position must be protected.** `Guard.protect_open_positions()` runs after boot and every resync: known ticket arms or
+  resizes the stop, a broker stop that covers it is fine, our own persisted intent with no provable stop is flattened and halts,
+  anything else is reported `EXTERNAL_UNPROTECTED` and never touched.
+- **Flatten does not guess.** No automatic opposite-order fallback unless `PX_FLATTEN_FALLBACK=1` (default 0). A failed cancel is an
+  orphan: `flat=False` and halt. A stop that ACKs after the watchdog flattened is cancelled (sim) or reported as an orphan (live), and halts.
+- **A stop resize re-sends the CURRENT stop price** and takes the stop lock; never widen a stop the trader tightened.
+- **`place()` re-checks halt, ticket expiry and quote freshness synchronously at the commit point**, after the awaited REST reads.
+  A broker rejection that carries an `orderId` is still possible exposure: if a position appears it is protected and the desk halts.
+- **`PXClient` read wrappers raise** on `success:false` or a non-list payload; an empty list means empty. MCP preview cannot supersede a
+  ticket staged at the desk (`ui_ticket_pending`). `POST /api/intent/resolve` is human-only; give it no MCP tool.
 - **Sizing is always computed** and rounds down. ADX/ATR scalers and the behavioral rails only ever refuse or reduce.
 - **Stops only tighten** (`move_stop`): toward price, never wider, never into the market, simulated accounts only.
 - **The AI surface is an allowlist** of numbers, enums and validated names. No account id, no balance, no gateway free

@@ -171,6 +171,8 @@ class LiveState:
 
     def _on_trade_fill(self, d):
         if self._mine(d):
+            if d.get("id") is not None and any(t.get("id") == d.get("id") for t in self.trades):
+                return                      # a replayed fill must not count twice (wins, losses, streaks, P&L)
             self.trades.append(d)
             del self.trades[:-500]
 
@@ -205,7 +207,7 @@ class LiveState:
         if not self.trades_seeded:
             return None
         today = trade_date(now or datetime.now(timezone.utc))
-        out = []
+        by_order, out = {}, []
         for t in self.trades:
             pnl = t.get("profitAndLoss")
             if t.get("voided") or not isinstance(pnl, (int, float)) or isinstance(pnl, bool) or pnl == 0:
@@ -216,8 +218,16 @@ class LiveState:
                 continue
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
-            if trade_date(ts) == today:
-                out.append((ts, pnl - (t.get("fees") or 0.0)))
+            if trade_date(ts) != today:
+                continue
+            net = pnl - (t.get("fees") or 0.0)
+            oid = t.get("orderId")
+            if oid is not None:                 # one order filled in pieces is ONE trade, not several losses
+                prev = by_order.get(oid)
+                by_order[oid] = (max(ts, prev[0]), prev[1] + net) if prev else (ts, net)
+            else:
+                out.append((ts, net))
+        out.extend(by_order.values())
         out.sort(key=lambda x: x[0])
         return out
 

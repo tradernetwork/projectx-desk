@@ -212,7 +212,7 @@ async def test_corrupt_day_state_refuses_instead_of_assuming_zero(tmp_path):
 
 async def test_exposure_headroom_caps_size_and_refuses_when_full(tmp_path):
     g, live, _ = make(tmp_path, max_qty_order=5, max_qty_symbol=2, max_qty_total=3)
-    live.positions[1] = {"id": 1, "accountId": 7, "contractId": CID, "size": 2}
+    live.positions[1] = {"id": 1, "accountId": 7, "contractId": "CON.F.US.MES.H27", "size": 2}   # same root, other expiry
     p = await prev(g)
     assert not p.ok and "exposure_headroom" in failed(p)
 

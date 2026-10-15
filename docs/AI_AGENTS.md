@@ -40,6 +40,10 @@ Foreign Host or Origin headers get a 403, so clients must use `127.0.0.1:<port>`
 | `preview_order` | **stages** a ticket for a human to review and place. Returns the readback or the checks that failed. |
 | `halt` | freezes new opens. Only a human can clear it. |
 
+`search_contracts` returns only `id`, `name` (an uppercase code, or one derived from the id), `tick` and `tick_value`. `get_quote`,
+`get_bars` and `search_contracts` emit only finite numbers and timestamps the desk re-formats, never raw gateway text. `preview_order`
+is refused (`ui_ticket_pending`) while a ticket staged at the desk is waiting.
+
 There is no place, flatten, cancel or clear-halt tool, and the tool list is pinned by a test.
 
 ## Plain HTTP

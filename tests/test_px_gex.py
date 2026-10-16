@@ -183,3 +183,19 @@ def test_a_bare_payload_and_a_failure_envelope(monkeypatch):
     with pytest.raises(px_gex.GexError) as e2:
         asyncio.run(px_gex.fetch_gex("https://x.test/api/v1", "k", "SPY"))
     assert e2.value.code == "AUTH"
+
+
+def test_a_failed_refresh_keeps_serving_the_last_good_levels_from_the_same_source():
+    a = app()
+    ok = asyncio.run(px_gex.gex_result(a, CID, 7782.0, ENV, fetch=fetcher({"SPX": spx(), "SPY": spy()}), now=NOW))
+    assert ok["status"] == "OK" and ok["source"] == "SPX"
+    for k in list(a.state.gex_cache):                                  # the cached entries expire
+        a.state.gex_cache[k] = (-1e9,) + a.state.gex_cache[k][1:]
+
+    async def limited(base, key, sym):
+        raise px_gex.GexError("UPSTREAM_ERROR")                         # HTTP 429 from the shared key
+
+    again = asyncio.run(px_gex.gex_result(a, CID, 7782.0, ENV, fetch=limited, now=NOW + 30))
+    assert again["status"] == "OK" and again["source"] == "SPX" and again["levels"]       # not blank, and not the SPY fallback
+    far = asyncio.run(px_gex.gex_result(a, CID, 7782.0, ENV, fetch=limited, now=NOW + 5000))
+    assert far["status"] in ("STALE", "ERROR", "UNAVAILABLE")                              # but staleness is still bounded by max age

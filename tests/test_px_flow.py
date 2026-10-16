@@ -237,3 +237,26 @@ def test_loading_deeply_nested_json_does_not_crash_the_constructor(tmp_path):
     p = tmp_path / "flow.json"
     p.write_bytes(b"[" * 100_000)
     assert FlowStore(path=str(p)).snapshot("C")["minutes"] == []
+
+
+def test_a_reconnect_that_resumes_within_15_seconds_does_not_blank_the_bar():
+    from projectx_desk.flow import SHORT_GAP_MS, summary
+    f = FlowStore()
+    for i in range(10):
+        f.add("C", M + i * MIN_MS + 1_000, 5, 0)
+    f.mark_gap("C", M + 9 * MIN_MS + 2_000)
+    f.add("C", M + 9 * MIN_MS + 1_000 + SHORT_GAP_MS, 5, 1)           # trades resume exactly at the tolerance: a blip
+    s = f.snapshot("C", M + 9 * MIN_MS + 30_000)
+    assert s["holes"] == [] and all(r[4] == 0 for r in s["minutes"][1:])
+    assert summary(f, "C", M + 9 * MIN_MS + 30_000)["w"][5]["complete"] is True
+
+
+def test_a_longer_outage_is_still_flagged_and_an_ongoing_blip_shows_no_open_hole():
+    f = FlowStore()
+    for i in range(5):
+        f.add("C", M + i * MIN_MS + 1_000, 5, 0)
+    f.mark_gap("C", M + 4 * MIN_MS + 2_000)
+    assert f.snapshot("C", M + 4 * MIN_MS + 1_000 + 10_000)["holes"] == []           # 10 s into an outage: still a blip, no flicker
+    assert f.snapshot("C", M + 4 * MIN_MS + 1_000 + 20_000)["holes"] != []           # 20 s in: now it is an open hole
+    f.add("C", M + 4 * MIN_MS + 1_000 + 20_000, 5, 1)                                # resumes after 20 s: that minute is partial
+    assert {r[0]: r[4] for r in f.snapshot("C", M + 6 * MIN_MS)["minutes"]}[M + 4 * MIN_MS] == 1

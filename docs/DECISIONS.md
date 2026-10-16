@@ -263,3 +263,18 @@ Everything below was reproduced before it was fixed and has a regression test.
   A bad print leaves a partial minute even with no bucket, so its window reads INCOMPLETE; fractional volume is a bad print.
 - **Known and accepted.** The respect scanner calibrates its placebo on all bars including later ones by design (a whole-sample
   statistic): treat `scan()` as no-lookahead per level value, not per verdict.
+
+## Round 9: keep the data we have (2026-10-16)
+
+- **GEX serves the last good levels when a refresh fails.** The API key is shared and limited to 30 requests a minute; a 429 used to blank
+  the chart and flip the source to SPY, whose converted flip sits about 90 points from SPX's. A failed refresh now keeps the last good
+  payload from the same source (retry after the 60 s error TTL). Its age keeps counting, so `PX_GEX_MAX_AGE_S` still bounds it; an auth
+  failure is never masked.
+- **A tape blip of 15 s or less no longer blanks a bar** (`SHORT_GAP_MS` in `flow.py`). A reconnect that resumes that fast loses a few
+  percent of one bar's trades, and blanking the whole bar hid good data. Longer outages are still holes, and an outage still in progress
+  shows as an open hole once it passes 15 s. Gap flagging is decided when trades resume, not when the hub drops.
+- **The desk runs as a systemd user service** so closing a terminal or an editor session no longer creates unrecoverable tape holes
+  (`docs/DEPLOY.md`), and a clean shutdown saves the tape.
+- **Not changed, on purpose:** the bracket mode. Native OCO on entry needs the TopstepX account's own bracket setting to be Auto OCO
+  (the API cannot read it), and a wrong `PX_BRACKET_MODE` creates an order the gateway rejects but still books. It stays an explicit,
+  human-set value, to be proven with one watched sim order.

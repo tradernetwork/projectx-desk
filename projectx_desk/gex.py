@@ -215,6 +215,17 @@ async def _source(st, base, key, symbol, fetch):
         clean, code = None, e.code
     except Exception:  # noqa: BLE001
         clean, code = None, "UPSTREAM_ERROR"
+    if not hasattr(st, "gex_good"):
+        st.gex_good = {}
+    good = st.gex_good
+    if clean is not None:
+        good[symbol] = clean
+    elif good.get(symbol) is not None and code != "AUTH":
+        # The refresh failed (the shared API key is rate-limited to 30 requests a minute) but we hold good levels: keep serving them
+        # instead of blanking the chart or flipping to the fallback source (SPY converts about 90 points away from SPX). Their age keeps
+        # counting, so PX_GEX_MAX_AGE_S still bounds how stale they can get. Retry after the short error TTL.
+        st.gex_cache[symbol] = (time.monotonic() - (TTL_S - ERR_TTL_S), good[symbol], None)
+        return good[symbol], None
     st.gex_cache[symbol] = (time.monotonic(), clean, code)
     return clean, code
 

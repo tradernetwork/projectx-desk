@@ -15,6 +15,7 @@ MAX_MINUTES = 3000          # about two trading days per contract
 MAX_CONTRACTS = 8
 MAX_TRADE_VOL = 100_000
 MAX_HOLES = 200
+SHORT_GAP_MS = 15_000      # a reconnect that resumes within this loses a few percent of one bar's trades at most: it is not worth blanking the bar
 TS_MIN, TS_MAX = 946_684_800_000, 4_102_444_800_000      # 2000-01-01 .. 2100-01-01 in ms: anything else is not a real trade time
 
 
@@ -90,10 +91,11 @@ class FlowStore:
             c["partial"].add(k)
         if c["gap"]:
             c["gap"] = False
-            c["partial"].add(k)                # trades were lost before this one
-            if c["last_ts"] is not None and k > c["last_ts"] // MIN_MS * MIN_MS:
-                c["partial"].add(c["last_ts"] // MIN_MS * MIN_MS)
-                c["holes"] = (c["holes"] + [[c["last_ts"] // MIN_MS * MIN_MS, k]])[-MAX_HOLES:]
+            if c["last_ts"] is None or ts_ms - c["last_ts"] > SHORT_GAP_MS:      # a brief blip is tolerated; a real outage is a hole
+                c["partial"].add(k)            # trades were lost before this one
+                if c["last_ts"] is not None and k > c["last_ts"] // MIN_MS * MIN_MS:
+                    c["partial"].add(c["last_ts"] // MIN_MS * MIN_MS)
+                    c["holes"] = (c["holes"] + [[c["last_ts"] // MIN_MS * MIN_MS, k]])[-MAX_HOLES:]
         c["last_ts"] = int(ts_ms) if c["last_ts"] is None else max(c["last_ts"], int(ts_ms))
         if isinstance(vol, bool) or not isinstance(vol, (int, float)) or not math.isfinite(vol) or not 0 < vol <= MAX_TRADE_VOL \
                 or vol != int(vol):                    # futures trade in whole contracts: a fraction is a bad print, never silently truncated
@@ -117,14 +119,13 @@ class FlowStore:
     def mark_gap(self, cid=None, now_ms=None):
         if now_ms is not None and (isinstance(now_ms, bool) or not isinstance(now_ms, (int, float)) or not math.isfinite(now_ms)):
             now_ms = None
-        """A hub reconnect/resync: trades may have been lost. The minute it happened in and the next one are partial."""
+        """A hub reconnect/resync: trades may have been lost. When trades resume after more than SHORT_GAP_MS, the minute of the last trade
+        and the first minute back are partial and the stretch between them is a hole."""
         for key in ([cid] if cid is not None else list(self._c)):
             c = self._c.get(key)
             if c is None or c["since"] is None:
                 continue
-            c["gap"] = True
-            if now_ms is not None:
-                c["partial"].add(int(now_ms) // MIN_MS * MIN_MS)
+            c["gap"] = True      # whether it costs a bar is decided when trades resume: a blip of 15 s or less is tolerated (SHORT_GAP_MS)
 
     def snapshot(self, cid, now_ms=None):
         """`holes` = the stored closed holes plus, while a gap is flagged and no trade has arrived since, one derived OPEN
@@ -138,10 +139,11 @@ class FlowStore:
         rows.sort(key=lambda r: r[0])
         holes = [list(h) for h in c["holes"]]
         if c["gap"] and c["last_ts"] is not None:
-            if isinstance(now_ms, bool) or not isinstance(now_ms, (int, float)) or not math.isfinite(now_ms):
-                now_ms = time.time() * 1000
-            lo = c["last_ts"] // MIN_MS * MIN_MS
-            holes.append([lo, max(lo, int(now_ms) // MIN_MS * MIN_MS)])      # derived, never stored
+            if isinstance(now_ms, bool) or not isinstance(now_ms, (int, float)) or not math.isfinite(now_ms) or now_ms < c["last_ts"]:
+                now_ms = time.time() * 1000                                  # an unusable "now" (or one before the last trade) is replaced by the real clock
+            if now_ms - c["last_ts"] > SHORT_GAP_MS:                         # the outage is still going on and is no longer a blip
+                lo = c["last_ts"] // MIN_MS * MIN_MS
+                holes.append([lo, max(lo, int(now_ms) // MIN_MS * MIN_MS)])  # derived, never stored
         return {"v": 1, "since": c["since"], "minutes": rows, "holes": holes}     # row = [minute_ms, buy, sell, unknown, partial]
 
 

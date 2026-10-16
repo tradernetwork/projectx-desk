@@ -205,7 +205,7 @@ Sizing details: [docs/SIZING.md](docs/SIZING.md).
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q            # 361 tests; run offline against the practice market, no broker and no credentials
+pytest -q            # run offline against the practice market, no broker and no credentials
 ```
 </details>
 

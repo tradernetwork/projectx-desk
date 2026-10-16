@@ -91,6 +91,11 @@ async def fetch_gex(base, key, symbol):
         data = json.loads(bytes(buf))
     except (ValueError, RecursionError):
         raise GexError("UPSTREAM_ERROR") from None
+    if isinstance(data, dict) and isinstance(data.get("data"), dict):
+        # The real REST API wraps the payload: {"success": true, "data": {...}, "cached": false}. (The MCP tool returns the bare object.)
+        if data.get("success") is False:
+            raise GexError("UPSTREAM_ERROR")
+        data = data["data"]
     if not isinstance(data, dict):
         raise GexError("UPSTREAM_ERROR")
     return data

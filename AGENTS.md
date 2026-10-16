@@ -40,7 +40,7 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 | `projectx_desk/tradeday.py` | the one definition of the trading day (17:00 CT roll) |
 | `projectx_desk/sizing.py`, `projectx_desk/gex_futures.py` | pure sizing math; GEX levels converted to futures price space |
 | `projectx_desk/dev_gateway.py` | a mock ProjectX gateway (REST + SignalR) for offline development and end-to-end tests |
-| `static/` | the desk UI (vanilla JS, no build step) |
+| `projectx_desk/static/` | the desk UI (vanilla JS, no build step) |
 
 ## Rules with teeth
 

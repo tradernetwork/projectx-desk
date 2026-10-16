@@ -608,3 +608,4 @@ button.danger{border-radius:7px}
   .strip{min-height:22px;padding:0 8px;font-size:var(--fs-xs)}
 }
 @media (min-width:1600px) and (min-height:821px){.big .num{font-size:64px}}
+.col,.chartwrap,#tools{scrollbar-color:var(--border-strong) transparent;scrollbar-width:thin}

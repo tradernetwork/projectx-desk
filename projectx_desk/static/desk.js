@@ -1145,7 +1145,7 @@ klinecharts.registerOverlay({
     const ed = overlay.extendData || {}, y = cs[0].y, a = ed.stable ? 1 : .55;
     return [
       {type: 'line', attrs: {coordinates: [{x: 0, y}, {x: bounding.width, y}]}, styles: {style: ed.stable ? 'solid' : 'dashed', color: ed.color, size: ed.stable ? 1.5 : 1, dashedValue: ed.stable ? [1, 0] : ed.dv}},
-      {type: 'text', ignoreEvent: true, attrs: {x: 6, y: y - 2, text: String(ed.label || ''), align: 'left', baseline: 'bottom'},
+      {type: 'text', ignoreEvent: true, attrs: {x: y < 80 ? bounding.width - 6 : 6, y: y - 2, text: String(ed.label || ''), align: y < 80 ? 'right' : 'left', baseline: 'bottom'},
        styles: {color: ed.color, size: 10, family: MONO, weight: ed.stable ? '700' : '500', backgroundColor: `rgba(7,9,13,${.78 * a + .1})`, borderSize: 0, borderRadius: 2,
                 paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, style: 'fill'}},
     ];

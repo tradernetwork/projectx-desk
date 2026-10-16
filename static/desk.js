@@ -152,6 +152,7 @@ async function refresh(){
   S.inflight = true; const my = ++S.seq;
   try{
     const cid = await sizeContract();
+    const key = JSON.stringify({cid, side: S.side, stopK: S.stopK, riskPct: S.riskPct});     // what THIS size box was computed for
     const p = new URLSearchParams({side: S.side, risk_pct: String(S.riskPct), stop_k: String(S.stopK)});
     if(cid) p.set('contract', cid);
     if(streaming()) p.set('stream', '1');
@@ -162,7 +163,7 @@ async function refresh(){
       S.aiOpen ? fetch('/ai/digest?' + p).then(r => r.ok ? r.text() : null).catch(() => null) : null]);
     if(my !== S.seq) return;
     S.aiFails = ai ? 0 : S.aiFails + 1;
-    S.prev = S.ai; S.ai = ai; S.st = st; S.sizeCid = cid; S.cd = {left: (ai && ai.behavior && num(ai.behavior.cooldown_left_s)) ? ai.behavior.cooldown_left_s : 0, at: performance.now()}; if(dg != null) S.digest = dg;
+    S.prev = S.ai; S.ai = ai; S.st = st; S.sizeCid = cid; S.aiKey = key; S.cd = {left: (ai && ai.behavior && num(ai.behavior.cooldown_left_s)) ? ai.behavior.cooldown_left_s : 0, at: performance.now()}; if(dg != null) S.digest = dg;
     pairPoll(cid);
     announce(); renderAll();
   }finally{S.inflight = false}
@@ -768,8 +769,11 @@ function announce(){
 let staging = false;
 $('stage-btn').onclick = async () => {
   const z = S.ai && S.ai.size; if(!z || z.status !== 'OK' || z.refused || z.allowed === false) return;
-  staging = true; renderTicketMeta();
   const cid = await sizeContract();
+  if(S.aiKey !== JSON.stringify({cid, side: S.side, stopK: S.stopK, riskPct: S.riskPct})){   // the chips moved since this size was computed
+    $('msg').textContent = 'Size box is updating for your new selection. Check it, then STAGE again.'; schedule(0); return;
+  }
+  staging = true; renderTicketMeta();
   const r = await post('/api/preview', {contract: cid, side: S.side, stop_ticks: z.stop_ticks, risk_pct: S.riskPct, order_type: 'market'});
   staging = false;
   S.placed = null;

@@ -284,3 +284,82 @@ def test_ongoing_tape_outage_does_not_age_into_a_complete_quiet_window():       
     for i in range(65):
         q.add(CID, base + i * MIN_MS, 1, 0)
     assert summary(q, CID, base + 75 * MIN_MS)["w"][5] == {"buy": 0, "sell": 0, "unknown": 0, "delta": 0, "complete": True}
+
+
+# ---- second-round reviews (Fable bug hunt): one test per verified finding ----------------------------------------------------
+
+async def test_an_unrecognised_position_side_on_our_contract_is_flattened_not_ignored(tmp_path):    # Fable A
+    g, live, clock, gw = build2(tmp_path)
+    t = await staged(g)
+    await go(g, t)
+    p = fill(live, type_=0)                                  # a position type the desk does not map (Short=2 is unverified)
+    gw.pos = [p]
+    await g.handle_position(p)
+    assert g.halted() and not gw.pos                         # flattened and halted, never left naked behind a "handled" label
+
+
+async def test_protect_does_not_report_a_ticket_as_handled_when_no_stop_was_armed(tmp_path):
+    g, live, clock, gw = build2(tmp_path)
+    t = await staged(g)
+    await go(g, t)
+    p = fill(live, type_=0)
+    gw.pos = [p]
+    out = await g.protect_open_positions()
+    assert out[CID] == "FLATTENED" and g.halted()
+
+
+def test_pct_of_budget_cannot_be_used_to_back_out_the_loss_room_in_stream_mode():                   # Fable B
+    import px_digest
+    s = {"risk": {"daily_limit": 500.0, "daily_room": 437.0, "dd_buffer": 1900.0, "remaining": 437.0, "pnl_day": -63.0},
+         "size": {"pct_budget": 3.5, "risk_usd": 35.0, "contracts": 1, "stop_ticks": 7},
+         "ticket": {"readback": {"risk_usd": 35.0, "pct_of_budget": 3.5, "size": 1}}, "kpi": {}}
+    r = px_digest.redact_stream(s)
+    assert r["size"]["pct_budget"] is None and "pct_of_budget" not in r["ticket"]["readback"]
+    assert r["risk"]["daily_used_pct"] % 10 == 0 and r["risk"]["daily_limit"] is None
+
+
+def test_size_box_stop_price_is_exact_on_a_hundredth_tick_contract():                              # Fable D
+    import px_digest
+    from px_limits import Limits
+    rec = {"tickSize": 0.01, "tickValue": 1.0}
+    scale = {"multiplier": 1.0, "reasons": [], "reduced": False, "status": "ok"}
+    z = px_digest.size_idea(Limits(), "CON.F.US.MCL.Z26", rec, "long", 70.85, 0.13, 25.0, 0.05, 1.5, 500.0, 20.0, scale, 50)
+    assert z["stop_ticks"] == 20 and z["rpc"] == 20.0 and z["contracts"] == 1 and not z["refused"]     # was 21t, $21, REFUSED
+
+
+def test_size_box_refuses_a_stop_the_guard_would_refuse():                                          # Fable minor
+    import dataclasses
+
+    import px_digest
+    from px_limits import Limits
+    rec = {"tickSize": 0.25, "tickValue": 0.5}
+    scale = {"multiplier": 1.0, "reasons": [], "reduced": False, "status": "ok"}
+    z = px_digest.size_idea(dataclasses.replace(Limits(), max_stop_ticks=40), "CON.F.US.MNQ.Z26", rec, "long", 17500.0, 35.0,
+                            25.0, 0.05, 1.5, 500.0, 300.0, scale, 50)
+    assert z["refused"] and z["reason"] == "STOP_DISTANCE" and z["contracts"] == 0
+
+
+async def test_a_flat_by_of_exactly_the_session_open_is_refused_like_any_garbled_value(tmp_path):    # Fable F
+    g, live, clock, gw = build2(tmp_path, flat_by="17:00")
+    assert g._flat_by_time() is None
+    g2, *_ = build2(tmp_path, flat_by="16:59")
+    assert g2._flat_by_time() is not None
+
+
+async def test_boot_refuses_to_pick_an_arbitrary_account(monkeypatch):                              # Fable E
+    from types import SimpleNamespace
+
+    import pytest
+
+    import px_app
+    from px_client import PXError
+
+    class C:
+        async def accounts(self, only_active):
+            return [{"id": 1, "canTrade": True}, {"id": 2, "canTrade": True}]
+
+    app = SimpleNamespace(state=SimpleNamespace(client=C(), live=SimpleNamespace(), user=None,
+                                                guard=SimpleNamespace(limits=SimpleNamespace(account_id=None))))
+    monkeypatch.delenv("PX_ACCOUNT_ID", raising=False)
+    with pytest.raises(PXError):
+        await px_app._boot(app)

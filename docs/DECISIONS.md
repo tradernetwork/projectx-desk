@@ -238,3 +238,28 @@ data, concurrency and persistence). Their findings are folded in below; nothing 
 - **Dev isolation and docs.** `run_dev.sh` sets `PX_NO_ENV_FILE=1`, unsets the advisory feed/GEX variables and uses its own tape file;
   `docs/LIMITATIONS.md` now separates verified read behavior from unverified order writes and no longer claims GEX is always off.
 - **Not done:** a rendered browser pass of stream-mode DOM transitions, and the operator-led real sim rehearsal.
+
+## Round 8: independent bug hunts after the Codex fixes (2026-10-16)
+
+Three more read-only passes (an attack on the Codex fixes, a fresh-eyes hunt across the repo, and a fuzz run over the pure modules).
+Everything below was reproduced before it was fixed and has a regression test.
+
+- **An unrecognised position side on our contract is flattened, not skipped.** `handle_position` used to `continue` past a position
+  whose `type` it did not map, which (with the Short=2 enum still unverified) left a real fill with no stop and no watchdog while
+  `protect_open_positions` reported it `TICKET`. It now flattens and halts (`position_side_unknown`), and `protect_open_positions`
+  only reports a ticket handled if its stop is armed or in flight.
+- **The desk refuses to boot onto an arbitrary account** when `PX_ACCOUNT_ID` is blank (opens already refused; flatten, the watchdog
+  and `PX_FLAT_BY` would have acted on whichever account came first). `PX_FLAT_BY=17:00` is refused like any garbled value (the
+  window ends at the session open, so it could never fire).
+- **Stream mode hides the percent fields too** (`pct_budget`, the ticket's `pct_of_budget`); `daily_used_pct` is in 10% buckets.
+  With contracts and stop ticks visible, exact percentages let a viewer back out the loss room and the day's P&L.
+- **STAGE refuses a size box computed for different chips.** The click handler now compares the contract, side, stop and risk the
+  size was computed for with what the chips show now (a stale 150-tick MNQ stop could have been staged for MES).
+- **Exact tick arithmetic in the size box.** Float drift added a phantom tick on 0.01 and 0.1 tick contracts (MCL, MGC, M2K): the
+  box showed REFUSED where the guard sized one contract. The box also flags `STOP_DISTANCE` for a stop wider than
+  `PX_MAX_STOP_TICKS` instead of showing OK and letting STAGE refuse.
+- **Sizing hardening (fuzz pass).** Out-of-range or overflowing inputs raise `SizingError` (never `Decimal`/`Overflow` crashes), a
+  stop must be a whole number of ticks, and `describe_trade` never sizes beyond the remaining budget (the MCP size tool could).
+  A bad print leaves a partial minute even with no bucket, so its window reads INCOMPLETE; fractional volume is a bad print.
+- **Known and accepted.** The respect scanner calibrates its placebo on all bars including later ones by design (a whole-sample
+  statistic): treat `scan()` as no-lookahead per level value, not per verdict.

@@ -6,6 +6,7 @@ is fixed-key, `KEY: k=v`, one idea per line, absent = NA, so it reads cleanly al
 """
 import asyncio
 import math
+from decimal import Decimal
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -318,7 +319,8 @@ def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pc
         if loss_capped:
             budget = loss_cap
         stop_pts = stop_t * tick
-        stop_px = ref - stop_pts if side == "long" else ref + stop_pts
+        _dt = Decimal(str(stop_t)) * Decimal(str(tick))              # exact: float 70.85 - 0.20 landed a hair under the grid
+        stop_px = float(Decimal(str(ref)) - _dt) if side == "long" else float(Decimal(str(ref)) + _dt)
         kw = dict(risk_budget_dollars=remaining, live_tick_size=rec["tickSize"], live_tick_value=rec["tickValue"])
         d = sizing.describe_trade(contract_id, side, ref, stop_px, budget, max_contracts=limits.max_qty_order, **kw)
         free = sizing.describe_trade(contract_id, side, ref, stop_px, budget, max_contracts=None, **kw)
@@ -349,7 +351,11 @@ def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pc
         else:
             why.append(f"Stop: {stop_k:g} x ATR {atr_value:.2f}pt = {stop_t}t = ${rpc:,.2f} per {root}")
             why_s.append(f"Stop: {stop_k:g} x ATR {atr_value:.2f}pt = {stop_t}t")
-        if d["refused"]:
+        too_wide = stop_t > limits.max_stop_ticks
+        if too_wide:
+            why.append(f"REFUSED: a {stop_t}t stop is wider than PX_MAX_STOP_TICKS={limits.max_stop_ticks}: STAGE will refuse")
+            why_s.append(f"REFUSED: stop wider than the {limits.max_stop_ticks}t cap")
+        elif d["refused"]:
             why.append(f"REFUSED: one {root} risks ${rpc:,.2f}, more than ${budget:,.2f}. Never rounded up.")
             why_s.append(f"REFUSED: one {root} risks more than the budget. Never rounded up.")
         elif by_risk > cap:
@@ -377,10 +383,10 @@ def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pc
         return extra | {"status": "OK", "root": root, "allowed": allowed, "side": side, "entry": _n(ref), "stop": _n(stop_px),
                 "stop_ticks": stop_t, "stop_points": _n(stop_pts), "budget_usd": _n(budget),
                 "budget_chosen_usd": _n(chosen), "risk_pct": risk_pct, "stop_atr_k": stop_k,
-                "contracts": d["contracts"], "contracts_by_risk": by_risk, "cap": cap, "capped": by_risk > cap and not d["refused"],
+                "contracts": 0 if too_wide else d["contracts"], "contracts_by_risk": by_risk, "cap": cap, "capped": by_risk > cap and not d["refused"],
                 "risk_usd": _n(d["total_risk_dollars"]), "rpc": _n(rpc), "pct_budget": _n(d["pct_of_risk_budget_used"], 1),
                 "binding": "max_contracts" if (by_risk > cap and not d["refused"]) else d["binding_constraint"],
-                "refused": d["refused"], "reason": "GRANULARITY" if d["refused"] else None,
+                "refused": d["refused"] or too_wide, "reason": "GRANULARITY" if d["refused"] else "STOP_DISTANCE" if too_wide else None,
                 "r1": _n(d["reward_1r_dollars"]), "r2": _n(d["reward_2r_dollars"]), "r3": _n(d["reward_3r_dollars"]),
                 "loss_capped": loss_capped, "adx": adx_value, "atr_pctile": pctile, "scale": {"multiplier": scale["multiplier"], "reduced": scale["reduced"],
                                                                    "reasons": scale["reasons"], "status": scale["status"]},
@@ -604,14 +610,16 @@ def redact_stream(s):
         r[k] = None
     r["daily_limit"] = None
     r["pnl_day"] = None
-    r["daily_used_pct"] = (round(100.0 * (lim - (s["risk"].get("daily_room") or lim)) / lim, 1) if lim else None)
+    # Coarse on purpose (10% buckets): the exact figure, with the visible contracts and stop ticks, would let a viewer back out
+    # the daily limit and the day's P&L.
+    r["daily_used_pct"] = (round(10 * round(10.0 * (lim - (s["risk"].get("daily_room") or lim)) / lim)) if lim else None)
     s["risk"] = r
     z = dict(s["size"])
     for k in ("budget_usd", "budget_chosen_usd", "risk_usd", "rpc", "r1", "r2", "r3"):
         z.pop(k, None)
     # size-plan dollars. heat_pct is redacted too: with stop_ticks, contracts and tick value the risk in dollars
     # is derivable, so pct of room would let a viewer back out the room size. Keys stay (None) so the digest prints NA.
-    for k in ("drawdown_left", "daily_left", "heat_usd", "heat_pct"):
+    for k in ("drawdown_left", "daily_left", "heat_usd", "heat_pct", "pct_budget"):
         if k in z:
             z[k] = None
     if "why_stream" in z:
@@ -625,7 +633,7 @@ def redact_stream(s):
         s["trade"] = {k2: v for k2, v in s["trade"].items() if k2 != "risk_usd"}
     if s.get("ticket"):
         t = dict(s["ticket"])
-        rb = {k: v for k, v in t["readback"].items() if k not in ("risk_usd",)}
+        rb = {k: v for k, v in t["readback"].items() if k not in ("risk_usd", "pct_of_budget")}
         t["readback"] = rb
         s["ticket"] = t
     return s

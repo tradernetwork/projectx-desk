@@ -468,6 +468,11 @@ async def _boot(app):
         next((a for a in accts if a.get("canTrade")), None)
     if acct is None:
         raise PXError("no tradable account found (set PX_ACCOUNT_ID)")
+    bound = getattr(getattr(app.state, "guard", None), "limits", None)
+    if bound is not None and not want:
+        # Opens already refuse without a bound account, but flatten, the watchdog and PX_FLAT_BY act on whatever account is
+        # selected: never let them run on an arbitrary one.
+        raise PXError("PX_ACCOUNT_ID is not set: refusing to act on an arbitrary account")
     live.select_account(acct["id"])
     live.account = acct
     await user.subscribe("SubscribeAccounts", unsub_target="UnsubscribeAccounts")

@@ -319,7 +319,7 @@ class Guard:
             t = dtime(int(hh), int(mm))
         except (ValueError, AttributeError):
             return None
-        return t if t <= SESSION_OPEN else None
+        return t if t < SESSION_OPEN else None
 
     def _flat_by_window(self, now_ct) -> Optional[str]:
         """A configured PX_FLAT_BY must parse (else every open is refused), and no new entry is allowed in the last 2 minutes."""
@@ -887,6 +887,10 @@ class Guard:
                         await self._retire_stop_after_close(t)
                 continue
             if self._pos_side(p) != t.side:
+                # A nonzero position in our contract whose side is not the ticket's (or not a side we recognise: the Short enum is
+                # unverified) is never benign: either the enum is wrong or the position was flipped. Silently skipping it left a
+                # fill with no stop and no watchdog while protect_open_positions reported it as handled. Flatten and halt.
+                await self._naked(t, "position_side_unknown")
                 continue
             if rejected_live and not t.filled_size:
                 self.trip_halt("rejected_but_filled")       # protect it, then a human looks at why a rejection filled
@@ -961,6 +965,13 @@ class Guard:
                 owner = None
             if owner is not None:
                 await self.handle_position(p)
+                if owner.abandoned:                                       # handle_position already flattened and halted
+                    out[cid] = "FLATTENED"
+                    continue
+                if owner.stop_plan["mode"] == "separate_after_fill" and owner.stop_state not in ("ACKED", "SENDING"):
+                    await self._naked(owner, "owned_position_not_protected")      # handled is not protected: prove it
+                    out[cid] = "FLATTENED"
+                    continue
                 out[cid] = "TICKET"
                 continue
             covered = self._covered_by_broker_stop(working, cid, side, size)

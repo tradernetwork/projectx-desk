@@ -164,7 +164,8 @@ async def test_ensure_quote_pins_once_waits_for_a_quote_and_caps_the_pin_count()
     s = LiveState(market_hub=m)
     await s.ensure_quote("CON.F.US.MES.Z26", wait=0.05)         # no quote arrives: returns, does not hang
     await s.ensure_quote("CON.F.US.MES.Z26", wait=0.05)
-    assert m.subs == [("SubscribeContractQuotes", ("CON.F.US.MES.Z26",))]                # subscribed exactly once
+    assert m.subs == [("SubscribeContractQuotes", ("CON.F.US.MES.Z26",)),
+                      ("SubscribeContractTrades", ("CON.F.US.MES.Z26",))]                # each subscribed exactly once (the tape records too)
     for n in range(10):
         await s.ensure_quote(f"CON.F.US.X{n}.Z26", wait=0)
     assert len(s._pinned) == s.MAX_PINNED
@@ -193,8 +194,46 @@ async def test_closing_a_tick_stream_keeps_a_pinned_contracts_quotes():
     await s.ensure_quote("CON.F.US.MES.Z26", wait=0)
     q = await s.subscribe_ticks("CON.F.US.MES.Z26")
     await s.unsubscribe_ticks("CON.F.US.MES.Z26", q)
-    assert ("SubscribeContractTrades", ("CON.F.US.MES.Z26",)) in m.unsubs
+    assert ("SubscribeContractTrades", ("CON.F.US.MES.Z26",)) not in m.unsubs        # the tape stays on: buy/sell volume and tick bars are built from it
     assert ("SubscribeContractQuotes", ("CON.F.US.MES.Z26",)) not in m.unsubs        # pinned: stays subscribed
     other = await s.subscribe_ticks("CON.F.US.MNQ.Z26")
     await s.unsubscribe_ticks("CON.F.US.MNQ.Z26", other)
-    assert ("SubscribeContractQuotes", ("CON.F.US.MNQ.Z26",)) in m.unsubs            # unpinned: released normally
+    assert ("SubscribeContractQuotes", ("CON.F.US.MNQ.Z26",)) in m.unsubs            # unpinned: quotes released normally
+    assert ("SubscribeContractTrades", ("CON.F.US.MNQ.Z26",)) not in m.unsubs        # ...but its tape is still recorded
+
+
+async def test_tape_starts_for_any_asker_and_is_capped():
+    m = FakeMarket()
+    s = LiveState(market_hub=m)
+    await s.ensure_quote("CON.F.US.MES.Z26", wait=0)       # no browser involved
+    await s.ensure_quote("CON.F.US.MES.Z26", wait=0)       # idempotent: no double subscription
+    assert s._tape == ["CON.F.US.MES.Z26"]
+    assert [a for a in m.subs if a[0] == "SubscribeContractTrades"] == [("SubscribeContractTrades", ("CON.F.US.MES.Z26",))]
+    for root in ("MNQ", "MGC", "MCL", "M2K"):
+        await s.ensure_quote(f"CON.F.US.{root}.Z26", wait=0)
+    assert len(s._tape) == LiveState.MAX_TAPE and "CON.F.US.MES.Z26" not in s._tape      # oldest evicted
+    assert ("SubscribeContractTrades", ("CON.F.US.MES.Z26",)) in m.unsubs
+
+
+def test_quote_is_dropped_after_an_outage_and_a_crossed_book_is_not_trusted():
+    s = LiveState()
+    s._on_quote("C", {"bestBid": 6000.0, "bestAsk": 6000.25, "lastPrice": 6000.0})
+    s._on_market_event("down")
+    assert "C" not in s.quotes                                    # nothing survives an outage to look fresh
+    s._on_quote("C", {"lastPrice": 6010.0})
+    assert s.quotes["C"].get("bestAsk") is None                   # the old 6000.25 ask did not come back
+    s._on_quote("C", {"bestBid": 6010.0, "bestAsk": 6010.25})
+    s._on_quote("C", {"bestAsk": 6009.0})                         # ask now below the stored bid: crossed
+    q = s.quotes["C"]
+    assert q["bestAsk"] == 6009.0 and q.get("bestBid") is None    # only the fresh side is trusted
+
+
+async def test_evicting_the_tape_marks_a_gap_so_the_return_is_a_hole():
+    m = FakeMarket()
+    s = LiveState(market_hub=m)
+    await s.ensure_quote("CON.F.US.MES.Z26", wait=0)
+    s.flow.add("CON.F.US.MES.Z26", 29_866_666 * 60_000, 1, 0)
+    for root in ("MNQ", "MGC", "MCL", "M2K"):
+        await s.ensure_quote(f"CON.F.US.{root}.Z26", wait=0)       # MES evicted
+    s.flow.add("CON.F.US.MES.Z26", 29_866_666 * 60_000 + 40 * 60_000, 1, 0)
+    assert s.flow.snapshot("CON.F.US.MES.Z26")["holes"] == [[29_866_666 * 60_000, 29_866_666 * 60_000 + 40 * 60_000]]

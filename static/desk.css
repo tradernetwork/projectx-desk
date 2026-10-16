@@ -566,3 +566,14 @@ button.primary.lockbtn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis
 .byline img{display:block;opacity:.85}
 .byline:hover,.byline:focus-visible{color:var(--text-2)}
 .byline:hover img{opacity:1}
+
+.fdlist{display:flex;flex-direction:column;gap:3px;font:400 var(--fs-xs)/1.35 var(--mono)}
+.fdlist .none{color:var(--text-muted)}
+.fdrow{display:flex;flex-wrap:wrap;gap:2px 8px;padding:3px 0;border-top:1px solid var(--border)}
+.fdrow:first-child{border-top:0}
+.fdrow .age{color:var(--text-muted)}
+.fdrow .long{color:var(--green,#3fb950)}.fdrow .short{color:var(--red,#f85149)}
+.fdrow .ev{font-weight:600}
+
+.plan{margin:6px 0 2px;padding:5px 7px;border:1px solid var(--border);border-radius:var(--r-sm);font:400 var(--fs-xs)/1.45 var(--mono);color:var(--text-muted)}
+.plan b{color:var(--text);font-weight:600}.plan .up{color:var(--green,#3fb950)}

@@ -172,3 +172,38 @@ are kept as written; where one is superseded, this section says so. Still tested
   below its placebo on every timeframe, and 8/13/21/34 average -7 to -9 points of edge against about -1 to +0.5 for 55/89/200. Price
   slices through the fast EMAs more often than through a shifted line, and the long EMAs are roughly neutral. The ten tickers are
   correlated and tests per level are small, so this is a prompt, not a finding.
+
+## Round 6: level-anchored stops, GEX levels, the trade tape, tick bars (2026-10-16)
+
+Built by three parallel builders, then reviewed read-only by two other models (one on the risk rules and order path, one on hostile
+data, concurrency and persistence). Their findings are folded in below; nothing here touches `px_guard.py` or the AST pin.
+
+- **Level-anchored stop and target (`px_anchor.py`, wired in `px_digest.size_idea`).** This amends Round 4's "the stop (1.5 x ATR)
+  sets the contract count": on the default 1.5x chip only, if a *respected* level (scanner verdict ABOVE_RANDOM, never GEX) lies
+  adverse to entry between 1.5x and 2.0x ATR away, the stop tucks just beyond it (level -/+ max(2 ticks, 0.10 ATR)); the stop is never
+  tighter than 1.5x ATR and never wider than 2.0x. The anchor is used only if it stays within `PX_MAX_STOP_TICKS` and within the risk
+  budget, otherwise the plain ATR stop stands, so it cannot create a refusal the base stop would not have had. At the qty cap of 1 a
+  wider stop means more dollars, not fewer contracts (bounded by the budget). The 1.0x/2.0x chips and tick steps are manual and bypass
+  the anchor (a manual step never lands exactly on 1.5: the UI nudges it to 1.5001). The UI still stages by tick distance, so the
+  "beyond level X" wording is true as of the last refresh, not necessarily at fill. Target: nearest respected favorable level at
+  >= 1R, shown with R:R and break-even win rate; none shown if no level qualifies. The size box also shows drawdown and daily room
+  left if the stop fills (netted for open stop risk) and total open risk with this trade.
+- **GEX levels (`px_gex.py`) are display only.** Fetched from the TraderDaddy public API (`PX_GEX_KEY`, fallback `TD_API_KEY`;
+  `PX_GEX_URL`; `PX_GEX_MAX_AGE_S` default 900), converted with `gex_futures.py`, drawn by the existing GEX overlay and listed in the
+  digest. They never feed sizing, stops or targets: "GEX marks positioning, not targets" stands. Only validated numbers and fixed
+  enums reach the AI surface; the source's free text is dropped. Reads are streamed with a hard 2 MB cap.
+- **Partial quote merge (`px_state._on_quote`).** The gateway sends only changed fields, and replacing the quote blanked sizing. The
+  quote now merges, but `_rx` then means "something arrived", so the whole quote is cleared on any hub resync/down and when quotes are
+  unsubscribed, and a crossed book keeps only what just arrived. The guard's 2 s freshness rule is unchanged: nothing can outlive an
+  outage and look fresh. (Review finding: without the clearing, a stale ask could have sized a stop 3.5x too far.)
+- **The trade tape is recorded whether or not a browser is open (`px_flow.py`, `px_ticks.py`).** Real buy/sell volume comes from the
+  aggressor side on each trade (`GatewayTrade.type`: 0 buy, 1 sell). The tape stays subscribed for up to 4 contracts after the tab
+  closes, and any `ensure_quote` starts it. There is no tick history, so coverage starts when recording starts. Per-minute buckets
+  persist to `data/flow.json` (`PX_FLOW_FILE`; gitignored, numbers only) every 30 s; a restart, a reconnect, a tape eviction or an
+  unusable timestamp becomes a recorded *hole*, and any bar or digest window overlapping a hole is blanked or marked INCOMPLETE rather
+  than shown as a wrong number. The file is re-validated on load (types, ranges, caps). Volume of unknown side is counted apart.
+- **Tick bars (`px_ticks.py`, `PX_TICK_BARS`, default 1024,2048,4096 trade prints per bar).** ProjectX has no tick unit, so these are
+  built from the tape only, in memory, and restart empty. Each bar carries buy and sell volume; bars that missed prints are flagged.
+- **Known limits.** The anchor can flip between ANCHORED and ATR as price moves relative to fixed levels. Whether the gateway re-sends
+  recent trades on a resubscribe (which would double count) is unverified. `live: true` bars are refused for this account, so the
+  digest and chart use the sim data subscription, whose bars were checked identical to the live tape (see LIMITATIONS).

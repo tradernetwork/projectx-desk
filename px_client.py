@@ -10,6 +10,12 @@ from collections import deque
 
 import httpx
 
+def live_data():
+    """`live` on retrieveBars and Contract/search: False asks for the SIM data subscription, True the live one
+    (ProjectX docs). ONE definition for every caller: a hardcoded False anywhere means sized-off-sim-data."""
+    return os.getenv("PX_LIVE_DATA", "0") == "1"
+
+
 def _default_api():
     return os.getenv("PROJECTX_API", "https://api.topstepx.com")   # read when a client is built, so .env.projectx applies
 

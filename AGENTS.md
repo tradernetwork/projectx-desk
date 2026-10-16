@@ -31,6 +31,11 @@ Modules are flat at the repo root (`px_*.py`, `sizing.py`, `gex_futures.py`); `t
 | `px_app.py` | FastAPI: chart data, SSE ticks, CSRF-gated POST routes, mounts MCP |
 | `px_levels.py` | EMA stack, ATR series, level-reaction statistics with a random-line baseline |
 | `px_respect.py` | which levels each timeframe (5m/15m/1h/4h/1d) respects: ~25 candidate levels scored against a calibrated placebo, with a no-lookahead guarantee and a half/half stability check. Pure, no I/O |
+| `px_flow.py` | real buy/sell volume from the trade tape (`GatewayTrade.type`: 0 buy, 1 sell), 1-minute buckets per contract. Pure. No tick history exists, so coverage starts when the desk subscribed (`since`); minutes touching a reconnect gap or a bad trade are `partial` and never drawn. Unknown side is counted apart, never guessed. Persisted to `data/flow.json` (`PX_FLOW_FILE`) with holes for any time the tape was not received. Served at `/api/flow`, drawn as the BUY/SELL VOL pane, summarised in the digest as `FLOW:` |
+| `px_anchor.py` | pure level-anchored stop and target (respected levels only, never GEX), plus `projection` (room left if the stop fills) and `heat`. Fails closed. See Round 6 |
+| `px_gex.py` | GEX levels from the TraderDaddy API converted to futures price space: display and digest only, never sizing. `PX_GEX_KEY`, `PX_GEX_URL`, `PX_GEX_MAX_AGE_S` |
+| `px_ticks.py` | tick bars (N trade prints, `PX_TICK_BARS`) built from the live tape with buy/sell volume; no history, in memory |
+| `px_feed.py` | analyst futures callouts from TraderDiscord-v2 `GET /analyst-callouts` (`PX_FEED_URL`, `PX_FEED_KEY`, `PX_FEED_CHANNELS`, `PX_FEED_HOURS`; unset URL = off). Third-party text is untrusted: only allowlisted names/enums/numbers leave the module, never message text. Opinion, not signal; no path to the guard. State key and digest lines are `callouts`/`CALLOUTS` (`feed` is the market-data health block) |
 | `px_time.py` | the one definition of the trading day (17:00 CT roll) |
 | `sizing.py`, `gex_futures.py` | pure sizing math; GEX levels converted to futures price space |
 | `dev_gateway.py` | a mock ProjectX gateway (REST + SignalR) for offline development and end-to-end tests |

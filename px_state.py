@@ -22,8 +22,12 @@ def ts_ms(ts):
     return (parse_ts(ts) - EPOCH) // timedelta(milliseconds=1)
 
 
+from px_flow import FlowStore
+from px_ticks import TickBars
+
+
 class LiveState:
-    def __init__(self, market_hub=None, user_hub=None):
+    def __init__(self, market_hub=None, user_hub=None, flow_path=None):
         self.market, self.user = market_hub, user_hub
         self.quotes = {}      # contractId -> last GatewayQuote payload (+ "_rx" monotonic time)
         self.account = {}     # last GatewayUserAccount for the selected account
@@ -35,6 +39,9 @@ class LiveState:
         self.positions_seeded = False
         self._touched = None         # ids changed by live events while a REST snapshot is in flight
         self._listeners = []         # callables(kind, payload) for position/order events (the guard's stop manager)
+        self.ticks = TickBars()   # tick bars (N prints per bar) from the same tape; sizes from PX_TICK_BARS
+        self.flow = FlowStore(path=flow_path)   # real buy/sell volume per minute, built from every GatewayTrade we receive
+        self._tape = []       # contracts whose trade tape stays subscribed with no browser open (oldest first)
         self._subs = {}       # contractId -> set[Queue]
         self._pinned = set()  # contracts whose quotes stay subscribed so the guard/MCP work with no browser open
         if market_hub:
@@ -49,13 +56,31 @@ class LiveState:
 
     # ---- market side ----------------------------------------------------------------------
 
+    MAX_TAPE = 4
+
+    async def _ensure_tape(self, cid):
+        """Record the trade tape for `cid` (buy/sell volume, tick bars) whether or not a browser is open."""
+        if cid in self._tape or self.market is None:
+            return
+        self._tape.append(cid)                    # reserve the slot BEFORE any await: two concurrent askers must not both add it
+        old = self._tape.pop(0) if len(self._tape) > self.MAX_TAPE else None
+        if old is not None:
+            self.flow.mark_gap(old, int(time.time() * 1000))     # stopping the tape makes the time until it returns a hole
+            self.ticks.mark_gap(old)
+            if old not in self._subs:
+                await self.market.unsubscribe("SubscribeContractTrades", old)
+        await self.market.subscribe("SubscribeContractTrades", cid, unsub_target="UnsubscribeContractTrades")
+
     async def subscribe_ticks(self, cid, maxsize=5000):
         q = asyncio.Queue(maxsize=maxsize)
         first = cid not in self._subs
         self._subs.setdefault(cid, set()).add(q)
-        if first and self.market:
-            await self.market.subscribe("SubscribeContractTrades", cid, unsub_target="UnsubscribeContractTrades")
-            await self.market.subscribe("SubscribeContractQuotes", cid, unsub_target="UnsubscribeContractQuotes")
+        if self.market:
+            # The trade tape stays subscribed after the last browser leaves (up to MAX_TAPE contracts): buy/sell volume and
+            # tick bars are built from it, and a closed or reloaded tab must not leave an unflagged hole in them.
+            await self._ensure_tape(cid)
+            if first:
+                await self.market.subscribe("SubscribeContractQuotes", cid, unsub_target="UnsubscribeContractQuotes")
             self.market.start()
         return q
 
@@ -73,6 +98,7 @@ class LiveState:
             self._pinned.add(cid)
             await self.market.subscribe("SubscribeContractQuotes", cid, unsub_target="UnsubscribeContractQuotes")
             self.market.start()
+        await self._ensure_tape(cid)             # anything that asks for this contract (digest, MCP, guard) also starts the tape
         deadline = time.monotonic() + wait
         while True:
             q = self.quotes.get(cid)
@@ -90,9 +116,11 @@ class LiveState:
         if not qs:
             del self._subs[cid]
             if self.market:
-                await self.market.unsubscribe("SubscribeContractTrades", cid)
+                if cid not in self._tape:        # the tape stays on for contracts we are recording (see subscribe_ticks)
+                    await self.market.unsubscribe("SubscribeContractTrades", cid)
                 if cid not in self._pinned:      # a pinned contract keeps its quotes for the guard and MCP
                     await self.market.unsubscribe("SubscribeContractQuotes", cid)
+                    self.quotes.pop(cid, None)
 
     @staticmethod
     def _put(q, item):
@@ -105,15 +133,31 @@ class LiveState:
 
     def _on_trade(self, cid, data):
         for t in (data if isinstance(data, list) else [data]):
+            self.ticks.add_trade(cid, t, ts_ms)   # tick bars; never raises (a malformed trade marks a gap)
+            try:
+                self.flow.add(cid, ts_ms(t["timestamp"]), t.get("volume"), t.get("type"))
+            except Exception:  # noqa: BLE001 - a malformed trade must never stop the tick stream
+                self.flow.mark_gap(cid, int(time.time() * 1000))
             for q in list(self._subs.get(cid, ())):
                 self._put(q, t)
 
     def _on_quote(self, cid, data):
         if isinstance(data, dict):
-            self.quotes[cid] = {**data, "_rx": time.monotonic()}
+            # The gateway sends PARTIAL quote updates (only the fields that changed). Replacing the quote wiped bid/last
+            # whenever an ask-only update arrived and blanked sizing for a beat, so merge. Unchanged fields stay valid only
+            # while the stream is alive: _on_market_event / unsubscribe clear the quote, so nothing outlives an outage.
+            fresh = {k: v for k, v in data.items() if v is not None}
+            merged = {**self.quotes.get(cid, {}), **fresh}
+            bid, ask = merged.get("bestBid"), merged.get("bestAsk")
+            if isinstance(bid, (int, float)) and isinstance(ask, (int, float)) and bid > ask:
+                merged = dict(fresh)          # a crossed book means one side is stale: trust only what just arrived
+            self.quotes[cid] = {**merged, "_rx": time.monotonic()}
 
     def _on_market_event(self, kind):
         if kind in ("resync", "down"):
+            self.quotes.clear()               # after an outage the old bid/ask/last are unknowable: fail closed until fresh ones arrive
+            self.flow.mark_gap(None, int(time.time() * 1000))
+            self.ticks.mark_gap(None)
             item = RESYNC if kind == "resync" else DOWN
             for qs in self._subs.values():
                 for q in qs:

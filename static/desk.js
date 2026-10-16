@@ -11,7 +11,7 @@ const q = new URLSearchParams(location.search);
 
 /* ================= state ================= */
 const S = {
-  contractId: null, tf: LS.get('px.tf', 'minute,5'), side: 'long',
+  contractId: null, tf: 'minute,5', side: 'long',
   riskPct: LS.get('px.riskPct3', 0.05), stopK: LS.get('px.stopK', 1.5), sizeFor: 'AUTO',
   stream: q.get('stream') === '1',      // never persisted
   revealUntil: 0, aiOpen: q.get('ai') === '1',
@@ -136,6 +136,7 @@ function stepTicks(d){   // move the stop by whole ticks using the server's own 
   if(!z || z.status !== 'OK' || !atr || !tick) return;
   const t = Math.max(1, z.stop_ticks + d);
   S.stopK = Math.min(10, Math.max(0.1, Math.round((t - 0.5) * tick / atr * 10000) / 10000));
+  if(S.stopK === 1.5) S.stopK = 1.5001;   // a manual step must never land exactly on the anchored default
   inputChanged();
 }
 $('stop-dec').onclick = () => stepTicks(-1);
@@ -213,6 +214,14 @@ function renderSize(){
   else rf.hidden = true;
   al.hidden = na.hidden && rf.hidden;
   const stop = $('stop-val'); stop.textContent = ok ? z.stop_ticks + 't' : 'NA';
+  const plan = $('size-plan'), money = v => typeof v === 'number' ? '$' + v.toLocaleString('en-US', {maximumFractionDigits: 0}) : 'NA';
+  plan.hidden = !(ok && z.stop_mode); plan.replaceChildren();
+  if(!plan.hidden){
+    const ln = (...parts) => {const d = mk('div'); for(const p of parts) d.append(p); plan.append(d)};
+    ln(mk('b', '', 'STOP '), document.createTextNode(z.stop_mode === 'ANCHORED' ? 'beyond ' + String(z.stop_anchor || '').slice(0, 24) + ', ' + z.stop_k_eff + 'x ATR' : z.stop_mode === 'MANUAL' ? 'manual ' + z.stop_k_eff + 'x ATR' : '1.5x ATR (no respected level in reach)'));
+    ln(mk('b', '', 'TARGET '), document.createTextNode(typeof z.target === 'number' ? z.target + ' (' + String(z.target_level || '').slice(0, 24) + ') ' + z.rr + 'R, needs ' + z.breakeven_win_rate + '% wins' : 'none: no respected level at 1R or better'));
+    ln(mk('b', '', 'IF STOPPED '), document.createTextNode('drawdown room ' + money(z.drawdown_left) + ', daily ' + money(z.daily_left) + ', total open risk with this trade ' + money(z.heat_usd)));
+  }
   for(const id of ['stop-dec', 'stop-inc']) $(id).disabled = !ok;
   const box = $('size');
   box.classList.toggle('is-refused', !!(ok && z.refused));
@@ -956,6 +965,45 @@ klinecharts.registerIndicator({
     });
   }});
 
+/* ---- real buy/sell volume (GET /api/flow): green up = buyers hit the ask, red down = sellers hit the bid, line = delta.
+   Built from the trade tape's aggressor side, so it only exists from when the desk was subscribed (FLOW.since). A bar
+   that starts before that, or touches a reconnect gap, shows nothing rather than a wrong number. Sub-minute bars: none. ---- */
+const FLOW = {since: null, m: new Map(), holes: [], cid: null};
+const PER_MS = {minute: 60000, hour: 3600000, day: 86400000};
+klinecharts.registerIndicator({
+  name: 'BSV', shortName: 'BUY/SELL', precision: 0,
+  figures: [
+    {key: 'buy', title: 'B: ', type: 'bar', baseValue: 0, styles: () => ({color: C.up})},
+    {key: 'sell', title: 'S: ', type: 'bar', baseValue: 0, styles: () => ({color: C.dn})},
+    {key: 'delta', title: '\u0394: ', type: 'line'}],
+  styles: {lines: [{color: C.ink, size: 1, style: 'solid', smooth: false, dashedValue: [2, 2]}]},
+  calc: list => {
+    const per = chart.getPeriod(), ms = per && PER_MS[per.type] ? PER_MS[per.type] * per.span : 0, now = Date.now();
+    return list.map(b => {
+      if(!ms || FLOW.since == null || FLOW.cid !== S.contractId || b.timestamp < FLOW.since) return {};
+      if(FLOW.holes.some(h => h[0] < b.timestamp + ms && h[1] + 60000 > b.timestamp)) return {};   // trades were not being received: draw nothing
+      let buy = 0, sell = 0;
+      for(let t = Math.floor(b.timestamp / 60000) * 60000; t < b.timestamp + ms && t <= now; t += 60000){
+        const r = FLOW.m.get(t); if(!r) continue;
+        if(r[3]) return {};          // partial minute: not trustworthy, draw nothing
+        buy += r[0]; sell += r[1];
+      }
+      return {buy, sell: -sell, delta: buy - sell};
+    });
+  }});
+async function flowFetch(){
+  const cid = S.contractId; if(!cid) return;
+  try{
+    const f = await j('/api/flow?contract=' + encodeURIComponent(cid));
+    if(cid !== S.contractId || !Array.isArray(f.minutes)) return;
+    FLOW.since = typeof f.since === 'number' ? f.since : null; FLOW.cid = cid;
+    FLOW.holes = Array.isArray(f.holes) ? f.holes.filter(h => Array.isArray(h) && h.length === 2 && h.every(Number.isFinite)) : [];
+    FLOW.m = new Map(f.minutes.map(r => [r[0], [r[1], r[2], r[3], r[4]]]));
+    if(indOn.BSV) chart.overrideIndicator({name: 'BSV', extendData: Date.now()});
+  }catch(e){err(e)}
+}
+setInterval(() => {if(document.visibilityState === 'visible' && indOn.BSV) flowFetch()}, 3000);
+
 const chart = klinecharts.init('chart', {styles: STYLES, timezone: LS.get('px.tz', 'America/Chicago')});
 let want = null, restoring = false;
 chart.setSymbol({ticker: '-', pricePrecision: 2, volumePrecision: 0});
@@ -1212,8 +1260,34 @@ $('rsp-list').addEventListener('click', e => {
 });
 R.timer = setInterval(() => {if(document.visibilityState === 'visible') respectFetch()}, RSP_POLL_MS);
 
+/* ---- analyst callouts: GET /api/callouts. Allowlisted fields only; every server string goes through textContent. ---- */
+const FD_POLL_MS = 20000, FD_AGE = s => s < 90 ? s + 's' : s < 5400 ? Math.round(s / 60) + 'm' : (s / 3600).toFixed(1) + 'h';
+async function feedFetch(){
+  const st = $('fd-state'), box = $('fd-list');
+  try{
+    const f = await j('/api/callouts');
+    box.replaceChildren();
+    if(f.status === 'OFF'){st.textContent = 'off'; box.append(mk('p', 'none', 'feed not configured (PX_FEED_URL)')); return}
+    if(f.status !== 'OK'){st.textContent = 'error'; box.append(mk('p', 'none', 'feed unavailable' + (typeof f.code === 'string' ? ' (' + f.code.slice(0, 20) + ')' : ''))); return}
+    st.textContent = f.items.length ? 'newest ' + FD_AGE(f.items[0].age_s) + ' ago' : 'none';
+    if(!f.items.length){box.append(mk('p', 'none', 'no structured callouts in the window')); return}
+    for(const i of f.items){
+      const row = mk('div', 'fdrow');
+      row.append(mk('span', 'age', FD_AGE(i.age_s)), mk('span', '', (i.analyst || i.channel || '?').slice(0, 24)), mk('span', 'ev', String(i.event).replace('_', ' ')));
+      if(i.symbol) row.append(mk('span', '', i.symbol));
+      if(i.side) row.append(mk('span', i.side === 'LONG' ? 'long' : 'short', i.side));
+      for(const [k, lab] of [['entry', 'E'], ['stop', 'SL'], ['tp1', 'T1'], ['tp2', 'T2'], ['tp3', 'T3']]) if(typeof i[k] === 'number') row.append(mk('span', '', lab + ' ' + i[k]));
+      if(typeof i.points === 'number') row.append(mk('span', '', (i.points > 0 ? '+' : '') + i.points + ' pts'));
+      if(i.has_image) row.append(mk('span', 'age', '[chart]'));
+      box.append(row);
+    }
+  }catch(e){st.textContent = 'error'; err(e)}
+}
+feedFetch();
+setInterval(() => {if(document.visibilityState === 'visible') feedFetch()}, FD_POLL_MS);
+
 /* ---- timeframe mini charts: plain canvas candles, last ~60 bars, EMA 8/21/34, the respected level. Prices only. ---- */
-const MN = {open: LS.get('px.minis', true) !== false, tfs: ['5m', '15m', '1h'], unit: {'5m': [2, 5, 300000], '15m': [2, 15, 900000], '1h': [3, 1, 3600000]},
+const MN = {open: LS.get('px.minis', true) !== false, tfs: ['15m', '1h'], unit: {'5m': [2, 5, 300000], '15m': [2, 15, 900000], '1h': [3, 1, 3600000]},
   bars: {}, seq: {}, at: {}, cv: {}, box: {}, px: {}};
 const MN_SHOW = 60, MN_FETCH = 250, MN_MIN_MS = 30000, MN_PER = [8, 13, 21, 34, 55, 89];
 const MN_COL = [EMA_COL[0], '#7fb08a', EMA_COL[1], EMA_COL[2], '#c9a227', '#94a3b8'];   // 8/21/34 as on the main chart; 13/55/89 muted
@@ -1340,6 +1414,59 @@ mnApplyOpen();
 new ResizeObserver(() => {if(MN.open) for(const tf of MN.tfs) mnDraw(tf)}).observe($('mn-body'));
 setInterval(mnTick, MN_MIN_MS);
 
+/* ---- tick charts: GET /api/tickbars. Bars of N trade prints from the live tape; candles plus a buy-minus-sell strip. Numbers only. ---- */
+const TK = {sizes: [], cv: {}, bars: {}, since: {}, box: {}};
+function tkDraw(n){
+  const cv = TK.cv[n]; if(!cv) return;
+  const w = cv.clientWidth, h = cv.clientHeight, dpr = window.devicePixelRatio || 1; if(!w || !h) return;
+  if(cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)){cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr)}
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const all = TK.bars[n] || [], bars = all.slice(-60);
+  if(!bars.length){g.fillStyle = C.text; g.font = `11px ${MONO}`; g.fillText('waiting for prints...', 6, 16); return}
+  const ph = Math.round(h * 0.72), dh = h - ph - 4, bw = w / Math.max(bars.length, 30), PAD = 6;
+  let lo = Infinity, hi = -Infinity, md = 1;
+  for(const b of bars){lo = Math.min(lo, b[3]); hi = Math.max(hi, b[2]); md = Math.max(md, Math.abs(b[6] - b[7]))}
+  const y = p => PAD + (hi - p) / Math.max(hi - lo, 1e-9) * (ph - 2 * PAD);
+  bars.forEach((b, i) => {
+    const x = i * bw + bw / 2, [t, o, hh, l, c, v, buy, sell, gap] = b, col = gap ? '#4b5563' : c >= o ? C.up : C.dn;
+    g.strokeStyle = g.fillStyle = col; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x, y(hh)); g.lineTo(x, y(l)); g.stroke();
+    g.fillRect(x - Math.max(1, bw * 0.3), Math.min(y(o), y(c)), Math.max(2, bw * 0.6), Math.max(1, Math.abs(y(o) - y(c))));
+    if(!gap){const d = buy - sell, dhh = Math.abs(d) / md * (dh - 2); g.fillStyle = d >= 0 ? C.up : C.dn; g.fillRect(x - Math.max(1, bw * 0.3), ph + 2 + (dh - 2 - dhh), Math.max(2, bw * 0.6), Math.max(1, dhh))}
+  });
+}
+function tkMeta(n){
+  const box = TK.box[n]; if(!box) return;
+  const bars = TK.bars[n] || [], last = bars.filter(b => b[9] >= n).slice(-1)[0], f = bars[bars.length - 1];
+  const kids = box.querySelector('.mp'); if(!kids) return;
+  kids.textContent = f ? (f[4] + '  ' + (last ? 'last \u0394 ' + (last[6] - last[7]) : 'building') + (f[9] < n ? '  ' + f[9] + '/' + n : '')) : '';
+}
+async function tkFetch(n){
+  const cid = S.contractId; if(!cid) return;
+  try{
+    const r = await j(`/api/tickbars?contract=${encodeURIComponent(cid)}&n=${n}&limit=70`);
+    if(cid !== S.contractId || !Array.isArray(r.bars)) return;
+    TK.bars[n] = r.bars.filter(b => Array.isArray(b) && b.length >= 10 && b.slice(0, 8).every(Number.isFinite)); TK.since[n] = r.since;
+  }catch(e){TK.bars[n] = []}
+  tkMeta(n); tkDraw(n);
+}
+const tkAll = () => {for(const n of TK.sizes) tkFetch(n)};
+(async () => {
+  try{
+    TK.sizes = ((await j('/api/tickbars/config')).sizes || []).filter(Number.isInteger).slice(0, 4);
+    for(const n of TK.sizes){
+      const box = mk('div', 'mn'); box.style.setProperty('--tfc', C.cyan);
+      const mh = mk('div', 'mh'); mh.append(mk('b', '', n + 't'), mk('span', 'mp', ''));
+      const cv = mk('canvas'); cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', n + ' trade tick chart with buy minus sell volume');
+      box.append(mh, cv); $('tk-body').append(box); TK.cv[n] = cv; TK.box[n] = box;
+    }
+    $('tk-state').textContent = TK.sizes.length ? '' : 'off';
+    tkAll();
+    new ResizeObserver(() => {for(const n of TK.sizes) tkDraw(n)}).observe($('tk-body'));
+    setInterval(() => {if(document.visibilityState === 'visible') tkAll()}, 3000);
+  }catch(e){$('tk-state').textContent = 'unavailable'}
+})();
+
 /* ---- drawing toolbar ---- */
 const TOOLS = [['Trend', 'segment'], ['Ray', 'rayLine'], ['H-line', 'horizontalStraightLine'], ['V-line', 'verticalStraightLine'],
   ['Chan', 'parallelStraightLine'], ['Fib', 'fibonacciLine'], ['Zone', 'zoneBand'], ['Meas', 'measure'], ['Note', 'simpleAnnotation']];
@@ -1396,8 +1523,8 @@ addEventListener('keydown', e => {
 });
 
 /* ---- indicators ---- */
-const INDS = [['VOL', 'VOL', false], ['VWAP', 'VWAP', true], ['EMA', 'EMA 8 21 34', true], ['BOLL', 'BOLL', false], ['RSI', 'RSI', false], ['MACD', 'MACD', false]];
-const indOn = {VOL: true, VWAP: true, EMA: true, ...LS.get('px.ind', {})};
+const INDS = [['BSV', 'BUY/SELL VOL', false], ['VOL', 'VOL (candle colour)', false], ['VWAP', 'VWAP', true], ['EMA', 'EMA 8 21 34', true], ['BOLL', 'BOLL', false], ['RSI', 'RSI', false], ['MACD', 'MACD', false]];
+const indOn = {BSV: true, VOL: false, VWAP: true, EMA: true, ...LS.get('px.ind', {})};
 const MAIN = new Set(['VWAP', 'EMA', 'BOLL']);
 function applyInd(n, on){
   if(on && n === 'EMA') chart.createIndicator({name: 'EMA', paneId: 'candle_pane', calcParams: [8, 21, 34], styles: {lines: EMA_COL.map(color => ({color, size: 1.5, style: 'solid', smooth: false}))}}, true);
@@ -1413,7 +1540,7 @@ for(const [n, l] of INDS){
 $('ind').onchange = e => {const n = e.target.dataset.ind; indOn[n] = e.target.checked; LS.set('px.ind', indOn); applyInd(n, e.target.checked); renderEma()};
 
 /* ---- contract + timeframe (ribbon) ---- */
-const TFS = [['second,15', '15s'], ['minute,1', '1m'], ['minute,5', '5m'], ['minute,15', '15m'], ['minute,30', '30m'], ['hour,1', '1h'], ['hour,4', '4h'], ['day,1', '1D']];
+const TFS = [['second,15', '15s'], ['minute,1', '1m'], ['minute,5', '5m'], ['minute,15', '15m'], ['minute,30', '30m'], ['hour,1', '1h'], ['hour,4', '4h'], ['day,1', '1D']];   // the desk always STARTS on 5m (never restored from a saved choice); switch freely during the session
 if(!TFS.some(t => t[0] === S.tf)) S.tf = 'minute,5';
 for(const [v, l] of TFS){const b = mk('button', '', l); b.dataset.v = v; b.setAttribute('aria-pressed', 'false'); $('tfs').append(b)}
 const syncTf = () => {[...$('tfs').children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.tf))); if(typeof renderRespect === 'function' && typeof R !== 'undefined'){renderRespect(); mnSync()}};
@@ -1434,10 +1561,10 @@ function load(){
   const o = $('c').selectedOptions[0]; if(!o) return;
   const [type, span] = S.tf.split(',');
   const tick = +o.dataset.tick, dec = (o.dataset.tick.split('.')[1] || '').length;
-  LS.set('px.contract', o.value); LS.set('px.tf', S.tf);
+  LS.set('px.contract', o.value);
   const sym = want?.ticker !== o.value, pp = chart.getPeriod(), per = pp?.type !== type || pp?.span !== +span;
   cur = {ticker: o.value, tick, tickValue: o.dataset.tv === '' ? null : +o.dataset.tv, name: o.dataset.name, dec};
-  S.contractId = o.value; syncTf(); deskSig = ''; reactSig = ''; respectLoad(sym);
+  S.contractId = o.value; FLOW.since = null; FLOW.holes = []; FLOW.m = new Map(); for(const n of TK.sizes){TK.bars[n] = []; tkMeta(n); tkDraw(n)}; syncTf(); deskSig = ''; reactSig = ''; respectLoad(sym);
   want = {ticker: o.value, type, span: +span}; lastPx = null; $('price').textContent = 'NA'; $('price').className = 'price';
   if(sym) chart.setSymbol({ticker: o.value, pricePrecision: dec, volumePrecision: 0});
   if(per) chart.setPeriod({span: +span, type});

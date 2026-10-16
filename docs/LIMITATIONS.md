@@ -119,3 +119,5 @@ POST routes do not, for the reason given above.
 - `/state.json` and `/contracts` still forward some raw gateway fields (quote timestamps, contract id fallback names) that should be type-validated.
 - A position held at restart that was placed by hand is reported (`EXTERNAL_UNPROTECTED`) but not protected.
 - Scale-in is not supported: a second entry on a contract with a position, working order or entry in flight is refused.
+
+- **`live: true` on bars is refused for the Combine account** (verified 2026-10-16: `success:false, errorCode:1`; `live: false` returns bars that match the market-hub quote to the tick). `PX_LIVE_DATA=1` therefore blanks ATR, VWAP and sizing (unreadable inputs size to 0). One `live_data()` in `px_client.py` now feeds the chart, digest, respect scan and MCP; before this the digest and MCP hardcoded `False`. Likely needs a live market-data entitlement on the account; unconfirmed.

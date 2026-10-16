@@ -16,6 +16,7 @@ from fastmcp import FastMCP
 from fastmcp.server.auth import AccessToken, TokenVerifier
 
 import px_digest
+from px_client import live_data
 from px_state import order_view, position_view
 from px_time import parse_ts
 
@@ -148,7 +149,7 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
         from datetime import datetime, timedelta, timezone
         now = datetime.now(timezone.utc)
         secs = {1: 1, 2: 60, 3: 3600, 4: 86400}[unit] * n
-        raw = await st().client.bars({"contractId": contract, "live": False, "unit": unit, "unitNumber": n,
+        raw = await st().client.bars({"contractId": contract, "live": live_data(), "unit": unit, "unitNumber": n,
                                       "limit": limit, "startTime": (now - timedelta(seconds=max(secs * limit * 3, 864000))).isoformat(),
                                       "endTime": now.isoformat(), "includePartialBar": True})
         rows = []
@@ -163,7 +164,7 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
         """Find contracts by symbol text (e.g. MES). Returns id, name, tick size and tick value."""
         if not re.fullmatch(r"[A-Za-z0-9 ]{1,20}", text or ""):
             raise ValueError("bad search text")
-        cs = await st().client.search_contracts(text, live=False)
+        cs = await st().client.search_contracts(text, live=live_data())
         return [{"id": c["id"], "name": _safe_name(c.get("name"), c["id"]), "tick": _n(c.get("tickSize")), "tick_value": _n(c.get("tickValue"))}
                 for c in cs if CONTRACT_RE.match(str(c.get("id", "")))]
 

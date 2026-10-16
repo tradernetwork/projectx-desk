@@ -10,9 +10,13 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 
+import px_anchor
+import px_feed
+import px_gex
+import px_flow
 import sizing
 from px_levels import atr_series, bounce_stats, ema_stack, percentile_rank, placebo_rate, verdict
-from px_client import PXAuthError, PXError, PXNotConfigured, PXRateLimited
+from px_client import live_data, PXAuthError, PXError, PXNotConfigured, PXRateLimited
 from px_state import order_view, position_view, ts_ms
 from px_time import CT, parse_ts, session_start
 
@@ -43,7 +47,7 @@ async def indicators(app, contract_id):
     try:
         now = datetime.now(timezone.utc)
         raw = await app.state.client.bars({
-            "contractId": contract_id, "live": False, "unit": BAR_UNIT, "unitNumber": BAR_N, "limit": IND_BARS,
+            "contractId": contract_id, "live": live_data(), "unit": BAR_UNIT, "unitNumber": BAR_N, "limit": IND_BARS,
             "startTime": (now.replace(microsecond=0) - timedelta(days=4)).isoformat(),
             "endTime": now.isoformat(), "includePartialBar": True})
         bars = list(reversed(raw))  # API is newest-first
@@ -169,7 +173,7 @@ async def _tf_bars(app, cid, tf):
             return hit["bars"]
     end = datetime.now(timezone.utc)
     start = end - timedelta(seconds=min(max(per * RESPECT_LIMIT * 3, 10 * 86400), 3650 * 86400))
-    raw = await st.client.bars({"contractId": cid, "live": False, "unit": unit, "unitNumber": n, "limit": RESPECT_LIMIT,
+    raw = await st.client.bars({"contractId": cid, "live": live_data(), "unit": unit, "unitNumber": n, "limit": RESPECT_LIMIT,
                                 "startTime": start.isoformat(), "endTime": end.isoformat(), "includePartialBar": False})
     rows = _bar_rows(raw)
     if len(cache) >= 64:
@@ -245,6 +249,19 @@ async def respect_result(app, cid):
         return res
 
 
+def flow_lines(f):
+    """Real buy/sell volume from the trade tape. Coverage only starts when the desk subscribed; incomplete windows say so."""
+    if not f:
+        return ["FLOW: NA (no trade tape yet; ProjectX has no tick history, so this starts when the desk subscribes)"]
+    try:
+        since = datetime.fromtimestamp(f["since"] / 1000, CT).strftime("%H:%M")
+    except (OverflowError, OSError, ValueError, TypeError):
+        since = "NA"
+    parts = [f"{w}m buy={d['buy']} sell={d['sell']} delta={d['delta']}" + ("" if d["complete"] else " INCOMPLETE")
+             for w, d in sorted(f["w"].items())]
+    return [f"FLOW: since={since}CT " + " | ".join(parts), "FLOW_NOTE: aggressor side from the tape; delta = buy - sell; INCOMPLETE = coverage or a reconnect gap inside the window"]
+
+
 def respect_lines(r):
     """Digest lines for a sanitized scan: one per level, a NA line for an empty timeframe, one fixed footer."""
     L = []
@@ -266,7 +283,18 @@ def respect_lines(r):
     return L
 
 
-def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pct, stop_k, remaining, chosen, scale, pctile, loss_cap=None):
+def anchor_levels(respect):
+    """Flatten the sanitized respect scan into px_anchor's input. Only the scanner's own levels: GEX is never an input."""
+    out = []
+    for tf, d in ((respect or {}).get("tfs") or {}).items():
+        for lv in (d or {}).get("levels") or []:
+            if lv.get("price") is not None:
+                out.append({"id": lv["id"], "tf": tf, "price": lv["price"], "verdict": lv.get("verdict"),
+                            "family": lv.get("family"), "stable": lv.get("stable")})
+    return out
+
+
+def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pct, stop_k, remaining, chosen, scale, pctile, loss_cap=None, levels=None, rooms=None):
     """The always-visible size box. Every answer carries WHY: ATR and ADX inputs, the scaler cuts, the stop
     math, what risk alone would allow versus the cap, and whether the instrument is allowed at all."""
     if not (rec and ref and atr_value and remaining and remaining > 0 and chosen):
@@ -275,6 +303,17 @@ def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pc
         tick = float(rec["tickSize"])
         stop_t = sizing.stop_from_atr(atr_value, tick, stop_k, limits.min_stop_ticks)
         budget = chosen * scale["multiplier"]
+        # Level-anchored stop and target. Only on the default 1.5x chip: picking 1.0x/2.0x or stepping ticks is a manual
+        # override and is respected as plain ATR. The anchor is used only if it stays within PX_MAX_STOP_TICKS and the
+        # risk budget (at qty cap 1 a wider stop means more dollars, never fewer contracts), and is otherwise dropped
+        # for the plain ATR stop, so it can never create a refusal the base stop would not have had.
+        anchor = None
+        if levels is not None and stop_k == 1.5:
+            a = px_anchor.anchor_stop_target("LONG" if side == "long" else "SHORT", ref, atr_value, tick, float(rec["tickValue"]),
+                                             levels, k_base=stop_k, min_ticks=limits.min_stop_ticks)
+            lc = min(budget, loss_cap) if loss_cap else budget
+            if a.ok and a.stop_ticks >= stop_t and a.stop_ticks <= limits.max_stop_ticks and a.risk_per_contract <= lc:
+                anchor, stop_t = a, a.stop_ticks
         loss_capped = bool(loss_cap and loss_cap < budget)
         if loss_capped:
             budget = loss_cap
@@ -303,8 +342,13 @@ def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pc
         if loss_capped:
             why.append(f"Last trade lost: risk capped at ${loss_cap:,.2f}, what that trade risked. No sizing up to chase.")
             why_s.append("Last trade lost: risk capped at what it risked. No sizing up to chase.")
-        why.append(f"Stop: {stop_k:g} x ATR {atr_value:.2f}pt = {stop_t}t = ${rpc:,.2f} per {root}")
-        why_s.append(f"Stop: {stop_k:g} x ATR {atr_value:.2f}pt = {stop_t}t")
+        if anchor and anchor.anchored_to:
+            at = anchor.anchored_to
+            why.append(f"Stop: tucked beyond respected {at['tf']} {at['id']} (as of this refresh): {stop_t}t = {anchor.k_eff:.2f} x ATR {atr_value:.2f}pt = ${rpc:,.2f} per {root}")
+            why_s.append(f"Stop: beyond respected {at['tf']} {at['id']}, {anchor.k_eff:.2f} x ATR = {stop_t}t")
+        else:
+            why.append(f"Stop: {stop_k:g} x ATR {atr_value:.2f}pt = {stop_t}t = ${rpc:,.2f} per {root}")
+            why_s.append(f"Stop: {stop_k:g} x ATR {atr_value:.2f}pt = {stop_t}t")
         if d["refused"]:
             why.append(f"REFUSED: one {root} risks ${rpc:,.2f}, more than ${budget:,.2f}. Never rounded up.")
             why_s.append(f"REFUSED: one {root} risks more than the budget. Never rounded up.")
@@ -317,7 +361,20 @@ def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pc
         if not allowed:
             why.append(f"{root} is not in PX_ALLOWED_ROOTS: STAGE will refuse")
             why_s.append(f"{root} is not allowed: STAGE will refuse")
-        return {"status": "OK", "root": root, "allowed": allowed, "side": side, "entry": _n(ref), "stop": _n(stop_px),
+        risk_usd = d["total_risk_dollars"]
+        proj = px_anchor.projection(rooms[0], rooms[1], risk_usd) if rooms and not d["refused"] else {"drawdown_left": None, "daily_left": None}
+        heat = px_anchor.heat(rooms[2], risk_usd, rooms[3]) if rooms and not d["refused"] else {"total_usd": None, "pct": None}
+        tgt = {}
+        if anchor and anchor.target_price is not None:
+            tl = anchor.target_level or {}
+            tgt = {"target": _n(anchor.target_price), "target_level": f"{tl.get('tf')} {tl.get('id')}" if tl else None,
+                   "rr": _n(anchor.rr, 2), "breakeven_win_rate": _n(anchor.breakeven_win_rate, 1)}
+        extra = {"stop_mode": "ANCHORED" if (anchor and anchor.anchored_to) else "ATR" if stop_k == 1.5 else "MANUAL",
+                 "stop_anchor": (f"{anchor.anchored_to['tf']} {anchor.anchored_to['id']}" if anchor and anchor.anchored_to else None),
+                 "stop_k_eff": _n(anchor.k_eff, 2) if anchor else _n(stop_k, 2),
+                 "drawdown_left": _n(proj["drawdown_left"]), "daily_left": _n(proj["daily_left"]),
+                 "heat_usd": _n(heat["total_usd"]), "heat_pct": _n(heat["pct"], 1)} | tgt
+        return extra | {"status": "OK", "root": root, "allowed": allowed, "side": side, "entry": _n(ref), "stop": _n(stop_px),
                 "stop_ticks": stop_t, "stop_points": _n(stop_pts), "budget_usd": _n(budget),
                 "budget_chosen_usd": _n(chosen), "risk_pct": risk_pct, "stop_atr_k": stop_k,
                 "contracts": d["contracts"], "contracts_by_risk": by_risk, "cap": cap, "capped": by_risk > cap and not d["refused"],
@@ -465,6 +522,10 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.05, stop_k
             respect = await respect_result(app, contract_id)
         except Exception:  # noqa: BLE001
             respect = None
+    flow = px_flow.summary(live.flow, contract_id, time.time() * 1000) if contract_id else None
+    callouts = await px_feed.feed_result(app)       # advisory, never raises
+    # GEX (display only, never reaches sizing/guard); px_gex.gex_result never raises
+    gex = await px_gex.gex_result(app, contract_id, px_gex.quote_last(q)) if contract_id else {"status": "UNAVAILABLE"}
     pnl = live.day_pnl(now)
     remaining, daily_room = guard.budget(now)        # the guard's own number, including open stop risk
     ref = None
@@ -507,7 +568,8 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.05, stop_k
         "levels": _levels_vs_live(ind.get("levels", []), q),
         "size": size_idea(lim, contract_id, rec, side, _n(ref, 4), ind.get("atr"), ind.get("adx"), risk_pct, stop_k, remaining,
                           guard.risk_dollars_for(risk_pct, now), scale_info, ind.get("atr_pctile"),
-                          guard.behavior(now).get("risk_cap")),
+                          guard.behavior(now).get("risk_cap"), levels=anchor_levels(respect) if respect else None,
+                          rooms=((guard.dd_room() or 0) - guard._open_risk() if guard.dd_room() is not None else None, daily_room, guard._open_risk(), guard.dd_room())),
         "ticket": ticket,
         "risk": {"daily_limit": _n(lim.daily_loss_limit), "daily_room": _n(daily_room), "dd_buffer": _n(guard.dd_room()),
                  "remaining": _n(remaining), "binding": ("DAILY" if daily_room is not None and remaining == daily_room
@@ -519,8 +581,10 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.05, stop_k
         "kpi": kpis(live, now),
         "manage": manage_block(guard, live, contract_id, rec, q, ind) if q else None,
         "trade": active_trade(guard),
-        "gex": (getattr(st, "gex", None) or {"status": "UNAVAILABLE"}),
+        "gex": gex,
         "respect": respect,
+        "callouts": callouts,
+        "flow": flow,
         "positions": [position_view(p) for p in live.positions.values()],
         "orders": [order_view(o) for o in live.orders.values()],
         "fills_today": len(live.trades) if live.trades_seeded else None,
@@ -612,6 +676,12 @@ def format_digest(s) -> str:
                      + (f" risk_allows={z['contracts_by_risk']} cap={z['cap']}" if z.get("capped") else ""))
             if "r1" in z:
                 L.append(f"SIZE_R: 1R={_f(z['r1'])} 2R={_f(z['r2'])} 3R={_f(z['r3'])}")
+            if "stop_mode" in z:
+                L.append(f"SIZE_STOP: mode={z['stop_mode']} anchor={_f(z.get('stop_anchor'))} k_eff={_f(z.get('stop_k_eff'))}")
+                L.append(f"SIZE_TARGET: price={_f(z.get('target'))} level={_f(z.get('target_level'))} rr={_f(z.get('rr'))} "
+                         f"breakeven_win_rate={_f(z.get('breakeven_win_rate'))}%")
+                L.append(f"SIZE_IF_STOPPED: drawdown_room_left={_f(z.get('drawdown_left'))} daily_room_left={_f(z.get('daily_left'))} "
+                         f"heat_after_usd={_f(z.get('heat_usd'))} heat_after_pct_of_room={_f(z.get('heat_pct'))}")
     else:
         L.append(f"SIZE: {z.get('status', 'NA')}")
     t = s.get("ticket")
@@ -652,9 +722,11 @@ def format_digest(s) -> str:
     L.append(f"RISK_OPEN: contracts={r['open_contracts']}/{r['max_contracts']} orders_today={r['orders_today']}/{r['orders_max']}")
     if s.get("respect"):
         L.extend(respect_lines(s["respect"]))
+    L.extend(flow_lines(s.get("flow")))
+    L.extend(px_feed.feed_lines(s.get("callouts")))
     g = s["gex"]
     L.append(f"GEX: status={_f(g.get('status'))}" + ("".join(f" {k}={_f(v)}" for k, v in g.items()
-                                                          if k in ("method", "basis", "approximate", "flip_split"))))
+                                                          if k in ("source", "method", "basis", "approximate", "flip_split", "age_s", "code"))))
     for n, lv in enumerate(g.get("levels", []) or [], 1):
         L.append(f"GEX_{n}: {lv.get('name')} {_f(lv.get('price'))} {_f(lv.get('pts'))}pt {_f(lv.get('ticks'))}t {lv.get('side')}")
     L.append("GEX_NOTE: positioning not targets; flip is regime boundary")

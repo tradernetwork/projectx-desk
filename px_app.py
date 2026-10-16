@@ -20,11 +20,12 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Str
 from fastapi.staticfiles import StaticFiles
 
 import px_digest
+import px_feed
 import px_mcp
 import px_net
 from px_guard import Guard, GuardError
 from px_limits import Limits
-from px_client import PXAuthError, PXClient, PXError, PXNotConfigured, PXRateLimited
+from px_client import live_data, PXAuthError, PXClient, PXError, PXNotConfigured, PXRateLimited
 from px_hub import SignalRHub
 from px_state import DOWN, RESYNC, LiveState, order_view, position_view, ts_ms
 from px_time import session_start
@@ -37,9 +38,7 @@ CONTRACT_RE = re.compile(r"^CON\.[A-Za-z0-9._]{1,40}$")
 UNIT_SECS = {1: 1, 2: 60, 3: 3600, 4: 86400, 5: 604800, 6: 2592000}
 
 
-def _live_data():
-    """retrieveBars/Contract `live`: sim vs live data subscription. Verify against the real account."""
-    return os.getenv("PX_LIVE_DATA", "0") == "1"
+_live_data = live_data
 
 
 def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, connect=True, guard=None, limits=None, mcp_token=None,
@@ -62,7 +61,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         m = market_hub or SignalRHub(c, "market")
         u = user_hub or SignalRHub(c, "user")
         app.state.client, app.state.market, app.state.user = c, m, u
-        app.state.live = LiveState(m, u)
+        app.state.live = LiveState(m, u, flow_path=(os.getenv("PX_FLOW_FILE") or str(pathlib.Path(__file__).parent / "data" / "flow.json")) if connect else None)
         app.state.csrf = secrets.token_urlsafe(32)
         app.state.guard = guard or Guard(c, app.state.live, limits or Limits.from_env(), user_hub=u)
         app.state.sse = 0
@@ -180,6 +179,31 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         except px_digest.RespectError as e:
             hdr = {"Retry-After": "30"} if e.code == "RATE_LIMITED" else None
             return JSONResponse({"error": e.code}, status_code=429 if e.code == "RATE_LIMITED" else 502, headers=hdr)
+
+    @app.get("/api/callouts")
+    async def callouts(request: Request):
+        """Read-only analyst futures callouts: allowlisted fields only, no message text. Cached ~20 s."""
+        return await px_feed.feed_result(request.app)
+
+    @app.get("/api/flow")
+    async def flow(request: Request, contract: str):
+        """Real buy/sell volume per minute from the trade tape. Coverage starts at `since`; `partial` minutes are unreliable."""
+        cid = contract_arg(contract)
+        return request.app.state.live.flow.snapshot(cid)
+
+    @app.get("/api/tickbars/config")
+    async def tickbars_config(request: Request):
+        """Configured tick-bar sizes (prints per bar). Numbers only."""
+        return {"v": 1, "sizes": list(request.app.state.live.ticks.sizes)}
+
+    @app.get("/api/tickbars")
+    async def tickbars(request: Request, contract: str, n: int, limit: int = 500):
+        """Tick bars built from the live trade tape: [t,o,h,l,c,v,buy,sell,gap,n] rows, forming bar last. `n` must be configured."""
+        cid = contract_arg(contract)
+        ticks = request.app.state.live.ticks
+        if n not in ticks.sizes:
+            return JSONResponse({"error": "bad_n"}, status_code=400)
+        return ticks.snapshot(cid, n, limit)
 
     @app.get("/ticks")
     async def ticks(request: Request, contract: str):

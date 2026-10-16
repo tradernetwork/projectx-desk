@@ -12,7 +12,8 @@ $EDITOR .env.projectx
 python -m projectx_desk                           # loads .env.projectx automatically; existing shell variables win
 ```
 
-At minimum set `PROJECTX_USERNAME`, `PROJECTX_API_KEY`, `PX_ACCOUNT_ID`, and leave `PX_ACCOUNT_KIND=sim`.
+At minimum set `PROJECTX_USERNAME`, `PROJECTX_API_KEY`, `PX_ACCOUNT_ID`, `PX_MLL_FLOOR` (the firm's liquidation floor: it is the base the desk sizes from, and an
+unreadable balance refuses opens), `PX_DAILY_LOSS_LIMIT`, `PX_BRACKET_MODE` and `PX_NO_NEW_AFTER`, and leave `PX_ACCOUNT_KIND=sim`.
 
 The API logs in with a **pair**, not the key alone. `PROJECTX_USERNAME` is the username you sign in to the firm's platform with
 (not your email, not an account name or id). The key-generation screen does not show it, so use your login name. A wrong username
@@ -24,7 +25,10 @@ its default.
 
 | Setting | What it means |
 |---|---|
-| `PX_DAILY_LOSS_LIMIT`, `PX_DRAWDOWN_BUFFER` | dollars of room you type in. The desk takes the smaller of daily room and buffer as your budget. It does not read your firm's numbers. |
+| `PX_DAILY_LOSS_LIMIT` | dollars of daily room, a number you type (the desk does not read your firm's). |
+| `PX_MLL_FLOOR` | the firm's liquidation floor. Drawdown room is the live balance minus it, and 1R is a percentage of that room (never of the account balance). |
+| `PX_DRAWDOWN_BUFFER` | a typed drawdown room, used only when no `PX_MLL_FLOOR` is set. |
+| `PX_MAX_STOP_TICKS` | the largest stop the guard accepts, in ticks (default 200; blank or garbled refuses every stop). |
 | `PX_BRACKET_MODE` | `position` (stop sent after the fill, simulated accounts) or `oco` (native atomic bracket). Must match your account's setting. Blank refuses opens. |
 | `PX_NO_NEW_AFTER` | `HH:MM` Central Time, at or before 17:00. Blank refuses opens. |
 | `PX_MAX_QTY_ORDER` / `_SYMBOL` / `_TOTAL` | contracts per order, per symbol, in total (default 1 / 2 / 3). |

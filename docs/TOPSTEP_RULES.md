@@ -71,4 +71,5 @@ the DLL optional).
 ## Gaps this table leaves for you
 
 The desk does not track the end-of-day MLL trail, the profit target, either consistency percentage, payout eligibility, the
-scaling plan, news events, or holiday early closes. Those are listed in [LIMITATIONS.md](LIMITATIONS.md).
+scaling plan or news events, and it ships no holiday calendar: list early-close dates yourself in `PX_EARLY_CLOSES` (see
+[LIMITATIONS.md](LIMITATIONS.md)). Those are listed in [LIMITATIONS.md](LIMITATIONS.md).

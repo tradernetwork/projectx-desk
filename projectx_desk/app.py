@@ -47,7 +47,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
     """Build the app. Tests inject a fake client / hubs and set connect=False."""
     problem = px_net.bind_problem(os.getenv("PX_HOST", "127.0.0.1"), operator_token or os.getenv("PX_OPERATOR_TOKEN"),
                                   os.getenv("PX_ALLOWED_HOSTS"), px_mcp.weak_token_reason)
-    if problem:       # same rule as main(), so an alternate launcher (uvicorn px_app:...) cannot skip it
+    if problem:       # same rule as main(), so an alternate launcher (uvicorn projectx_desk.app:...) cannot skip it
         raise SystemExit(problem)
     hosts = set(allowed_hosts) if allowed_hosts else px_net.allowed_hosts(_port(), os.getenv("PX_ALLOWED_HOSTS"))
     origins = set(allowed_origins) if allowed_origins else px_net.allowed_origins(hosts, os.getenv("PX_ALLOWED_ORIGINS"))

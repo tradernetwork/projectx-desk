@@ -93,3 +93,12 @@ async def test_no_room_left_above_the_floor_refuses(tmp_path):
 async def test_typed_buffer_still_works_without_a_floor(tmp_path):
     g, live, clock, gw = build2(tmp_path)
     assert g.dd_room() == 2000.0
+
+
+def test_max_stop_ticks_is_a_real_setting_that_fails_closed(monkeypatch):
+    from projectx_desk.limits import Limits
+    monkeypatch.delenv("PX_MAX_STOP_TICKS", raising=False)
+    assert Limits.from_env().max_stop_ticks == 200
+    for raw, want in (("50", 50), ("", 0), ("abc", 0), ("-5", 0), ("nan", 0), ("inf", 0)):
+        monkeypatch.setenv("PX_MAX_STOP_TICKS", raw)
+        assert Limits.from_env().max_stop_ticks == want, raw

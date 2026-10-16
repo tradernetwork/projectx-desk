@@ -10,6 +10,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt
 pytest -q                      # offline: runs against the mock gateway; no broker, no credentials. Python 3.10+
 ./run_dev.sh                   # offline desk + mock gateway: http://127.0.0.1:8613/?ai=1
+python scripts/screenshots.py  # regenerates docs/img from the OFFLINE mock desk (needs requirements-screenshots.txt + playwright install chromium)
 ```
 
 `python -m projectx_desk` loads `.env.projectx` first (shell variables win; only key names are printed).

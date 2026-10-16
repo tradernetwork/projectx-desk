@@ -20,7 +20,22 @@ defaults to MES, MNQ, MCL, MGC).
 If `contracts` is 0 the answer is **REFUSED (granularity)**: one contract risks more than the budget. It is never
 rounded up to 1. The trader's options are shown (tighter stop, the micro, or skip), not applied.
 
+## Level-anchored stop and target
+
+On the default 1.5x chip only, if a *respected* level (the scanner's `ABOVE_RANDOM` verdict, never GEX) lies adverse to entry between 1.5x and 2.0x
+ATR away, the stop tucks just beyond it (the level minus the larger of 2 ticks and 0.10 ATR). It is never tighter than 1.5x ATR and never wider than 2.0x
+ATR, and it is used only if it stays within `PX_MAX_STOP_TICKS` and the risk budget; otherwise the plain ATR stop stands. The contract count is then
+floored from whatever stop results, so a wider stop means fewer contracts. At the quantity cap of 1 it means more dollars at risk, bounded by the budget.
+Picking 1.0x or 2.0x, or stepping the stop by ticks, is a manual override and bypasses the anchor. The target is the nearest respected level on the
+favourable side at 1R or better, shown with its R:R and the win rate needed to break even; if no level qualifies, no target is shown. The size box also
+shows the drawdown and daily room left if the stop fills. The respected-level scan is history, not a forecast, and many of its verdicts rest on small
+samples: treat an anchored stop as a hint about where price has reacted before. See `docs/DECISIONS.md` Round 6.
+
 ## Reduce-only scalers (hypotheses, untested)
+
+> **Heads up: the ATR cut double-counts.** The stop is already `k x ATR`, so volatility is priced into the dollars per contract. Cutting the budget
+> by x0.67 on top of a wide stop means a trade that fits your chosen risk (for example one MES at $80 against a $100 budget) is refused as GRANULARITY
+> on exactly the volatile days. If you see that, set `PX_SIZE_SCALERS=0`: it switches off both cuts and sizes from the risk you chose.
 
 ADX and ATR can only ever shrink the risk you chose, never grow it, and unknown inputs shrink it too:
 

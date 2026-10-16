@@ -38,9 +38,10 @@ without `PX_OPERATOR_TOKEN` (32+ characters) and `PX_ALLOWED_HOSTS`. The token i
 anything beyond a network you fully control (see [DEPLOY.md](DEPLOY.md)). There is no rate limit on login attempts beyond the
 token's length. If you front a loopback-bound desk with a reverse proxy, set the token too: the refusal only triggers on the bind.
 
-**P&L and drawdown are realised-only and static.** Daily P&L excludes unrealised P&L. `PX_DRAWDOWN_BUFFER` is a number you
-type; it does not track your firm's trailing floor, your high-water mark, or a consistency rule. A large open loser is not
-counted until it closes. Treat the budget as an upper bound that you keep updated by hand.
+**P&L is realised-only, and the floor is yours to maintain.** Daily P&L excludes unrealised P&L. With `PX_MLL_FLOOR` set, drawdown room is the
+live balance minus the floor, so it follows the account, but the desk does not compute Topstep's end-of-day trailing floor, its lock, your
+high-water mark or a consistency rule: you update the floor. Without it, `PX_DRAWDOWN_BUFFER` is a number you type. A large open loser is not
+counted until it closes, except through its stop risk. Treat the budget as an upper bound that you keep updated by hand.
 
 **A stop is sent after the first fill event, not with the entry** (in `position` bracket mode). If the user hub is down at
 fill time, no stop is sent and no watchdog runs. In `oco` mode the bracket is atomic. The ticket says

@@ -24,6 +24,12 @@ def _f(name, default):
         return 0.0  # a garbled limit must refuse, not default open
 
 
+def _ticks(name, default):
+    """A whole-number tick cap: unset = the default; blank, garbled, negative or non-finite = 0, which refuses every stop (fail closed)."""
+    v = _f(name, default)
+    return int(v) if v == v and v not in (float("inf"), float("-inf")) and v >= 0 else 0
+
+
 def _rail(name, default):
     """A behavioural rail: blank, garbled or negative falls back to the DEFAULT (never silently off).
     Only an explicit `0` turns the rail off."""
@@ -122,6 +128,7 @@ class Limits:
             flat_by=os.getenv("PX_FLAT_BY") or None,
             early_closes=os.getenv("PX_EARLY_CLOSES", ""),
             mll_floor=_f("PX_MLL_FLOOR", 0),
+            max_stop_ticks=_ticks("PX_MAX_STOP_TICKS", 200),
             **d,
         )
 

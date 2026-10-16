@@ -6,6 +6,10 @@ the levels from whatever GEX source you use.
 
 GEX marks positioning, not targets. The flip is a regime boundary, not a forecast.
 
+![GEX flip, pin and walls drawn on the chart as labelled dashed lines](img/ui-chart-gex.png)
+
+<sub>Offline practice market with a fake GEX feed: the flip, the pin and a wall as labelled lines on the futures chart.</sub>
+
 ## Inputs
 
 A levels dict: `spot`, `flip` (or `flip_gex` and `flip_apex` if your source gives two), `pin`, `walls` (a list of
@@ -35,4 +39,7 @@ the tick size and the age of the data in seconds.
 
 - Dealer-gamma sources are computed on 0DTE-inclusive index and ETF option chains, not on the futures options themselves, so the levels are a translation, not a measurement of the futures book.
 - The ETF ratio check uses hardcoded nominal ratios that drift; a false refusal is possible, and a refusal is the safe failure.
-- This module does not fetch anything. Wire your own provider.
+- This module (`gex_futures.py`) does not fetch anything. `projectx_desk/gex.py` is the provider the desk uses: it pulls levels from the TraderDaddy
+  API (`PX_GEX_KEY`; see `.env.projectx.example`), tries the preferred source then the fallback in the table above, converts them here, and draws them on
+  the chart and in `/ai/digest`. The levels are display only: they never feed sizing, stops or targets. The API key is shared and limited to 30 requests a
+  minute, so a failed refresh keeps serving the last good levels (bounded by `PX_GEX_MAX_AGE_S`) instead of blanking the chart.

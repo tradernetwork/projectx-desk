@@ -60,7 +60,10 @@ One idea per line, fixed key order, `KEY: k=v`, enums uppercase, units suffixed 
 
 Key lines: `MODE`, `FEED`, `CONTRACT`, `QUOTE`, `VWAP`, `SESSION`, `IND` (ATR, ADX), `EMA`, `LEVEL` (reaction history with a
 random-line baseline), `SIZE_*` (the size and `SIZE_WHY` reasons), `TICKET`, `KPI`, `BEHAVIOR`, `MANAGE` and
-`MANAGE_SUGGEST` (open R and stop suggestions), `TRADE`, `RISK_*`, `GEX`, `POS`, `ORD`, `ACTIONS`, `RULE`.
+`MANAGE_SUGGEST` (open R and stop suggestions), `TRADE`, `RISK_*`, `FLOW` (real buy and sell volume from the trade tape, with `INCOMPLETE` where the tape was not being received), `CALLOUTS` and
+`CALLOUT_n` (analyst futures callouts: numbers and enums only, never their text), `GEX`, `POS`, `ORD`, `ACTIONS`, `RULE`. `SIZE_STOP`, `SIZE_TARGET` and
+`SIZE_IF_STOPPED` show whether the stop was tucked beyond a respected level, the nearest respected level at 1R or better with its R:R, and the room left
+if the stop fills.
 
 All numbers below come from the bundled mock gateway: synthetic data, not a result.
 

@@ -278,3 +278,6 @@ Everything below was reproduced before it was fixed and has a regression test.
 - **Not changed, on purpose:** the bracket mode. Native OCO on entry needs the TopstepX account's own bracket setting to be Auto OCO
   (the API cannot read it), and a wrong `PX_BRACKET_MODE` creates an order the gateway rejects but still books. It stays an explicit,
   human-set value, to be proven with one watched sim order.
+- **GRANULARITY refusals on volatile days were the ATR scaler, not the rule.** At ATR in the 99th percentile the 1.5x ATR stop already cost $80 per
+  MES, and the untested x0.67 cut then shrank a $100 budget to $67, so one contract could never fit. The "never round up" rule is unchanged; the
+  owner's config now sets `PX_SIZE_SCALERS=0` (documented in `docs/SIZING.md`). The scalers stay available, default on, for anyone who wants them.

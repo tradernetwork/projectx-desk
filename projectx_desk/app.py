@@ -82,6 +82,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             yield
             if deadline is not None:
                 deadline.cancel()
+        app.state.live.flow.save()               # a clean stop must not lose the last 30 s of tape (the file is rewritten every 30 s)
         for h in (m, u):
             await h.stop()
         if client is None:

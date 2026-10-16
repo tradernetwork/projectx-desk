@@ -113,3 +113,32 @@ curl -s -o /dev/null -w "%{http_code}\n" http://<host>:8600/healthz             
 curl -s -o /dev/null -w "%{http_code}\n" http://<host>:8600/state.json                   # 401
 curl -s -o /dev/null -w "%{http_code}\n" -u me:$PX_OPERATOR_TOKEN http://<host>:8600/state.json   # 200
 ```
+
+## Keeping it running on your own Linux machine (systemd user service)
+
+The desk records the trade tape for the buy/sell volume bars and the tick charts, and ProjectX has no tick history, so **every minute the
+desk is not running is a hole you cannot backfill**. Run it as a user service so closing a terminal or an editor session does not stop
+it. Save as `~/.config/systemd/user/projectx-desk.service` (adjust the paths), then
+`systemctl --user daemon-reload && systemctl --user enable --now projectx-desk.service` (and `loginctl enable-linger $USER` to keep it
+across logouts):
+
+```
+[Unit]
+Description=ProjectX Desk
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/path/to/projectx-desk
+ExecStart=/path/to/projectx-desk/.venv/bin/python -m projectx_desk
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target
+```
+
+It keeps loading `.env.projectx` from the checkout root, and a clean stop saves the tape (`data/flow.json`). Logs:
+`journalctl --user -u projectx-desk -f`. This is the same machine you trade from, so it stays inside Topstep's own-device rule.

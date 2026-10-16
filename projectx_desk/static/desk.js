@@ -767,14 +767,9 @@ function announce(){
 
 /* ================= actions: stage / place / halt / flatten / reconcile ================= */
 let staging = false;
-$('stage-btn').onclick = async () => {
-  const z = S.ai && S.ai.size; if(!z || z.status !== 'OK' || z.refused || z.allowed === false) return;
-  const cid = await sizeContract();
-  if(S.aiKey !== JSON.stringify({cid, side: S.side, stopK: S.stopK, riskPct: S.riskPct})){   // the chips moved since this size was computed
-    $('msg').textContent = 'Size box is updating for your new selection. Check it, then STAGE again.'; schedule(0); return;
-  }
+async function doStage(body, cid){        // ONE staging path for the STAGE button and the analyst-callout button: same server checks, same ticket
   staging = true; renderTicketMeta();
-  const r = await post('/api/preview', {contract: cid, side: S.side, stop_ticks: z.stop_ticks, risk_pct: S.riskPct, order_type: 'market'});
+  const r = await post('/api/preview', body);
   staging = false;
   S.placed = null;
   if(!r.ok){S.ticket = {ticket_id: null, error: detailOf(r), failed: []}}
@@ -793,6 +788,14 @@ $('stage-btn').onclick = async () => {
   }
   renderAll(); schedule(0);
   if(S.ticket && S.ticket.ticket_id) say('p', 'Ticket staged');
+}
+$('stage-btn').onclick = async () => {
+  const z = S.ai && S.ai.size; if(!z || z.status !== 'OK' || z.refused || z.allowed === false) return;
+  const cid = await sizeContract();
+  if(S.aiKey !== JSON.stringify({cid, side: S.side, stopK: S.stopK, riskPct: S.riskPct})){   // the chips moved since this size was computed
+    $('msg').textContent = 'Size box is updating for your new selection. Check it, then STAGE again.'; schedule(0); return;
+  }
+  await doStage({contract: cid, side: S.side, stop_ticks: z.stop_ticks, risk_pct: S.riskPct, order_type: 'market'}, cid);
 };
 
 let hold = null;
@@ -1085,6 +1088,11 @@ function deskLines(){
     const nm = String(lv.name || 'gex').slice(0, 24);
     out.push({price: lv.price, label: 'GEX ' + nm + ' ' + lv.price, color: GEX_COL[nm] || C.purple, dash: true});
   }
+  const cl = CALL.live;       // the analyst's own entry, stop and first target, while it is recent and this is its chart
+  if(cl && cl.root === curRoot() && cl.age0 + (performance.now() - cl.at) / 1000 < 5400){
+    for(const [nm, p, col] of [['E', cl.entry, '#fbbf24'], ['SL', cl.stop, '#fb7185'], ['T1', cl.tp1, '#4ade80']])
+      if(typeof p === 'number') out.push({price: p, label: 'CALLOUT ' + nm + ' ' + p, color: col, ink: col, dash: true, size: 2});
+  }
   const t = S.ticket;
   if(t && t.ticket_id && !t.consumed && !t.gone && t.contract === S.contractId && t.readback){
     const e = Number(t.readback.entry_ref), s = Number(t.readback.stop_price);
@@ -1267,6 +1275,56 @@ R.timer = setInterval(() => {if(document.visibilityState === 'visible') respectF
 
 /* ---- analyst callouts: GET /api/callouts. Allowlisted fields only; every server string goes through textContent. ---- */
 const FD_POLL_MS = 20000, FD_AGE = s => s < 90 ? s + 's' : s < 5400 ? Math.round(s / 60) + 'm' : (s / 3600).toFixed(1) + 'h';
+/* ---- analyst ENTRY alert: a fresh futures entry posts -> flash a banner, draw its levels, and (only if you are flat) switch the chart to
+   that contract. Display only: it never stages or places anything. Seen entries are remembered so a reload does not re-flash them. ---- */
+const CALL = {live: null, seen: new Set(LS.get('px.callSeen', [])), hideT: 0, titleT: 0};
+const TO_MICRO = {NQ: 'MNQ', ES: 'MES', GC: 'MGC', CL: 'MCL', RTY: 'M2K', YM: 'MYM'};      // this desk trades micros: show the micro chart
+const rootOf = s => TO_MICRO[s] || s;
+const curRoot = () => String(S.contractId || '').split('.')[3] || '';
+function isFlat(){
+  const a = S.ai, t = S.ticket;
+  return !!a && Array.isArray(a.positions) && !a.positions.length && Array.isArray(a.orders) && !a.orders.length
+    && !(t && t.ticket_id && !t.consumed && !t.gone);
+}
+function calloutAlert(i){
+  const root = rootOf(i.symbol), flat = isFlat(), switched = flat && curRoot() !== root;
+  CALL.live = {symbol: i.symbol, root, side: i.side, entry: i.entry, stop: i.stop, tp1: i.tp1, analyst: i.analyst, age0: i.age_s, at: performance.now()};
+  if(switched){$('q').value = root; search()}
+  const box = $('callout-alert'); box.replaceChildren();
+  const px = [['E', i.entry], ['SL', i.stop], ['T1', i.tp1]].filter(p => typeof p[1] === 'number').map(p => p[0] + ' ' + p[1]).join('   ');
+  box.append(mk('b', '', 'ANALYST ENTRY'), mk('span', 'ca-main', [root, i.side || '', px].filter(Boolean).join('  ')),
+    mk('span', 'ca-sub', (i.analyst || 'analyst').slice(0, 24) + ' ' + FD_AGE(i.age_s) + ' ago' + (switched ? ' · chart switched to ' + root : flat ? '' : ' · you have an open trade: chart not switched')));
+  if(flat && typeof i.entry === 'number' && typeof i.stop === 'number'){
+    const sd = i.side ? String(i.side).toUpperCase() : (i.stop > i.entry ? 'SHORT' : 'LONG');
+    const go = mk('button', 'ca-go', 'STAGE ' + sd + ' \u00B7 stop ' + i.stop);
+    go.onclick = async ev => {ev.stopPropagation(); calloutDismiss(); await stageCallout()};
+    box.append(go);
+  }
+  box.hidden = false; box.className = 'callout-alert flash'; box.onclick = calloutDismiss;
+  clearTimeout(CALL.hideT); CALL.hideT = setTimeout(() => {box.classList.remove('flash')}, 20000);
+  clearInterval(CALL.titleT); let n = 0; const base = 'PXDESK';
+  CALL.titleT = setInterval(() => {document.title = n++ % 2 ? base : '\u25B6 ENTRY ' + root; if(n > 40){clearInterval(CALL.titleT); document.title = base}}, 700);
+  if(typeof drawDesk === 'function') drawDesk(true);
+}
+async function stageCallout(){
+  const cl = CALL.live;
+  if(!cl || cl.root !== curRoot() || !isFlat() || typeof cl.entry !== 'number' || typeof cl.stop !== 'number'){$('msg').textContent = 'Callout cannot be staged now (not flat, or this is not its chart).'; return}
+  const side = cl.side ? String(cl.side).toLowerCase() : (cl.stop > cl.entry ? 'short' : 'long');     // stop above entry = short; the ticket readback shows the side in words
+  const cid = await sizeContract();
+  S.side = side; syncSizeInputs(); schedule(0);        // the LONG/SHORT chip must show the side we are staging
+  await doStage({contract: cid, side, stop_price: cl.stop, risk_pct: S.riskPct, order_type: 'market'}, cid);   // the server sizes it and runs every check
+}
+function calloutDismiss(){const b = $('callout-alert'); b.hidden = true; clearInterval(CALL.titleT); document.title = 'PXDESK'}
+function calloutWatch(items){
+  if(!S.ai) return;       // wait for the account state: 'are we flat?' must be known, never guessed, before we switch the chart or offer to stage
+  const fresh = items.filter(i => i.event === 'ENTRY' && i.symbol && typeof i.entry === 'number' && i.age_s <= 900).reverse();   // posted in the last 15 min, oldest first
+  for(const i of fresh){
+    const k = [i.ts, i.symbol, i.entry].join('|');
+    if(CALL.seen.has(k)) continue;
+    CALL.seen.add(k); LS.set('px.callSeen', [...CALL.seen].slice(-30));
+    calloutAlert(i);
+  }
+}
 async function feedFetch(){
   const st = $('fd-state'), box = $('fd-list');
   try{
@@ -1276,6 +1334,7 @@ async function feedFetch(){
     if(f.status !== 'OK'){st.textContent = 'error'; box.append(mk('p', 'none', 'feed unavailable' + (typeof f.code === 'string' ? ' (' + f.code.slice(0, 20) + ')' : ''))); return}
     st.textContent = f.items.length ? 'newest ' + FD_AGE(f.items[0].age_s) + ' ago' : 'none';
     if(!f.items.length){box.append(mk('p', 'none', 'no structured callouts in the window')); return}
+    calloutWatch(f.items);
     for(const i of f.items){
       const row = mk('div', 'fdrow');
       row.append(mk('span', 'age', FD_AGE(i.age_s)), mk('span', '', (i.analyst || i.channel || '?').slice(0, 24)), mk('span', 'ev', String(i.event).replace('_', ' ')));

@@ -2,8 +2,8 @@ import math
 
 import pytest
 
-import sizing
-from px_levels import atr_series, bounce_stats, ema_series, ema_stack, percentile_rank
+from projectx_desk import sizing
+from projectx_desk.levels import atr_series, bounce_stats, ema_series, ema_stack, percentile_rank
 
 
 def test_ema_is_sma_seeded_and_matches_a_hand_calc():
@@ -103,13 +103,13 @@ def test_risk_scale_only_ever_reduces_and_says_why():
 
 
 def test_percentile_ordinals_read_correctly():
-    from sizing import _ordinal
+    from projectx_desk.sizing import _ordinal
     assert [_ordinal(n) for n in (1, 2, 3, 4, 11, 12, 13, 21, 22, 32, 63, 80, 92, 100)] == \
         ["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "32nd", "63rd", "80th", "92nd", "100th"]
     assert "32nd percentile" in sizing.risk_scale(30.0, 32.0)["reasons"][1]
 
 
-from px_levels import placebo_rate, verdict
+from projectx_desk.levels import placebo_rate, verdict
 
 
 def test_placebo_uses_same_rules_on_shifted_lines_and_sample_size_is_pooled():

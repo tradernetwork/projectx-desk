@@ -11,15 +11,15 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 
-import px_anchor
-import px_feed
-import px_gex
-import px_flow
-import sizing
-from px_levels import atr_series, bounce_stats, ema_stack, percentile_rank, placebo_rate, verdict
-from px_client import live_data, PXAuthError, PXError, PXNotConfigured, PXRateLimited
-from px_state import order_view, position_view, ts_ms
-from px_time import CT, parse_ts, session_start
+from projectx_desk import anchor as px_anchor
+from projectx_desk import feed as px_feed
+from projectx_desk import gex as px_gex
+from projectx_desk import flow as px_flow
+from projectx_desk import sizing
+from projectx_desk.levels import atr_series, bounce_stats, ema_stack, percentile_rank, placebo_rate, verdict
+from projectx_desk.client import live_data, PXAuthError, PXError, PXNotConfigured, PXRateLimited
+from projectx_desk.state import order_view, position_view, ts_ms
+from projectx_desk.tradeday import CT, parse_ts, session_start
 
 V = 1
 DISCLAIMER = "GEX marks positioning, not targets; the flip is a regime boundary, not a forecast."
@@ -134,7 +134,7 @@ def err_code(e):
 
 
 def _scanner():
-    import px_respect
+    from projectx_desk import respect as px_respect
     return px_respect
 
 
@@ -465,7 +465,7 @@ def kpis(live, now):
 
     n is always reported: with a handful of trades these numbers are noise, and the UI must say so.
     """
-    from px_time import trade_date
+    from projectx_desk.tradeday import trade_date
     if not live.trades_seeded:
         return {"n": None}
     today = trade_date(now)

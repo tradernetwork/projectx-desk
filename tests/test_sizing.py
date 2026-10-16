@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-_SRC = Path(__file__).resolve().parent.parent / "sizing.py"
+_SRC = Path(__file__).resolve().parent.parent / "projectx_desk" / "sizing.py"
 _spec = importlib.util.spec_from_file_location("projectx_sizing", _SRC)
 sz = importlib.util.module_from_spec(_spec)
 sys.modules["projectx_sizing"] = sz

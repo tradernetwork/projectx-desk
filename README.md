@@ -158,13 +158,13 @@ The desk was built for TopstepX. [docs/TOPSTEP_RULES.md](docs/TOPSTEP_RULES.md) 
 
 ## How it fits together
 
-<p align="center"><img src="docs/img/architecture.svg" alt="Architecture: browser desk and AI assistant reach the FastAPI app; only px_guard.py sends order writes to the ProjectX gateway or the mock" width="900"></p>
+<p align="center"><img src="docs/img/architecture.svg" alt="Architecture: browser desk and AI assistant reach the FastAPI app; only projectx_desk/guard.py sends order writes to the ProjectX gateway or the mock" width="900"></p>
 
 ## Safety model
 
 | Rule | How it is enforced |
 |---|---|
-| One module places orders | Every order write is in `px_guard.py`. A test fails if another module names an order endpoint, reaches the raw HTTP client or token, or calls the write method. It is a tripwire, not a proof: review new network code by hand. |
+| One module places orders | Every order write is in `projectx_desk/guard.py`. A test fails if another module names an order endpoint, reaches the raw HTTP client or token, or calls the write method. It is a tripwire, not a proof: review new network code by hand. |
 | Nothing is on by default | `PX_TRADING=0`. A zero or blank money or quantity limit refuses opens. Brackets are never guessed: `PX_BRACKET_MODE` must be set. (The two behavioral rails can be switched off by setting them to 0.) |
 | Preview, then place | A hashed, single-use, 120 second ticket. `place()` takes a ticket id, never an order. |
 | Writes are never re-sent | The client makes exactly one HTTP attempt per order write and never replays it. An ambiguous entry becomes `UNKNOWN`, writes a persistent halt, and waits for a human. Stop handling can send further, different orders, and so can flatten if you opt in to the fallback; see [limitations](docs/LIMITATIONS.md). |
@@ -198,8 +198,8 @@ Start on a simulated account with `PX_TRADING=0` so the desk can look but not pl
 <summary><b>How it is built</b></summary>
 
 FastAPI serves the desk and the data; a vanilla-JS front end (no build step) draws it with KLineChart. A SignalR client keeps
-live state from the user and market hubs and resyncs from REST after any interruption. `px_guard.py` runs the order path;
-`sizing.py` and `px_levels.py` are pure math with no I/O; `px_mcp.py` is the MCP server; `dev_gateway.py` is the practice
+live state from the user and market hubs and resyncs from REST after any interruption. `projectx_desk/guard.py` runs the order path;
+`projectx_desk/sizing.py` and `projectx_desk/levels.py` are pure math with no I/O; `projectx_desk/mcp.py` is the MCP server; `projectx_desk/dev_gateway.py` is the practice
 market, and it also drives the end-to-end tests. File-by-file layout and the rules for contributors: [AGENTS.md](AGENTS.md).
 Sizing details: [docs/SIZING.md](docs/SIZING.md).
 
@@ -212,7 +212,7 @@ pytest -q            # 361 tests; run offline against the practice market, no br
 <details>
 <summary><b>GEX on futures</b></summary>
 
-`gex_futures.py` converts dealer-gamma levels (flip, pin, walls) from SPX, SPY, QQQ, IWM and DIA into ES, NQ, RTY and YM
+`projectx_desk/gex_futures.py` converts dealer-gamma levels (flip, pin, walls) from SPX, SPY, QQQ, IWM and DIA into ES, NQ, RTY and YM
 price space. It refuses stale data, never picks between two flips, and fetches nothing: bring your own levels.
 [TraderMatrix](https://www.tradermatrix.pro) computes GEX, and its free AI-tool (MCP) integration lets developers pull its
 GEX data into their own assistant. The desk does not ship a provider yet. See [docs/GEX_FUTURES.md](docs/GEX_FUTURES.md).

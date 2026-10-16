@@ -19,18 +19,19 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-import px_digest
-import px_feed
-import px_mcp
-import px_net
-from px_guard import Guard, GuardError
-from px_limits import Limits
-from px_client import live_data, PXAuthError, PXClient, PXError, PXNotConfigured, PXRateLimited
-from px_hub import SignalRHub
-from px_state import DOWN, RESYNC, LiveState, order_view, position_view, ts_ms
-from px_time import session_start
+from projectx_desk import digest as px_digest
+from projectx_desk import feed as px_feed
+from projectx_desk import mcp as px_mcp
+from projectx_desk import net as px_net
+from projectx_desk.guard import Guard, GuardError
+from projectx_desk.limits import Limits
+from projectx_desk.client import live_data, PXAuthError, PXClient, PXError, PXNotConfigured, PXRateLimited
+from projectx_desk.hub import SignalRHub
+from projectx_desk.state import DOWN, RESYNC, LiveState, order_view, position_view, ts_ms
+from projectx_desk.tradeday import session_start
 
-HERE = pathlib.Path(__file__).parent
+from projectx_desk import PKG_DIR, ROOT
+HERE = PKG_DIR                              # the UI (static/) ships inside the package
 def _port():
     return int(os.getenv("CHART_PORT", 8600))   # read at call time so .env.projectx can set it
 MAX_SSE = 16
@@ -61,7 +62,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         m = market_hub or SignalRHub(c, "market")
         u = user_hub or SignalRHub(c, "user")
         app.state.client, app.state.market, app.state.user = c, m, u
-        app.state.live = LiveState(m, u, flow_path=(os.getenv("PX_FLOW_FILE") or str(pathlib.Path(__file__).parent / "data" / "flow.json")) if connect else None)
+        app.state.live = LiveState(m, u, flow_path=(os.getenv("PX_FLOW_FILE") or str(ROOT / "data" / "flow.json")) if connect else None)
         app.state.csrf = secrets.token_urlsafe(32)
         app.state.guard = guard or Guard(c, app.state.live, limits or Limits.from_env(), user_hub=u)
         app.state.sse = 0
@@ -525,7 +526,7 @@ async def _reseed(app, attempts=5):
 
 def main():
     import uvicorn
-    from px_env import load_env_file
+    from projectx_desk.env import load_env_file
     loaded = load_env_file()
     if loaded:
         print(f"loaded {len(loaded)} settings from .env.projectx (names only): {', '.join(sorted(loaded))}", flush=True)

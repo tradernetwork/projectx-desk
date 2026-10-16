@@ -7,10 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 from fastmcp import Client
 
-import px_digest
-from px_app import create_app
-from px_client import PXError, PXRateLimited
-from px_hub import SignalRHub
+from projectx_desk import digest as px_digest
+from projectx_desk.app import create_app
+from projectx_desk.client import PXError, PXRateLimited
+from projectx_desk.hub import SignalRHub
 from test_px_app import CID, FakeClient, app_and_fake
 from test_px_app_actions import make_app
 

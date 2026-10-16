@@ -5,8 +5,7 @@ import time
 
 import pytest
 
-import px_respect as R
-
+from projectx_desk import respect as R
 T0 = 1_700_000_000_000
 
 
@@ -198,7 +197,7 @@ def test_output_shape_json_and_ordering():
 
 
 def test_hold_rate_matches_px_levels_directly():
-    import px_levels as L
+    from projectx_desk import levels as L
     bars = R.normalize(ema_bouncer())
     c = [b["c"] for b in bars]
     atr = L.atr_series([b["h"] for b in bars], [b["l"] for b in bars], c, 14)

@@ -26,9 +26,8 @@ from urllib.parse import urlparse
 
 import httpx
 
-import gex_futures
-import sizing
-
+from projectx_desk import gex_futures
+from projectx_desk import sizing
 DEFAULT_URL = "https://api.traderdaddy.pro/api/v1"
 DEFAULT_MAX_AGE_S = 900.0
 TTL_S = 300.0              # successful fetch cache, per source symbol

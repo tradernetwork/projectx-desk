@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from px_guard import Guard
-from px_limits import DayState, Limits
-from px_state import LiveState
+from projectx_desk.guard import Guard
+from projectx_desk.limits import DayState, Limits
+from projectx_desk.state import LiveState
 
 CID = "CON.F.US.MES.Z26"
 NOW = datetime(2026, 10, 14, 15, 0, tzinfo=timezone.utc)   # 10:00 CT (CDT)
@@ -253,7 +253,7 @@ async def test_restaging_supersedes_the_previous_ticket_and_hash_changes(tmp_pat
 async def test_ticket_hash_binds_the_payload(tmp_path):
     g, *_ = make(tmp_path)
     t = (await prev(g)).ticket
-    from px_guard import canonical
+    from projectx_desk.guard import canonical
     import hashlib
     assert t.sha256 == hashlib.sha256(canonical({"entry": t.payload, "stop": t.stop_plan}).encode()).hexdigest()
     t.payload["size"] = 9
@@ -284,7 +284,7 @@ async def test_halt_file_trip_and_clear(tmp_path):
 
 
 def test_rails_fall_back_to_defaults_on_blank_or_garbled_input_and_only_explicit_zero_turns_them_off(monkeypatch):
-    from px_limits import Limits
+    from projectx_desk.limits import Limits
     for raw, want_cd, want_n in ((None, 300, 3), ("", 300, 3), ("  ", 300, 3), ("three", 300, 3), ("-5", 300, 3), ("0", 0, 0), ("120", 120, 7)):
         for k in ("PX_COOLDOWN_AFTER_LOSS_S", "PX_MAX_CONSEC_LOSSES"):
             monkeypatch.delenv(k, raising=False)
@@ -296,9 +296,9 @@ def test_rails_fall_back_to_defaults_on_blank_or_garbled_input_and_only_explicit
 
 
 def test_env_file_can_set_the_port_and_api_because_they_are_read_at_call_time(monkeypatch):
-    import px_app
-    from px_client import PXClient
-    from px_hub import SignalRHub
+    from projectx_desk import app as px_app
+    from projectx_desk.client import PXClient
+    from projectx_desk.hub import SignalRHub
     monkeypatch.setenv("CHART_PORT", "9123")
     monkeypatch.setenv("PROJECTX_API", "http://example.invalid")
     monkeypatch.setenv("PROJECTX_HUB_BASE", "ws://example.invalid/hubs")

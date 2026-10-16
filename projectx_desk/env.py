@@ -39,7 +39,7 @@ def load_env_file(path=None, environ=None) -> list:
     if env.get("PX_NO_ENV_FILE") == "1":        # offline/mock runs must never pick up the real account's settings
         return []
     candidates = [path] if path else [env.get("PX_ENV_FILE"), pathlib.Path.cwd() / ".env.projectx",
-                                      pathlib.Path(__file__).parent / ".env.projectx"]
+                                      pathlib.Path(__file__).resolve().parent.parent / ".env.projectx"]
     for c in candidates:
         if c and pathlib.Path(c).is_file():
             vals = parse_env_text(pathlib.Path(c).read_text())

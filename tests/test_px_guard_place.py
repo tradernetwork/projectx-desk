@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from px_client import PXError, PXRateLimited, PXWriteUnknown
-from px_guard import ORDER_PLACE, Guard
-from px_limits import DayState
+from projectx_desk.client import PXError, PXRateLimited, PXWriteUnknown
+from projectx_desk.guard import ORDER_PLACE, Guard
+from projectx_desk.limits import DayState
 from test_px_guard_preview import CID, NOW, Hub, good_limits, make as make_preview  # noqa: F401
 
 

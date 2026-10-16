@@ -27,4 +27,4 @@ EXPOSE 8600
 HEALTHCHECK --interval=30s --timeout=4s --start-period=10s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('CHART_PORT','8600'), timeout=3)" || exit 1
 
-CMD ["python", "px_app.py"]
+CMD ["python", "-m", "projectx_desk"]

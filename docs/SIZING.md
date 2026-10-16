@@ -1,6 +1,6 @@
 # Position sizing
 
-The desk never leaves sizing to mental math. `sizing.py` is the single source of truth and every size shown in the
+The desk never leaves sizing to mental math. `projectx_desk/sizing.py` is the single source of truth and every size shown in the
 UI, the digest and the MCP tools comes from it.
 
 ## The rule

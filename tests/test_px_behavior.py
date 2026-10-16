@@ -78,7 +78,7 @@ async def test_the_lock_can_be_turned_off_and_unknown_last_risk_applies_no_cap(t
 async def test_last_risk_survives_a_restart_and_resets_on_a_new_trade_date(tmp_path):
     g, live, _ = make(tmp_path)
     g.day.count_order(NOW, risk=25.0)
-    from px_limits import DayState
+    from projectx_desk.limits import DayState
     again = DayState(g.limits.state_path)
     assert again.last_risk_today(NOW) == 25.0
     assert again.last_risk_today(NOW + timedelta(days=1)) is None

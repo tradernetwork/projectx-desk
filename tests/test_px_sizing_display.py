@@ -94,8 +94,7 @@ def test_disallowed_instrument_is_flagged_not_silently_sized(tmp_path):
 
 def inject_ind(monkeypatch, adx, pctile, atr=0.8):
     """Smooth synthetic bars always give a high ADX, so inject known values to pin the scaler thresholds."""
-    import px_digest
-
+    from projectx_desk import digest as px_digest
     async def fake(app, cid):
         return {"atr": atr, "adx": adx, "atr_pctile": pctile, "tf": "5m", "vwap": 17500.0, "hi": 17510.0, "lo": 17490.0,
                 "volume": 1000.0, "bars": 300, "ema": {"state": "MIXED", "8": 1.0, "21": 1.0, "34": 1.0}, "levels": []}

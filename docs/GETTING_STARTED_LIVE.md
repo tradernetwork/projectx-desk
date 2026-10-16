@@ -9,7 +9,7 @@ account, not a stop-out.
 ```bash
 cp .env.projectx.example .env.projectx     # gitignored; never commit it
 $EDITOR .env.projectx
-python px_app.py                           # loads .env.projectx automatically; existing shell variables win
+python -m projectx_desk                           # loads .env.projectx automatically; existing shell variables win
 ```
 
 At minimum set `PROJECTX_USERNAME`, `PROJECTX_API_KEY`, `PX_ACCOUNT_ID`, and leave `PX_ACCOUNT_KIND=sim`.
@@ -54,4 +54,4 @@ did. Keep the platform open next to the desk and watch each order, fill, stop an
 
 Do not raise the quantity cap because it felt fine once. A reasonable bar: dozens of simulated round trips with no UNKNOWN
 state left unreconciled, no orphan stops, and FLATTEN tested including after a forced failure (the mock has switches for
-that: `dev_gateway.py`).
+that: `projectx_desk/dev_gateway.py`).

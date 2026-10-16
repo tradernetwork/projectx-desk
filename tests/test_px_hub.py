@@ -5,7 +5,7 @@ import aiohttp
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 
-from px_hub import RS, SignalRHub
+from projectx_desk.hub import RS, SignalRHub
 
 
 class FakeClient:

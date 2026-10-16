@@ -2,7 +2,7 @@
 Rules and sources: docs/TOPSTEP_RULES.md."""
 import pytest
 
-from px_guard import POSITION_CLOSE
+from projectx_desk.guard import POSITION_CLOSE
 from test_px_guard_place import CID, staged  # noqa: F401
 from test_px_guard_protect import build2, fill
 from test_px_guard_preview import NOW   # 15:00 UTC = 10:00 CT

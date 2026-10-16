@@ -4,7 +4,7 @@ import asyncio
 from test_px_guard_place import CID, go, staged
 from test_px_guard_protect import build2, fill
 
-from px_flow import MIN_MS, FlowStore, summary
+from projectx_desk.flow import MIN_MS, FlowStore, summary
 
 
 async def test_missing_stop_on_our_unchanged_position_flattens_and_halts(tmp_path):         # finding 1
@@ -309,7 +309,7 @@ async def test_protect_does_not_report_a_ticket_as_handled_when_no_stop_was_arme
 
 
 def test_pct_of_budget_cannot_be_used_to_back_out_the_loss_room_in_stream_mode():                   # Fable B
-    import px_digest
+    from projectx_desk import digest as px_digest
     s = {"risk": {"daily_limit": 500.0, "daily_room": 437.0, "dd_buffer": 1900.0, "remaining": 437.0, "pnl_day": -63.0},
          "size": {"pct_budget": 3.5, "risk_usd": 35.0, "contracts": 1, "stop_ticks": 7},
          "ticket": {"readback": {"risk_usd": 35.0, "pct_of_budget": 3.5, "size": 1}}, "kpi": {}}
@@ -319,8 +319,8 @@ def test_pct_of_budget_cannot_be_used_to_back_out_the_loss_room_in_stream_mode()
 
 
 def test_size_box_stop_price_is_exact_on_a_hundredth_tick_contract():                              # Fable D
-    import px_digest
-    from px_limits import Limits
+    from projectx_desk import digest as px_digest
+    from projectx_desk.limits import Limits
     rec = {"tickSize": 0.01, "tickValue": 1.0}
     scale = {"multiplier": 1.0, "reasons": [], "reduced": False, "status": "ok"}
     z = px_digest.size_idea(Limits(), "CON.F.US.MCL.Z26", rec, "long", 70.85, 0.13, 25.0, 0.05, 1.5, 500.0, 20.0, scale, 50)
@@ -330,8 +330,8 @@ def test_size_box_stop_price_is_exact_on_a_hundredth_tick_contract():           
 def test_size_box_refuses_a_stop_the_guard_would_refuse():                                          # Fable minor
     import dataclasses
 
-    import px_digest
-    from px_limits import Limits
+    from projectx_desk import digest as px_digest
+    from projectx_desk.limits import Limits
     rec = {"tickSize": 0.25, "tickValue": 0.5}
     scale = {"multiplier": 1.0, "reasons": [], "reduced": False, "status": "ok"}
     z = px_digest.size_idea(dataclasses.replace(Limits(), max_stop_ticks=40), "CON.F.US.MNQ.Z26", rec, "long", 17500.0, 35.0,
@@ -351,8 +351,8 @@ async def test_boot_refuses_to_pick_an_arbitrary_account(monkeypatch):          
 
     import pytest
 
-    import px_app
-    from px_client import PXError
+    from projectx_desk import app as px_app
+    from projectx_desk.client import PXError
 
     class C:
         async def accounts(self, only_active):

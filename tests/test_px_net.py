@@ -3,13 +3,13 @@ import base64
 import pytest
 from fastapi.testclient import TestClient
 
-import px_net
-from px_app import create_app
-from px_mcp import weak_token_reason
+from projectx_desk import net as px_net
+from projectx_desk.app import create_app
+from projectx_desk.mcp import weak_token_reason
 from test_px_app import FakeClient
 from test_px_mcp import GOOD as MCP_TOKEN
 from test_px_guard_place import build
-from px_hub import SignalRHub
+from projectx_desk.hub import SignalRHub
 
 OP = "c3a9f1e07b5d4a28916e0d3b7f4c8a52e1d09b6f3a7c4e85d2b1f0a9c8e7d6b5"   # a strong operator token for tests
 
@@ -119,7 +119,7 @@ def test_posts_work_through_the_login_and_https_origins_come_from_the_allowlist(
 
 
 def test_main_refuses_an_unsafe_bind_before_starting_a_server(monkeypatch):
-    import px_app
+    from projectx_desk import app as px_app
     called = []
     monkeypatch.setattr("uvicorn.run", lambda *a, **k: called.append((a, k)))
     for k in ("PX_OPERATOR_TOKEN", "PX_ALLOWED_HOSTS"):
@@ -137,7 +137,7 @@ def test_main_refuses_an_unsafe_bind_before_starting_a_server(monkeypatch):
 
 
 def test_loopback_default_still_starts_with_no_extra_settings(monkeypatch):
-    import px_app
+    from projectx_desk import app as px_app
     called = []
     monkeypatch.setattr("uvicorn.run", lambda *a, **k: called.append(k))
     for k in ("PX_HOST", "PX_OPERATOR_TOKEN", "PX_ALLOWED_HOSTS"):

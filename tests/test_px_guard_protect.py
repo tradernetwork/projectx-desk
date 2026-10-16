@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from px_client import PXError, PXWriteUnknown
-from px_guard import ORDER_CANCEL, ORDER_MODIFY, ORDER_PLACE, POSITION_CLOSE, GuardError
+from projectx_desk.client import PXError, PXWriteUnknown
+from projectx_desk.guard import ORDER_CANCEL, ORDER_MODIFY, ORDER_PLACE, POSITION_CLOSE, GuardError
 from test_px_guard_place import CID, GW, build, go, staged  # noqa: F401
 
 

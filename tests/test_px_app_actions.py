@@ -3,9 +3,9 @@ import dataclasses
 import pytest
 from fastapi.testclient import TestClient
 
-from px_app import create_app
-from px_client import PXError
-from px_hub import SignalRHub
+from projectx_desk.app import create_app
+from projectx_desk.client import PXError
+from projectx_desk.hub import SignalRHub
 from test_px_app import FakeClient
 from test_px_guard_preview import CID
 from test_px_guard_place import GW, build

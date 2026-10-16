@@ -1,4 +1,4 @@
-from px_flow import MAX_MINUTES, MIN_MS, FlowStore
+from projectx_desk.flow import MAX_MINUTES, MIN_MS, FlowStore
 
 M = 29_866_666 * MIN_MS      # a minute-aligned base in 2026 (timestamps outside 2000-2100 are rejected)
 
@@ -63,7 +63,7 @@ def test_route_and_state_hook(tmp_path):
 
 
 def test_partial_quote_updates_merge_instead_of_wiping():
-    from px_state import LiveState
+    from projectx_desk.state import LiveState
     live = LiveState()
     live._on_quote("C", {"bestBid": 10.0, "bestAsk": 10.25, "lastPrice": 10.0})
     live._on_quote("C", {"bestAsk": 10.5})                    # ask-only update
@@ -98,7 +98,7 @@ def test_corrupt_file_starts_clean_and_save_failure_is_silent(tmp_path):
 
 
 def test_summary_window_with_a_hole_is_incomplete():
-    from px_flow import summary
+    from projectx_desk.flow import summary
     f = FlowStore()
     for i in range(10):
         f.add("C", M + i * MIN_MS + 10, 1, 0)
@@ -134,7 +134,7 @@ def test_loading_a_hostile_file_never_breaks_the_store(tmp_path):
         p.write_text(json.dumps(raw))
         s = FlowStore(path=str(p))
         assert len(s._c) <= 8 and all(len(c["m"]) <= MAX_MINUTES for c in s._c.values())
-        from px_flow import summary
+        from projectx_desk.flow import summary
         summary(s, "C", M)                                    # must not raise for any loaded state
         s.snapshot("C")
 
@@ -153,7 +153,7 @@ def _busy(f, n=65, cid="C"):
 
 
 def test_ongoing_outage_never_ages_into_a_complete_zero_window():
-    from px_flow import summary
+    from projectx_desk.flow import summary
     f = FlowStore()
     _busy(f)
     f.mark_gap("C", M + 65 * MIN_MS)
@@ -164,7 +164,7 @@ def test_ongoing_outage_never_ages_into_a_complete_zero_window():
 
 
 def test_quiet_healthy_tape_stays_complete():
-    from px_flow import summary
+    from projectx_desk.flow import summary
     f = FlowStore()
     _busy(f)
     s = summary(f, "C", M + 75 * MIN_MS)            # no gap flag: a quiet market, not an outage
@@ -173,7 +173,7 @@ def test_quiet_healthy_tape_stays_complete():
 
 
 def test_open_hole_closes_into_a_normal_hole_when_a_trade_arrives():
-    from px_flow import summary
+    from projectx_desk.flow import summary
     f = FlowStore()
     _busy(f)
     f.mark_gap("C", M + 65 * MIN_MS)
@@ -206,7 +206,7 @@ def test_mark_gap_all_contracts_and_unknown_last_ts_has_no_open_hole():
 
 
 def test_odd_now_ms_does_not_raise_and_holes_stay_bounded():
-    from px_flow import MAX_HOLES, summary
+    from projectx_desk.flow import MAX_HOLES, summary
     f = FlowStore()
     f.add("C", M, 1, 0)
     f.mark_gap("C")
@@ -221,7 +221,7 @@ def test_odd_now_ms_does_not_raise_and_holes_stay_bounded():
 
 
 def test_a_bad_print_leaves_a_partial_minute_that_makes_its_window_incomplete():       # fuzz pass finding
-    from px_flow import summary
+    from projectx_desk.flow import summary
     f = FlowStore()
     for i in range(10):
         f.add("C", M + i * MIN_MS, 5, 0)

@@ -1,8 +1,8 @@
 """How px_anchor is wired into the size box: only on the default chip, only if it stays inside the stop-tick cap and the budget."""
 import dataclasses
 
-import px_digest
-from px_limits import Limits
+from projectx_desk import digest as px_digest
+from projectx_desk.limits import Limits
 
 REC = {"tickSize": 0.25, "tickValue": 1.25}
 CID = "CON.F.US.MES.Z26"

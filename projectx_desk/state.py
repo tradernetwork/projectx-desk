@@ -8,7 +8,7 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 
-from px_time import parse_ts, trade_date
+from projectx_desk.tradeday import parse_ts, trade_date
 
 EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 RESYNC = object()  # ticks may have been lost; the page must re-seed from REST
@@ -22,8 +22,8 @@ def ts_ms(ts):
     return (parse_ts(ts) - EPOCH) // timedelta(milliseconds=1)
 
 
-from px_flow import FlowStore
-from px_ticks import TickBars
+from projectx_desk.flow import FlowStore
+from projectx_desk.ticks import TickBars
 
 
 class LiveState:

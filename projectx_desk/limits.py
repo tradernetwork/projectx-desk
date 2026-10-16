@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-from px_time import trade_date
+from projectx_desk.tradeday import trade_date
 
-HERE = pathlib.Path(__file__).parent
+from projectx_desk import ROOT as HERE      # data/ lives at the checkout root, never inside the package
 BRACKET_MODES = ("position", "oco")  # anything else (incl. unset) refuses opens
 
 

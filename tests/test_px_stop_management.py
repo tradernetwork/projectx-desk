@@ -1,8 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from px_client import PXError, PXWriteUnknown
-from px_guard import ORDER_MODIFY, ORDER_PLACE
+from projectx_desk.client import PXError, PXWriteUnknown
+from projectx_desk.guard import ORDER_MODIFY, ORDER_PLACE
 from test_px_app_actions import post
 from test_px_guard_place import build, go, staged
 from test_px_guard_preview import CID

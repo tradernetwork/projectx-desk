@@ -4,8 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import px_gex
-
+from projectx_desk import gex as px_gex
 CID = "CON.F.US.MES.Z26"
 NOW = datetime(2026, 10, 16, 14, 0, tzinfo=timezone.utc).timestamp()
 ENV = {"PX_GEX_KEY": "sekret-key-123", "PX_GEX_URL": "https://x.test/api/v1"}

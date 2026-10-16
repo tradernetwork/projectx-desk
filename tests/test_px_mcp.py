@@ -4,9 +4,9 @@ import pytest
 from fastapi.testclient import TestClient
 from fastmcp import Client
 
-from px_app import create_app
-from px_hub import SignalRHub
-from px_mcp import BearerVerifier, weak_token_reason
+from projectx_desk.app import create_app
+from projectx_desk.hub import SignalRHub
+from projectx_desk.mcp import BearerVerifier, weak_token_reason
 from test_px_app import FakeClient
 from test_px_guard_place import build
 from test_px_guard_preview import CID

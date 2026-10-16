@@ -9,7 +9,7 @@ search, the market hub (quotes and the trade tape, about 85 ms behind the clock)
 (`live: false` bars equal a candle rebuilt from the tape, OHLC and volume), and that `GatewayTrade.type` carries the aggressor side.
 **Not verified: any order write.** No order has been placed, modified, cancelled or flattened on the real gateway.
 
-Everything else is tested against the bundled mock gateway (`dev_gateway.py`). The mock follows the ProjectX documentation,
+Everything else is tested against the bundled mock gateway (`projectx_desk/dev_gateway.py`). The mock follows the ProjectX documentation,
 but it is not the real thing. Not yet confirmed on a real account:
 
 - the whole order path (place, stop after fill, flatten, cancel, modify)
@@ -79,8 +79,8 @@ America/Chicago.
 
 **`PX_MCP_PLACE` is a reserved flag.** No route sets an MCP origin on `place()`, so it does nothing today.
 
-**GEX is display only, and needs a key.** `px_gex.py` fetches levels from the TraderDaddy API (`PX_GEX_KEY`) and converts them with
-`gex_futures.py`; without a key the digest says `GEX: status=NO_KEY` and nothing is drawn. The levels are a translation of index and
+**GEX is display only, and needs a key.** `projectx_desk/gex.py` fetches levels from the TraderDaddy API (`PX_GEX_KEY`) and converts them with
+`projectx_desk/gex_futures.py`; without a key the digest says `GEX: status=NO_KEY` and nothing is drawn. The levels are a translation of index and
 ETF option positioning, not a measurement of the futures book, and they never feed sizing, stops or targets (Round 6).
 
 **Thresholds are hypotheses.** The ADX and ATR scalers, the behavioral-rail defaults and the level-reaction verdict margin
@@ -110,8 +110,8 @@ POST routes do not, for the reason given above.
 
 ## Known gaps
 
-- The existing `LEVEL:` lines (EMA 8/21/34, VWAP on the current timeframe) still use the raw `px_levels` placebo, which is biased
-  for tight or self-referential levels (EMA 8 reads about 19 points low on random walks). `px_respect.py` recalibrates; the old lines
+- The existing `LEVEL:` lines (EMA 8/21/34, VWAP on the current timeframe) still use the raw `projectx_desk.levels` placebo, which is biased
+  for tight or self-referential levels (EMA 8 reads about 19 points low on random walks). `projectx_desk/respect.py` recalibrates; the old lines
   do not yet. Level-reaction events are also capped at 12 and pending events in the last 6 bars are never counted.
 - The respect scan is descriptive history on 25 hand-picked candidate levels. It is not backtested for trade outcomes, and a
   level that was respected is not evidence that it will be.
@@ -127,4 +127,4 @@ POST routes do not, for the reason given above.
 - A position held at restart that was placed by hand is reported (`EXTERNAL_UNPROTECTED`) but not protected.
 - Scale-in is not supported: a second entry on a contract with a position, working order or entry in flight is refused.
 
-- **`live: true` on bars is refused for the Combine account** (verified 2026-10-16: `success:false, errorCode:1`; `live: false` returns bars that match the market-hub quote to the tick). `PX_LIVE_DATA=1` therefore blanks ATR, VWAP and sizing (unreadable inputs size to 0). One `live_data()` in `px_client.py` now feeds the chart, digest, respect scan and MCP; before this the digest and MCP hardcoded `False`. Likely needs a live market-data entitlement on the account; unconfirmed.
+- **`live: true` on bars is refused for the Combine account** (verified 2026-10-16: `success:false, errorCode:1`; `live: false` returns bars that match the market-hub quote to the tick). `PX_LIVE_DATA=1` therefore blanks ATR, VWAP and sizing (unreadable inputs size to 0). One `live_data()` in `projectx_desk/client.py` now feeds the chart, digest, respect scan and MCP; before this the digest and MCP hardcoded `False`. Likely needs a live market-data entitlement on the account; unconfirmed.

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-_SRC = Path(__file__).resolve().parent.parent / "gex_futures.py"
+_SRC = Path(__file__).resolve().parent.parent / "projectx_desk" / "gex_futures.py"
 _spec = importlib.util.spec_from_file_location("projectx_gex_futures", _SRC)
 gf = importlib.util.module_from_spec(_spec)
 sys.modules["projectx_gex_futures"] = gf

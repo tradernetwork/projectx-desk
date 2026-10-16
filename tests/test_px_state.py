@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from px_state import DOWN, RESYNC, LiveState, order_view, position_view, ts_ms
+from projectx_desk.state import DOWN, RESYNC, LiveState, order_view, position_view, ts_ms
 
 
 def test_ts_ms_handles_dotnet_fractions_and_z():

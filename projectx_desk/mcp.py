@@ -11,14 +11,14 @@ import re
 import time
 from typing import Optional
 
-import sizing
+from projectx_desk import sizing
 from fastmcp import FastMCP
 from fastmcp.server.auth import AccessToken, TokenVerifier
 
-import px_digest
-from px_client import live_data
-from px_state import order_view, position_view
-from px_time import parse_ts
+from projectx_desk import digest as px_digest
+from projectx_desk.client import live_data
+from projectx_desk.state import order_view, position_view
+from projectx_desk.tradeday import parse_ts
 
 CONTRACT_RE = re.compile(r"^CON\.[A-Za-z0-9._]{1,40}$")
 PLACEHOLDERS = ("your_", "changeme", "change_me", "example", "placeholder", "secret", "token", "password")

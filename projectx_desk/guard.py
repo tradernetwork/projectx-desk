@@ -22,10 +22,10 @@ from datetime import datetime, time as dtime, timedelta, timezone
 from decimal import Decimal
 from typing import Callable, Optional
 
-import sizing
-from px_client import PXError, PXRateLimited, PXWriteUnknown
-from px_limits import BRACKET_MODES, DayState, Limits, atomic_write_json
-from px_time import CT
+from projectx_desk import sizing
+from projectx_desk.client import PXError, PXRateLimited, PXWriteUnknown
+from projectx_desk.limits import BRACKET_MODES, DayState, Limits, atomic_write_json
+from projectx_desk.tradeday import CT
 
 # ---- the only place these strings may appear -------------------------------------------------
 ORDER_PLACE = "/api/Order/place"

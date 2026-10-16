@@ -4,8 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import px_feed
-
+from projectx_desk import feed as px_feed
 NOW = datetime(2026, 10, 16, 14, 0, tzinfo=timezone.utc)
 
 

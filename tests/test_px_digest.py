@@ -1,4 +1,4 @@
-from px_digest import DISCLAIMER, LLMS_TXT, format_digest, redact_stream
+from projectx_desk.digest import DISCLAIMER, LLMS_TXT, format_digest, redact_stream
 
 
 def state(**over):
@@ -93,7 +93,7 @@ def test_kpi_na_and_zero_are_distinct():
 
 
 def test_level_distances_use_the_live_quote_not_the_last_bar_close():
-    from px_digest import _levels_vs_live
+    from projectx_desk.digest import _levels_vs_live
     lv = [{"name": "EMA21", "price": 100.0, "dist_pt": -3.0, "pos": "BELOW"}]
     out = _levels_vs_live(lv, {"lastPrice": 112.5})
     assert out[0]["dist_pt"] == 12.5 and out[0]["pos"] == "ABOVE" and lv[0]["dist_pt"] == -3.0   # input untouched

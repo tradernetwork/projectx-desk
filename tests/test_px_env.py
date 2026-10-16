@@ -1,4 +1,4 @@
-from px_env import load_env_file, parse_env_text
+from projectx_desk.env import load_env_file, parse_env_text
 
 
 def test_parses_comments_quotes_export_and_inline_comments():

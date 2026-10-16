@@ -9,13 +9,13 @@ from datetime import datetime, time as dtime, timedelta, timezone
 import httpx
 import pytest
 
-import px_app
-import px_guard
-from dev_gateway import ACCOUNT_ID, DevGateway
-from px_client import PXClient
-from px_hub import SignalRHub
-from px_limits import Limits
-from px_time import CT, session_start
+from projectx_desk import app as px_app
+from projectx_desk import guard as px_guard
+from projectx_desk.dev_gateway import ACCOUNT_ID, DevGateway
+from projectx_desk.client import PXClient
+from projectx_desk.hub import SignalRHub
+from projectx_desk.limits import Limits
+from projectx_desk.tradeday import CT, session_start
 
 CID = "CON.F.US.MES.Z26"
 
@@ -384,7 +384,7 @@ async def test_mock_history_joins_the_live_price_with_no_spike():
     import json
     from datetime import datetime, timedelta, timezone
     import aiohttp
-    from dev_gateway import DevGateway
+    from projectx_desk.dev_gateway import DevGateway
     gw = DevGateway(walk=False)
     port = await gw.start("127.0.0.1", 0)
     cid = "CON.F.US.MES.Z26"

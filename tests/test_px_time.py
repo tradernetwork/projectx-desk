@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from px_time import session_start, trade_date
+from projectx_desk.tradeday import session_start, trade_date
 
 U = timezone.utc
 
@@ -30,7 +30,7 @@ def test_session_start_is_most_recent_1700_ct():
 
 
 def test_parse_ts_accepts_any_fraction_length_z_and_offsets_and_naive():
-    from px_time import parse_ts
+    from projectx_desk.tradeday import parse_ts
     base = datetime(2026, 1, 14, 22, 59, 5, tzinfo=timezone.utc)
     for text, micro in (("2026-01-14T22:59:05Z", 0), ("2026-01-14T22:59:05.1Z", 100000), ("2026-01-14T22:59:05.12Z", 120000),
                         ("2026-01-14T22:59:05.123Z", 123000), ("2026-01-14T22:59:05.12345Z", 123450),
@@ -41,7 +41,7 @@ def test_parse_ts_accepts_any_fraction_length_z_and_offsets_and_naive():
 
 
 def test_a_fill_with_an_odd_fraction_still_counts_toward_pnl_and_the_streak():
-    from px_state import LiveState
+    from projectx_desk.state import LiveState
     s = LiveState()
     s.select_account(7)
     now = datetime(2026, 1, 14, 20, 0, tzinfo=timezone.utc)

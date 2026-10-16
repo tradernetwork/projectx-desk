@@ -4,8 +4,7 @@ import random
 
 import pytest
 
-import px_anchor as A
-
+from projectx_desk import anchor as A
 # Common fixture: entry 7800.00, ATR 10, tick 0.25, tickValue 0.50 (MNQ-like).
 #   D0 = ceil(1.5 x 10 / 0.25) = 60 ticks = 15.0 pts ; cap = 2.0 x 10 = 20.0 pts
 E, ATR, TS, TV = 7800.0, 10.0, 0.25, 0.5
@@ -241,7 +240,7 @@ def test_tiny_atr_tick_floor_exceeds_cap_fails_closed():
 
 
 def test_matches_sizing_stop_from_atr():
-    import sizing
+    from projectx_desk import sizing
     for atr in (3.37, 8.0, 10.1, 12.55, 25.0):
         r = run(atr=atr)
         assert r.stop_ticks == sizing.stop_from_atr(atr, TS)

@@ -16,7 +16,7 @@ orders. To run it anywhere else you must give it a login and an allowlist, or it
 | `PX_ALLOWED_HOSTS` | required for any non-loopback bind. The names you will use to reach it, comma separated (`desk.lan,10.0.0.5`). Stops DNS-rebinding pages. Loopback is always allowed so health checks work. |
 | `PX_ALLOWED_ORIGINS` | optional. Extra allowed `Origin` values, for example `https://desk.example.com` when a TLS proxy fronts it. Each allowed host is already accepted over http and https. |
 
-The same rule applies when the app is launched some other way (for example `uvicorn` on `px_app`): `create_app()` refuses a public
+The same rule applies when the app is launched some other way (for example `uvicorn` on `projectx_desk.app`): `create_app()` refuses a public
 bind without `PX_OPERATOR_TOKEN` and `PX_ALLOWED_HOSTS` too.
 
 The login covers every route except `/mcp/` (which has its own bearer token, `PX_MCP_TOKEN`) and `/healthz` (which returns `ok` and
@@ -73,7 +73,7 @@ After=network-online.target
 User=px
 WorkingDirectory=/opt/projectx-desk
 EnvironmentFile=/etc/projectx-desk.env
-ExecStart=/opt/projectx-desk/.venv/bin/python px_app.py
+ExecStart=/opt/projectx-desk/.venv/bin/python -m projectx_desk
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

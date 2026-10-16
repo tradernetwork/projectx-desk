@@ -63,7 +63,7 @@ the voice agent has no tool for.
 | Inc | Content | State |
 |---|---|---|
 | I1 | Phase 0 hardening: CT trade_date, trades seeded from REST, reseed race/failure handling, size-less position events, fail-closed account filter, no-retry `PXClient.write`, allowlisted `/state.json` and `/contracts`, fixed boot-error codes | **DONE** |
-| I2 | `px_limits.py` (persisted day state: trade date, order count, HWM, fail closed on None) + `px_guard.py` preview/Ticket/hash/TTL/single-use + audit; no place() | **DONE** |
+| I2 | `projectx_desk/limits.py` (persisted day state: trade date, order count, HWM, fail closed on None) + `projectx_desk/guard.py` preview/Ticket/hash/TTL/single-use + audit; no place() | **DONE** |
 | I3 | `place()` + state machine (STAGED, PLACED(+acked), FILLED, CLOSED, REJECTED, EXPIRED, UNKNOWN), unique tag, fsync intent, reconcile, kill switch default off | **DONE** |
 | I4 | Stop handling, flatten, halt, naked-position watchdog | **DONE** |
 | I5 | Fresh-state gate, AST pin test, secret hygiene for MCP token | **DONE** |
@@ -71,7 +71,7 @@ the voice agent has no tool for.
 | I7 | Desk UI, POST routes with Origin required + per-session CSRF header, hold-to-confirm bar | **DONE** |
 | I8 | Sim end-to-end rehearsal; doubles as Phase 1 live-read verification | needs the operator + credentials |
 
-Built beyond the original cut: server-side quote pinning (so MCP/Codex work with no browser open), `stop_ticks` staging (server resolves the stop from the fresh quote), risk_pct applied to REMAINING budget (superseded in Round 4: now the drawdown room), `UNKNOWN_ORDER` visible in state/digest, `dev_gateway.py` mock + e2e tests.
+Built beyond the original cut: server-side quote pinning (so MCP/Codex work with no browser open), `stop_ticks` staging (server resolves the stop from the fresh quote), risk_pct applied to REMAINING budget (superseded in Round 4: now the drawdown room), `UNKNOWN_ORDER` visible in state/digest, `projectx_desk/dev_gateway.py` mock + e2e tests.
 
 Deferred: MCP place, out-of-band confirm for live, automatic reconcile, SQLite capture, contract-roll drawings,
 live-account cancel/flatten, trailing/multi-leg order types, Playwright schema test.
@@ -84,8 +84,8 @@ reconcile job.
 - [ ] I1 merged, tests green
 - [ ] Account is sim (config-asserted `PX_ACCOUNT_ID` + `PX_ACCOUNT_KIND=sim`); live ids refused unless `PX_ALLOW_LIVE=1`
 - [ ] `PX_TRADING=1` set by hand; default 0 verified to refuse
-- [ ] Order writes exist only in `px_guard.py`; AST pin passes
-- [ ] Ticket shows full readback, sized by `sizing.py`, REFUSED on granularity
+- [ ] Order writes exist only in `projectx_desk/guard.py`; AST pin passes
+- [ ] Ticket shows full readback, sized by `projectx_desk/sizing.py`, REFUSED on granularity
 - [ ] Fresh-state gate passes; exactly one POST per place; ACK shown as ACK, not FILL
 - [ ] Fill via user hub; stop after fill matches position qty; naked-watchdog tested
 - [ ] Timeout/5xx gives UNKNOWN + halt + no retry; reconcile-by-tag resolves
@@ -141,16 +141,16 @@ are kept as written; where one is superseded, this section says so. Still tested
 ## Round 5: which levels is price respecting, per timeframe
 
 - **Ask:** instead of the trader picking EMAs or fibs by eye, scan each timeframe (5m, 15m, 1h, 4h, 1d) and draw only the levels
-  price has actually reacted to. `px_respect.py` (pure) runs the `px_levels` bounce statistics over about 25 candidates per
+  price has actually reacted to. `projectx_desk/respect.py` (pure) runs the `projectx_desk.levels` bounce statistics over about 25 candidates per
   timeframe: EMA 8/13/21/34/55/89/200, SMA 20/50/200, Keltner, Bollinger, session VWAP, prior day or week high/low/close, swing fibs.
 - **Selection bias is the enemy.** 25 candidates will always crown a lucky winner. So every winner shows `tested=K`, a level is only
   `stable` if it passes in both the earlier and the later half of the data, and anything under 30 tests carries SMALL_SAMPLE.
   The UI draws only levels with verdict ABOVE_RANDOM and dims the ones that are not stable.
-- **Found and fixed a baseline bias.** The `px_levels` placebo (lines shifted by fixed ATR offsets) is wrong for bands: on pure random
+- **Found and fixed a baseline bias.** The `projectx_desk.levels` placebo (lines shifted by fixed ATR offsets) is wrong for bands: on pure random
   walks Bollinger bands came out ABOVE_RANDOM in about 90% of runs, because bands sit at price extremes and the shifted placebo
-  lines do not. `px_respect` also scores each candidate on shuffled-return copies of the same bars and raises the placebo by any
+  lines do not. `projectx_desk.respect` also scores each candidate on shuffled-return copies of the same bars and raises the placebo by any
   positive gap it shows there (it only ever raises the bar). Random walks then gave about 2% ABOVE_RANDOM and none stable.
-  `px_levels.py` itself is unchanged, so the existing `LEVEL:` lines still use the raw baseline. Known gap, see LIMITATIONS.
+  `projectx_desk/levels.py` itself is unchanged, so the existing `LEVEL:` lines still use the raw baseline. Known gap, see LIMITATIONS.
 - **No lookahead:** a level's value on bar i uses bars up to i only; pivots for fibs count only after the lookback has confirmed
   them. Tests pin both.
 - **Cost:** `GET /api/respect` and the digest `RESPECT:` block share one cache keyed on the last closed bar. A cold start is 5
@@ -176,9 +176,9 @@ are kept as written; where one is superseded, this section says so. Still tested
 ## Round 6: level-anchored stops, GEX levels, the trade tape, tick bars (2026-10-16)
 
 Built by three parallel builders, then reviewed read-only by two other models (one on the risk rules and order path, one on hostile
-data, concurrency and persistence). Their findings are folded in below; nothing here touches `px_guard.py` or the AST pin.
+data, concurrency and persistence). Their findings are folded in below; nothing here touches `projectx_desk/guard.py` or the AST pin.
 
-- **Level-anchored stop and target (`px_anchor.py`, wired in `px_digest.size_idea`).** This amends Round 4's "the stop (1.5 x ATR)
+- **Level-anchored stop and target (`projectx_desk/anchor.py`, wired in `projectx_desk.digest.size_idea`).** This amends Round 4's "the stop (1.5 x ATR)
   sets the contract count": on the default 1.5x chip only, if a *respected* level (scanner verdict ABOVE_RANDOM, never GEX) lies
   adverse to entry between 1.5x and 2.0x ATR away, the stop tucks just beyond it (level -/+ max(2 ticks, 0.10 ATR)); the stop is never
   tighter than 1.5x ATR and never wider than 2.0x. The anchor is used only if it stays within `PX_MAX_STOP_TICKS` and within the risk
@@ -188,21 +188,21 @@ data, concurrency and persistence). Their findings are folded in below; nothing 
   "beyond level X" wording is true as of the last refresh, not necessarily at fill. Target: nearest respected favorable level at
   >= 1R, shown with R:R and break-even win rate; none shown if no level qualifies. The size box also shows drawdown and daily room
   left if the stop fills (netted for open stop risk) and total open risk with this trade.
-- **GEX levels (`px_gex.py`) are display only.** Fetched from the TraderDaddy public API (`PX_GEX_KEY`, fallback `TD_API_KEY`;
-  `PX_GEX_URL`; `PX_GEX_MAX_AGE_S` default 900), converted with `gex_futures.py`, drawn by the existing GEX overlay and listed in the
+- **GEX levels (`projectx_desk/gex.py`) are display only.** Fetched from the TraderDaddy public API (`PX_GEX_KEY`, fallback `TD_API_KEY`;
+  `PX_GEX_URL`; `PX_GEX_MAX_AGE_S` default 900), converted with `projectx_desk/gex_futures.py`, drawn by the existing GEX overlay and listed in the
   digest. They never feed sizing, stops or targets: "GEX marks positioning, not targets" stands. Only validated numbers and fixed
   enums reach the AI surface; the source's free text is dropped. Reads are streamed with a hard 2 MB cap.
-- **Partial quote merge (`px_state._on_quote`).** The gateway sends only changed fields, and replacing the quote blanked sizing. The
+- **Partial quote merge (`projectx_desk.state._on_quote`).** The gateway sends only changed fields, and replacing the quote blanked sizing. The
   quote now merges, but `_rx` then means "something arrived", so the whole quote is cleared on any hub resync/down and when quotes are
   unsubscribed, and a crossed book keeps only what just arrived. The guard's 2 s freshness rule is unchanged: nothing can outlive an
   outage and look fresh. (Review finding: without the clearing, a stale ask could have sized a stop 3.5x too far.)
-- **The trade tape is recorded whether or not a browser is open (`px_flow.py`, `px_ticks.py`).** Real buy/sell volume comes from the
+- **The trade tape is recorded whether or not a browser is open (`projectx_desk/flow.py`, `projectx_desk/ticks.py`).** Real buy/sell volume comes from the
   aggressor side on each trade (`GatewayTrade.type`: 0 buy, 1 sell). The tape stays subscribed for up to 4 contracts after the tab
   closes, and any `ensure_quote` starts it. There is no tick history, so coverage starts when recording starts. Per-minute buckets
   persist to `data/flow.json` (`PX_FLOW_FILE`; gitignored, numbers only) every 30 s; a restart, a reconnect, a tape eviction or an
   unusable timestamp becomes a recorded *hole*, and any bar or digest window overlapping a hole is blanked or marked INCOMPLETE rather
   than shown as a wrong number. The file is re-validated on load (types, ranges, caps). Volume of unknown side is counted apart.
-- **Tick bars (`px_ticks.py`, `PX_TICK_BARS`, default 1024,2048,4096 trade prints per bar).** ProjectX has no tick unit, so these are
+- **Tick bars (`projectx_desk/ticks.py`, `PX_TICK_BARS`, default 1024,2048,4096 trade prints per bar).** ProjectX has no tick unit, so these are
   built from the tape only, in memory, and restart empty. Each bar carries buy and sell volume; bars that missed prints are flagged.
 - **Known limits.** The anchor can flip between ANCHORED and ATR as price moves relative to fixed levels. Whether the gateway re-sends
   recent trades on a resubscribe (which would double count) is unverified. `live: true` bars are refused for this account, so the

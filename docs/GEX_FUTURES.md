@@ -1,6 +1,6 @@
 # Futures GEX levels
 
-`gex_futures.py` converts dealer-gamma (GEX) levels computed on an index or ETF into futures price space, so
+`projectx_desk/gex_futures.py` converts dealer-gamma (GEX) levels computed on an index or ETF into futures price space, so
 they can be drawn on an ES/NQ/RTY/YM chart and listed in the AI-readable panel. Pure math, no I/O: you bring
 the levels from whatever GEX source you use.
 

@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from px_client import PXAuthError, PXClient, PXError, PXRateLimited
+from projectx_desk.client import PXAuthError, PXClient, PXError, PXRateLimited
 
 KEY = "sekrit-api-key-value"
 JWT = "jwt-token-abc"
@@ -101,14 +101,14 @@ async def test_write_makes_exactly_one_attempt_on_401_no_relogin_no_retry():
         calls["api"] += 1
         return httpx.Response(401)
 
-    from px_client import PXWriteUnknown
+    from projectx_desk.client import PXWriteUnknown
     with pytest.raises(PXWriteUnknown):
         await make(h).write("/api/Order/place", {"x": 1})
     assert calls == {"login": 1, "api": 1}
 
 
 async def test_write_timeout_after_send_is_unknown_connect_failure_is_not():
-    from px_client import PXWriteUnknown
+    from projectx_desk.client import PXWriteUnknown
 
     def timeout(req):
         if req.url.path.endswith("loginKey"):
@@ -128,7 +128,7 @@ async def test_write_timeout_after_send_is_unknown_connect_failure_is_not():
 
 
 async def test_write_5xx_and_non_json_are_unknown_429_is_rate_limited():
-    from px_client import PXWriteUnknown
+    from projectx_desk.client import PXWriteUnknown
 
     def mk(resp):
         return make(lambda req: login_ok(req) if req.url.path.endswith("loginKey") else resp)

@@ -23,8 +23,8 @@ import math
 import random
 from typing import Optional, Sequence
 
-import px_levels as L
-from px_time import parse_ts, trade_date
+from projectx_desk import levels as L
+from projectx_desk.tradeday import parse_ts, trade_date
 
 TIMEFRAMES = ("5m", "15m", "1h", "4h", "1d")
 INTRADAY = ("5m", "15m", "1h", "4h")

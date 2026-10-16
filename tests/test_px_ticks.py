@@ -1,7 +1,7 @@
 import math
 
-import px_ticks
-from px_ticks import TickBars, parse_sizes, MAX_BARS, MAX_CONTRACTS
+from projectx_desk import ticks as px_ticks
+from projectx_desk.ticks import TickBars, parse_sizes, MAX_BARS, MAX_CONTRACTS
 
 
 def feed(tb, cid, rows):
@@ -141,5 +141,5 @@ def test_route_and_state_hook(monkeypatch):
 
 
 def test_parse_sizes_survives_unicode_digits_and_garbage():                                 # fuzz pass finding
-    from px_ticks import DEFAULT_SIZES, parse_sizes
+    from projectx_desk.ticks import DEFAULT_SIZES, parse_sizes
     assert parse_sizes("\u00b2,1024") == (1024,) and parse_sizes("\u00b2") == DEFAULT_SIZES

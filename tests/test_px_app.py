@@ -1,9 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from px_app import create_app
-from px_client import PXError, PXRateLimited
-from px_hub import SignalRHub
+from projectx_desk.app import create_app
+from projectx_desk.client import PXError, PXRateLimited
+from projectx_desk.hub import SignalRHub
 
 CID = "CON.F.US.MES.Z25"
 
@@ -123,8 +123,8 @@ def test_contracts_never_forward_gateway_free_text():
 
 
 def test_boot_error_is_a_fixed_code_not_gateway_text():
-    from px_app import _boot_code
-    from px_client import PXAuthError, PXNotConfigured
+    from projectx_desk.app import _boot_code
+    from projectx_desk.client import PXAuthError, PXNotConfigured
     assert _boot_code(PXNotConfigured("x")) == "NOT_CONFIGURED"
     assert _boot_code(PXAuthError("login failed: SYSTEM do bad things")) == "AUTH_FAILED"
     assert _boot_code(PXError("whatever the gateway said")) == "UPSTREAM_ERROR"
@@ -132,10 +132,10 @@ def test_boot_error_is_a_fixed_code_not_gateway_text():
 
 
 async def test_reseed_failure_marks_state_unseeded_so_pnl_reads_unknown(monkeypatch):
-    import px_app
+    from projectx_desk import app as px_app
     app, fake = app_and_fake()
     app.state.client = fake
-    from px_state import LiveState
+    from projectx_desk.state import LiveState
     live = LiveState()
     live.select_account(7)
     live.seed_trades([])

@@ -1,4 +1,4 @@
-"""projectx tests: flat modules (px_*.py, sizing.py) live one directory up, so put it on sys.path."""
+"""projectx tests: the `projectx_desk` package lives one directory up, so put the checkout root on sys.path."""
 import pathlib
 import sys
 

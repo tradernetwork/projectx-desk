@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-import px_mcp
-from px_client import PXClient, PXError, PXWriteUnknown
-from px_guard import ORDER_CANCEL, ORDER_MODIFY, ORDER_PLACE, POSITION_CLOSE
+from projectx_desk import mcp as px_mcp
+from projectx_desk.client import PXClient, PXError, PXWriteUnknown
+from projectx_desk.guard import ORDER_CANCEL, ORDER_MODIFY, ORDER_PLACE, POSITION_CLOSE
 from test_px_guard_place import CID, GW, go, staged  # noqa: F401
 from test_px_guard_preview import NOW
 from test_px_guard_protect import build2, fill
@@ -323,7 +323,7 @@ def test_gateway_strings_never_pass_as_numbers_or_timestamps():
 # ---- the launcher rule holds even without main() (GPT F11) --------------------------------------
 
 def test_create_app_refuses_a_public_bind_without_an_operator_token(monkeypatch):
-    from px_app import create_app
+    from projectx_desk.app import create_app
     monkeypatch.setenv("PX_HOST", "0.0.0.0")
     monkeypatch.delenv("PX_OPERATOR_TOKEN", raising=False)
     with pytest.raises(SystemExit):
@@ -332,7 +332,7 @@ def test_create_app_refuses_a_public_bind_without_an_operator_token(monkeypatch)
 
 async def test_search_contracts_forwards_only_finite_tick_numbers(tmp_path):
     from fastmcp import Client
-    from px_mcp import build_mcp
+    from projectx_desk.mcp import build_mcp
 
     class App:
         pass

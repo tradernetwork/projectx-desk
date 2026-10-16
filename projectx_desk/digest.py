@@ -619,7 +619,7 @@ def redact_stream(s):
         z.pop(k, None)
     # size-plan dollars. heat_pct is redacted too: with stop_ticks, contracts and tick value the risk in dollars
     # is derivable, so pct of room would let a viewer back out the room size. Keys stay (None) so the digest prints NA.
-    for k in ("drawdown_left", "daily_left", "heat_usd", "heat_pct", "pct_budget"):
+    for k in ("drawdown_left", "daily_left", "heat_usd", "heat_pct", "pct_budget", "contracts_by_risk"):
         if k in z:
             z[k] = None
     if "why_stream" in z:

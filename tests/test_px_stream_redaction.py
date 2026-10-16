@@ -38,3 +38,9 @@ def test_stream_redacts_size_plan_dollars(tmp_path):
         for v in (plain["drawdown_left"], plain["daily_left"]):  # large, distinctive: substring match is meaningful
             assert str(v) not in raw and str(v) not in stxt
         assert "STREAM=ON" in stxt
+
+
+def test_contracts_by_risk_is_redacted_in_stream_mode():                                   # audit finding: with visible stop ticks it bounds the loss room
+    from projectx_desk import digest as px_digest
+    s = {"risk": {"daily_limit": 500.0, "daily_room": 400.0}, "size": {"contracts_by_risk": 7, "contracts": 1, "stop_ticks": 7}, "kpi": {}}
+    assert px_digest.redact_stream(s)["size"]["contracts_by_risk"] is None

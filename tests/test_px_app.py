@@ -142,13 +142,35 @@ async def test_reseed_failure_marks_state_unseeded_so_pnl_reads_unknown(monkeypa
     assert live.day_pnl() == 0.0
     app.state.live = live
 
-    async def boom(_app):
-        raise PXError("down")
+    calls = []
 
-    monkeypatch.setattr(px_app, "_snapshot", boom)
+    async def flaky(_app):
+        calls.append(1)
+        if len(calls) <= 2:
+            raise PXError("down")                      # fails twice, then the gateway is back
+
+    monkeypatch.setattr(px_app, "_snapshot", flaky)
     monkeypatch.setattr(px_app.asyncio, "sleep", lambda *_: _noop())
-    await px_app._reseed(app, attempts=2)
-    assert live.day_pnl() is None and live.trades_seeded is False
+    await px_app._reseed(app)                          # keeps retrying on its own until it works
+    assert len(calls) == 3
+    assert live.day_pnl() is None and live.trades_seeded is False      # (the stub never re-seeds; the point is the unseeded state while it was down)
+
+
+async def test_a_failed_first_boot_keeps_retrying_until_it_works(monkeypatch):
+    from projectx_desk import app as px_app
+    app, _fake = app_and_fake()
+    app.state.boot_error = "UPSTREAM_ERROR"
+    attempts = []
+
+    async def boot(_app):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise PXError("network not up yet")
+
+    monkeypatch.setattr(px_app, "_boot", boot)
+    monkeypatch.setattr(px_app.asyncio, "sleep", lambda *_: _noop())
+    await px_app._boot_retry(app)
+    assert len(attempts) == 3 and app.state.boot_error is None
 
 
 async def _noop():

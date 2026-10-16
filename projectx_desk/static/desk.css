@@ -475,7 +475,7 @@ body.acct-live .ribbon{border-top:2px solid var(--magenta)}
 
 /* mid-width desktops (1100 to 1599): keep the top bar on one row and the chart bar on one row */
 @media (min-width:1100px) and (max-width:1599px){
-  .ribbon{gap:6px 8px;flex-wrap:nowrap}
+  .ribbon{gap:6px 8px;flex-wrap:wrap}
   .brand>span,.ba,.legend,.vsep{display:none}
   #c{max-width:14ch} #tfs button{padding:0 5px}
   .pill{padding:4px 7px;letter-spacing:.04em;gap:5px}

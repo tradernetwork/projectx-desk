@@ -79,7 +79,10 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
                     await _boot(app)
                 except (PXError, KeyError, IndexError) as e:  # UI still loads; /state.json says why
                     app.state.boot_error = _boot_code(e)
+            retry = asyncio.create_task(_boot_retry(app)) if connect and app.state.boot_error else None
             yield
+            if retry is not None:
+                retry.cancel()
             if deadline is not None:
                 deadline.cancel()
         app.state.live.flow.save()               # a clean stop must not lose the last 30 s of tape (the file is rewritten every 30 s)
@@ -483,9 +486,24 @@ async def _boot(app):
     for t in ("Orders", "Positions", "Trades"):
         await user.subscribe(f"Subscribe{t}", acct["id"], unsub_target=f"Unsubscribe{t}")
     user.start()
+    if not getattr(app.state, "reseed_listening", False):          # once, and BEFORE the snapshot: a failed first snapshot must still reseed on a resync
+        app.state.reseed_listening = True
+        user.listen(lambda kind: _schedule_reseed(app) if kind == "resync" else None)   # any user-hub reconnect may have missed events
     await _snapshot(app)
-    # Any user-hub reconnect may have missed events: re-seed from REST.
-    user.listen(lambda kind: _schedule_reseed(app) if kind == "resync" else None)
+
+
+async def _boot_retry(app):
+    """The first boot can fail (network not up when the service starts, a login hiccup). Keep trying on a backoff until it works."""
+    delay = 5.0
+    while app.state.boot_error:
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, 60.0)
+        try:
+            await _boot(app)
+            app.state.boot_error = None
+            print("boot recovered", flush=True)
+        except (PXError, KeyError, IndexError) as e:
+            app.state.boot_error = _boot_code(e)
 
 
 async def _deadline_loop(app):
@@ -509,12 +527,12 @@ def _schedule_reseed(app):
         app.state.reseed_task = asyncio.get_running_loop().create_task(_reseed(app))
 
 
-async def _reseed(app, attempts=5):
+async def _reseed(app):
     """Re-read after a resync. On failure, mark state UNSEEDED (so day P&L reads None and the
-    guard refuses to open) and retry with backoff; never carry on silently with stale state."""
+    guard refuses to open) and retry with backoff until it works; never carry on silently with stale state."""
     live = app.state.live
     delay = 1.0
-    for _ in range(attempts):
+    while True:
         try:
             await _snapshot(app)
             return

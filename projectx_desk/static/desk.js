@@ -89,7 +89,7 @@ $('reveal').onclick = () => {
 
 /* ================= CSRF + POST ================= */
 let csrfP = null;
-const csrf = (force) => (csrfP && !force) ? csrfP : (csrfP = j('/api/csrf').then(r => r.token));
+const csrf = (force) => (csrfP && !force) ? csrfP : (csrfP = j('/api/csrf').then(r => r.token).catch(e => {csrfP = null; throw e}));   // a failed fetch is never cached: HALT and FLATTEN must recover on their own
 async function post(path, body, retried){
   let tok; try{tok = await csrf(retried)}catch(e){return {ok: false, status: 0, data: {detail: 'csrf unavailable'}}}
   let r, data = null;
@@ -1071,7 +1071,7 @@ chart.setDataLoader({
       es.addEventListener('resync', () => {$('msg').textContent = ''; reseed().catch(err)});
       es.addEventListener('down', () => {setDot('warn'); $('msg').textContent = 'tick feed reconnecting...'});
       es.onopen = () => {setDot('warn'); $('msg').textContent = ''; reseed().catch(err)};
-      es.onerror = () => {setDot('warn'); $('msg').textContent = 'tick feed reconnecting...'};
+      es.onerror = () => {setDot('warn'); $('msg').textContent = 'tick feed reconnecting...'; if(es.readyState === 2) setTimeout(() => {if(window._es === es) load()}, 3000)};   // CLOSED = the browser will not retry
     }catch(e){err(e)}
   },
   unsubscribeBar: () => unsub(),

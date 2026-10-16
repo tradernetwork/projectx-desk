@@ -20,17 +20,42 @@ async def test_missing_stop_on_our_unchanged_position_flattens_and_halts(tmp_pat
     assert out[CID] == "FLATTENED" and g.halted()           # ours and unprotected: never relabelled external
 
 
-async def test_missing_stop_with_a_different_broker_position_is_still_external(tmp_path):    # finding 1, evidence both ways
+async def test_missing_stop_whose_fill_is_on_the_tape_means_the_position_is_new_and_external(tmp_path):   # finding 1, evidence
     g, live, clock, gw = build2(tmp_path)
     t = await staged(g)
     await go(g, t)
     await g.handle_position(fill(live))
     live.positions.clear()
     live.positions[2] = {"id": 2, "accountId": 7, "contractId": CID, "type": 1, "size": 1, "averagePrice": 5000.25}
+    live.trades.append({"id": 77, "orderId": t.stop_order_id, "contractId": CID, "voided": False})
     gw.working = []
     n = len(gw.writes)
     assert (await g.protect_open_positions())[CID] == "EXTERNAL_UNPROTECTED"
-    assert len(gw.writes) == n and not g.halted()           # a genuinely different position is never touched
+    assert len(gw.writes) == n and not g.halted()           # our stop provably filled: a different position is never touched
+
+
+async def test_a_new_position_id_without_a_stop_fill_is_still_ours_and_flattened(tmp_path):       # review: id alone is no evidence
+    g, live, clock, gw = build2(tmp_path)
+    t = await staged(g)
+    await go(g, t)
+    await g.handle_position(fill(live))
+    live.positions.clear()
+    live.positions[2] = {"id": 2, "accountId": 7, "contractId": CID, "type": 1, "size": 1, "averagePrice": 5000.25}
+    gw.pos, gw.working = [live.positions[2]], []              # no stop fill anywhere
+    assert (await g.protect_open_positions())[CID] == "FLATTENED" and g.halted()
+
+
+async def test_a_stop_the_trader_replaced_covers_the_position_and_is_left_alone(tmp_path):   # review: no false exit
+    g, live, clock, gw = build2(tmp_path)
+    t = await staged(g)
+    await go(g, t)
+    p = fill(live)
+    await g.handle_position(p)
+    gw.pos = [p]
+    gw.working = [{"id": 901, "contractId": CID, "type": 4, "side": 1, "size": 1}]       # their own covering stop, not ours (900)
+    n = len(gw.writes)
+    assert (await g.protect_open_positions())[CID] == "COVERED"
+    assert len(gw.writes) == n and not g.halted()
 
 
 async def _late_stop_rig(tmp_path):
@@ -57,14 +82,125 @@ async def _late_stop_rig(tmp_path):
     return g, live, gw, t, release, task
 
 
-async def test_stop_ack_after_an_ordinary_close_is_cancelled_not_left_working(tmp_path):     # finding 2
+async def test_stop_ack_after_an_ordinary_close_is_cancelled_and_confirmed_without_a_halt(tmp_path):     # finding 2
     g, live, gw, t, release, task = await _late_stop_rig(tmp_path)
     live.positions.clear()
     await g.handle_position({"id": 1, "contractId": CID, "type": 1, "size": 0})
     release.set()
     await task
     assert t.state == "CLOSED" and t.abandoned and t.stop_state == "ABANDONED"
-    assert any("cancel" in path.lower() for path, _ in gw.writes) and g.halted()
+    assert any("cancel" in path.lower() for path, _ in gw.writes)       # the late stop was cancelled
+    assert not g.halted()                                               # and the book confirms it: a normal close is not an incident
+
+
+async def test_a_late_stop_that_cannot_be_cancelled_is_an_orphan_and_halts(tmp_path):
+    g, live, gw, t, release, task = await _late_stop_rig(tmp_path)
+    live.positions.clear()
+    await g.handle_position({"id": 1, "contractId": CID, "type": 1, "size": 0})
+    gw.working = [{"id": 900, "contractId": CID, "type": 4, "side": 1, "size": 1}]
+    orig = gw.write
+
+    async def refuse_cancel(path, body):
+        if "cancel" in path.lower():
+            gw.writes.append((path, dict(body)))
+            return {"success": False}
+        return await orig(path, body)
+
+    gw.write = refuse_cancel
+    release.set()
+    await task
+    assert g.halted() and g._intents[f"px-{t.hash8}-2"]["state"] == "ORPHAN"
+
+
+def _working_stop(live, gw, oid=900):
+    o = {"id": oid, "contractId": CID, "type": 4, "side": 1, "size": 1}
+    live.orders[oid] = dict(o)
+    gw.working = [dict(o)]
+
+
+async def _acked_trade(tmp_path):
+    g, live, clock, gw = build2(tmp_path)
+    t = await staged(g)
+    await go(g, t)
+    await g.handle_position(fill(live))
+    assert t.stop_state == "ACKED" and t.stop_order_id == 900
+    live.positions.clear()
+    return g, live, gw, t
+
+
+async def test_a_normal_stop_out_makes_no_broker_call_and_no_halt(tmp_path):            # review: the stop's own fill is proof
+    g, live, gw, t = await _acked_trade(tmp_path)
+    _working_stop(live, gw)
+    live.trades.append({"id": 5, "orderId": 900, "voided": False})
+    n = len(gw.writes)
+    await g.handle_position({"id": 1, "contractId": CID, "type": 1, "size": 0})
+    assert t.state == "CLOSED" and len(gw.writes) == n and not g.halted()
+
+
+async def test_a_lagging_book_that_still_lists_a_just_filled_stop_is_retried_not_halted(tmp_path):
+    g, live, gw, t = await _acked_trade(tmp_path)
+    _working_stop(live, gw)
+    reads = []
+    orig = gw.open_orders
+
+    async def lagging(aid):
+        reads.append(1)
+        return await orig(aid) if len(reads) == 1 else []      # the second read shows it gone: it had just filled
+
+    gw.open_orders = lagging
+    await g.handle_position({"id": 1, "contractId": CID, "type": 1, "size": 0})
+    assert len(reads) >= 2 and not g.halted() and not any("cancel" in w[0].lower() for w in gw.writes)
+
+
+async def test_one_failed_book_read_after_a_close_is_retried_not_halted(tmp_path):
+    g, live, gw, t = await _acked_trade(tmp_path)
+    _working_stop(live, gw)
+    n = {"c": 0}
+    orig = gw.open_orders
+
+    async def flaky(aid):
+        n["c"] += 1
+        if n["c"] == 1:
+            raise RuntimeError("429")
+        return []
+
+    gw.open_orders = flaky
+    await g.handle_position({"id": 1, "contractId": CID, "type": 1, "size": 0})
+    assert not g.halted()
+
+
+async def test_a_manual_close_with_our_stop_still_working_is_cleaned_up_without_a_halt(tmp_path):    # review #4
+    g, live, gw, t = await _acked_trade(tmp_path)
+    _working_stop(live, gw)                                  # the trader closed by hand; our stop 900 is still resting
+    await g.handle_position({"id": 1, "contractId": CID, "type": 1, "size": 0})
+    assert 900 in gw.cancelled and not gw.working and not g.halted()
+
+
+async def test_an_unreadable_book_after_every_retry_halts(tmp_path):
+    g, live, gw, t = await _acked_trade(tmp_path)
+    _working_stop(live, gw)
+
+    async def dead(aid):
+        raise RuntimeError("down")
+
+    gw.open_orders = dead
+    await g.handle_position({"id": 1, "contractId": CID, "type": 1, "size": 0})
+    assert g.halted()                                        # cannot prove the book is clear: fail closed
+
+
+async def test_a_superseded_ticket_keeps_its_state_when_the_earlier_checks_also_refuse(tmp_path):    # review #7
+    g, live, clock, gw = build2(tmp_path)
+    t = await staged(g)
+    gw.working = [{"id": 5, "contractId": CID, "type": 1, "side": 0, "size": 1}]     # desk and broker disagree: refusal reason
+    orig = gw.open_positions
+
+    async def during(aid):
+        await staged(g)
+        return await orig(aid)
+
+    gw.open_positions = during
+    r = await go(g, t)
+    assert not r.ok and t.state == "SUPERSEDED"
 
 
 async def test_hub_down_during_the_final_read_refuses_the_entry(tmp_path):                  # finding 3a

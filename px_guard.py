@@ -675,7 +675,7 @@ class Guard:
                     out.append(f"recheck: market moved {drift} ticks during the broker read; restage")
         remaining, _daily = self.budget(self.wall())
         risk = t.readback.get("risk_usd")
-        if remaining is None or (isinstance(risk, (int, float)) and risk > remaining):
+        if remaining is None or (isinstance(risk, (int, float)) and remaining < lim.min_budget_multiple * risk):
             out.append("recheck: risk headroom shrank during the broker read")
         return out
 
@@ -726,7 +726,8 @@ class Guard:
                 if mismatch:
                     reasons.append(mismatch)
             if reasons:
-                t.state = REJECTED          # a refused place consumes the ticket; restage against the new world
+                if t.state == STAGED:       # a ticket restaged during the awaits keeps its SUPERSEDED state
+                    t.state = REJECTED      # a refused place consumes the ticket; restage against the new world
                 return self._deny(t, reasons, origin, REJECTED)
 
             # Awaited reads above can outlast a halt, the ticket's life, the hub, the quote or a restage. Re-check EVERYTHING
@@ -928,20 +929,30 @@ class Guard:
                           and t.state in (PLACING, PLACED, UNKNOWN)), None)
             if owner is not None and owner.stop_state == "ACKED" and working is not None \
                     and owner.stop_order_id not in {o.get("id") for o in working}:
-                # The ticket thinks it has a stop, but the broker has none. Either the stop filled and something else
-                # opened a NEW position, or the stop was cancelled/lost and this is still OUR position, now naked. Only
-                # the broker's own position id can tell them apart: never infer a hand entry from a missing stop alone.
-                pid = p.get("id")
-                new_position = isinstance(owner.position_id, int) and isinstance(pid, int) and pid != owner.position_id
-                if not new_position:
+                # The ticket thinks it has a stop, but the broker book does not list it. What that means is decided by
+                # EVIDENCE, in this order, and never by the broker position id alone (whether it is stable is unverified):
+                #   1. another stop already covers the position (the trader replaced ours): protected, leave it alone.
+                #   2. our stop FILLED (a fill with its order id): the position we owned is gone, so this is a new,
+                #      external one: retire the ticket and judge it afresh, never touch it.
+                #   3. neither: the stop was cancelled or lost and this is still OUR position, now naked: flatten and halt.
+                if self._covered_by_broker_stop(working, cid, side, size):
+                    self._audit("stop", ticket=owner.hash8, state="REPLACED_BY_COVERING_STOP")
+                    owner.state = "CLOSED"
+                    self._cancel_watchdog(owner)
+                    self._close_intents(owner)
+                    out[cid] = "COVERED"
+                    continue
+                if not self._stop_filled(owner):
                     self._audit("halt", code="owned_position_stop_missing")
+                    res = None
                     try:
-                        await self.flatten(contract_id=cid, origin="ui")
+                        res = await self.flatten(contract_id=cid, origin="ui")
                     finally:
-                        self.trip_halt("owned_position_stop_missing")
+                        if not (res is not None and res.flat and not res.closed):   # already gone (the stop filled mid-check): no halt
+                            self.trip_halt("owned_position_stop_missing")
                     out[cid] = "FLATTENED"
                     continue
-                owner.state = "CLOSED"           # a different position: the one we owned is gone; judge this one afresh
+                owner.state = "CLOSED"           # our stop filled: the position we owned is gone; judge this one afresh
                 self._cancel_watchdog(owner)
                 self._close_intents(owner)
                 owner = None
@@ -949,9 +960,7 @@ class Guard:
                 await self.handle_position(p)
                 out[cid] = "TICKET"
                 continue
-            covered = working is not None and side is not None and any(
-                o.get("contractId") == cid and o.get("type") == 4 and o.get("side") == (1 if side == "long" else 0)
-                and abs(o.get("size") or 0) >= size for o in working)
+            covered = self._covered_by_broker_stop(working, cid, side, size)
             if covered:
                 out[cid] = "COVERED"
                 continue
@@ -968,6 +977,17 @@ class Guard:
                 out[cid] = "EXTERNAL_UNPROTECTED"
         self.protection = out
         return out
+
+    @staticmethod
+    def _covered_by_broker_stop(working, cid, side, size) -> bool:
+        return working is not None and side is not None and any(
+            o.get("contractId") == cid and o.get("type") == 4 and o.get("side") == (1 if side == "long" else 0)
+            and abs(o.get("size") or 0) >= size for o in working)
+
+    def _stop_filled(self, t) -> bool:
+        """Did THIS ticket's stop fill? Proved only by a non-voided fill carrying its order id (the live trade list)."""
+        oid = t.stop_order_id
+        return oid is not None and any(tr.get("orderId") == oid and not tr.get("voided") for tr in self.live.trades)
 
     def _cancel_watchdog(self, t):
         w = self._watchdogs.pop(t.ticket_id, None)
@@ -993,7 +1013,7 @@ class Guard:
                     late = True
                     t.stop_state = "ABANDONED"
                     self._set_intent(tag, state="ORPHAN", order_id=oid)
-                    await self._cancel_late_stop(t, oid)
+                    await self._cancel_late_stop(t, oid, clean_ok=(t.state == "CLOSED"))
                 else:
                     t.stop_state, t.stop_order_id, t.stop_size, ok = "ACKED", oid, size, True
                     t.stop_current = t.stop_plan["stop_price"]
@@ -1021,20 +1041,57 @@ class Guard:
         else:
             await self._naked(t, "stop_failed")
 
+    async def _stop_working(self, order_id) -> Optional[bool]:
+        """Is this order still in the BROKER's working book? None = could not tell (after retries)."""
+        for _ in range(max(1, self.verify_tries)):
+            try:
+                return any(o.get("id") == order_id for o in await self.client.open_orders(self.live.account_id))
+            except Exception:  # noqa: BLE001 - a transient read failure must not halt a normal exit: retry first
+                await self.sleep(self.verify_interval)
+        return None
+
     async def _retire_stop_after_close(self, t: Ticket) -> None:
         """The position closed by some means other than our flatten. A standalone stop that is STILL WORKING would open the
-        opposite position when hit, so prove from the broker book whether it survives (a stop that just filled does not)."""
-        try:
-            working = await self.client.open_orders(self.live.account_id)
-        except Exception:  # noqa: BLE001 - cannot prove the book is clear
+        opposite position when hit. A stop that just FILLED (the normal exit) is gone, and its fill proves it, so no
+        broker call and no halt. Otherwise prove the book is clear; clean up and carry on only if the cleanup is confirmed."""
+        oid = t.stop_order_id
+        if self._stop_filled(t) or oid not in self.live.orders:
+            return
+        for _ in range(max(1, self.verify_tries)):          # a just-filled stop can linger in the listing for a beat
+            working = await self._stop_working(oid)
+            if working is False:
+                return
+            if working is None:
+                break
+            await self.sleep(self.verify_interval)
+            if self._stop_filled(t) or oid not in self.live.orders:
+                return
+        else:
+            working = True
+        if working is None:
             self._audit("stop", ticket=t.hash8, state="CLOSE_UNVERIFIED")
             self.trip_halt("stop_unverified_after_close")
             return
-        if any(o.get("id") == t.stop_order_id for o in working):
-            await self._cancel_late_stop(t, t.stop_order_id)
+        cancelled = False
+        if self.limits.account_kind == "sim":
+            try:
+                r = await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id, "orderId": oid})
+                cancelled = isinstance(r, dict) and r.get("success") is True
+            except Exception:  # noqa: BLE001
+                cancelled = False
+        if cancelled and await self._stop_working(oid) is False:
+            self._audit("stop", ticket=t.hash8, state="CLOSE_CLEANED")     # the book confirms it: no halt for a manual close
+            return
+        try:                                                   # keep the evidence: a leftover stop is an orphan, not "closed"
+            self._set_intent(f"px-{t.hash8}-2", state="ORPHAN", order_id=oid)
+        except OSError:
+            pass
+        self._audit("stop", ticket=t.hash8, state="LATE_ORPHAN")
+        self.trip_halt("stop_orphan_after_close")
 
-    async def _cancel_late_stop(self, t: Ticket, order_id: int) -> None:
-        """A stop ACKed after its position was flattened. Left alone it can open the opposite position."""
+    async def _cancel_late_stop(self, t: Ticket, order_id: int, clean_ok: bool = False) -> None:
+        """A stop ACKed after its position was flattened or closed. Left alone it can open the opposite position.
+        `clean_ok` (an ordinary close, not the watchdog) lets a confirmed cleanup finish without a halt."""
         cancelled = False
         if self.limits.account_kind == "sim":
             try:
@@ -1042,8 +1099,20 @@ class Guard:
                 cancelled = isinstance(r, dict) and r.get("success") is True
             except Exception:  # noqa: BLE001
                 cancelled = False
-        self._audit("stop", ticket=t.hash8, state="LATE_CANCELLED" if cancelled else "LATE_ORPHAN")
-        self.trip_halt("late_stop_cancelled" if cancelled else "late_stop_orphan")
+        working = await self._stop_working(order_id)       # replies are not proof; the broker book is
+        gone = working is False
+        no_position = not any(abs(q.get("size") or 0) for q in self.live.positions.values() if q.get("contractId") == t.contract_id)
+        if gone and (cancelled or no_position):
+            self._audit("stop", ticket=t.hash8, state="LATE_CANCELLED" if cancelled else "LATE_GONE")
+            if not clean_ok:
+                self.trip_halt("late_stop_cancelled" if cancelled else "late_stop_gone")
+            return
+        try:
+            self._set_intent(f"px-{t.hash8}-2", state="ORPHAN", order_id=order_id)
+        except OSError:
+            pass
+        self._audit("stop", ticket=t.hash8, state="LATE_ORPHAN")
+        self.trip_halt("late_stop_orphan")
 
     async def _resize_stop(self, t: Ticket, size: int) -> None:
         """Keep the stop equal to the position, AT ITS CURRENT PRICE. A stop larger than the position flips you on a

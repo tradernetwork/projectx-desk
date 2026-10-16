@@ -395,6 +395,7 @@ async def test_an_owner_ticket_whose_stop_is_gone_at_the_broker_is_not_trusted(t
     assert t.stop_state == "ACKED"
     live.positions.clear()                       # the stop filled while the hub was down; then a hand entry: a NEW broker position
     live.positions[2] = {"id": 2, "accountId": 7, "contractId": CID, "type": 1, "size": 1, "averagePrice": 5000.25}
+    live.trades.append({"id": 77, "orderId": t.stop_order_id, "contractId": CID, "voided": False})    # the fill that proves it
     gw.working = []                              # and the broker has no stop
     n = len(gw.writes)
     out = await g.protect_open_positions()

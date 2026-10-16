@@ -213,17 +213,23 @@ data, concurrency and persistence). Their findings are folded in below; nothing 
 `reviews/review-codex-2026-10-16.md` reviewed `db1be93`. Its embedded reproduction script was run first; every finding reproduced exactly.
 
 - **A vanished stop no longer makes us forget our own position (P1).** `protect_open_positions` used to retire an owned ticket whose
-  stop was gone from the broker book and then call the still-open position `EXTERNAL_UNPROTECTED`, untouched. Tickets now record the
-  broker position id their fill created (`Ticket.position_id`). If the position in the contract is the same one (or the id is
-  unknown), it is ours and unprotected: flatten and halt. Only a *different* broker position id counts as a new, external position
-  (the stop filled, then something else opened one). A missing stop is never, by itself, evidence of a hand entry. Unverified:
-  whether the real gateway keeps a stable position id across partial fills; the mock does.
-- **A stop ACK after an ordinary close is no longer left working (P1).** A position-closed event now marks an in-flight stop
-  `abandoned` so its late ACK is cancelled and halts (the watchdog's late-stop path); an already ACKED stop is checked against the
-  REST order book and cancelled if still working (a stop that just filled is not). Unverifiable book: halt.
+  stop was gone from the broker book and then call the still-open position `EXTERNAL_UNPROTECTED`, untouched. It now decides by
+  evidence, in order: (1) another broker stop already covers the position (the trader replaced ours): report COVERED, touch nothing;
+  (2) our stop FILLED (a non-voided fill carrying its order id is on the trade list): the position we owned is gone, so a position
+  now present is new and external, never touched; (3) neither: the stop was cancelled or lost, the position is still ours and naked,
+  so flatten and halt (no halt if the flatten finds it already gone). The broker position id is recorded on the ticket but is NOT used
+  as evidence: whether the real gateway keeps one id per position is unverified (an independent review caught this: with an unstable
+  id our own naked position would have been called external). A missing stop alone is never a reason to assume a hand entry.
+- **A stop ACK after an ordinary close is no longer left working (P1), without false halts.** A position-closed event marks an
+  in-flight stop `abandoned`, so its late ACK is cancelled. An already ACKED stop whose fill is on the tape, or that the hub no longer
+  lists, needs no broker call (a normal stop-out). Otherwise the REST book is read with retries (a just-filled stop can linger for a
+  beat, and one failed read must not halt a normal exit); a stop that is still working is cancelled, and a cancel the book confirms
+  finishes quietly (a manual close on sim is not an incident). Only an unconfirmed cancel (orphan: the stop intent is kept as ORPHAN)
+  or an unreadable book after every retry halts. The watchdog's late-stop path still always halts. Assumption: `live.orders` is
+  hub-fed and resynced from REST, so a stop absent from it is treated as gone.
 - **`place()` re-validates everything at the commit point (P1, P2).** One synchronous `_commit_gate` after the last await checks the
   ticket is still STAGED (a restage during placement used to be overwritten and the superseded ticket sent), halt, expiry, user-hub
-  health and seeding, quote freshness, market drift in ticks, and risk headroom.
+  health and seeding, quote freshness, market drift in ticks, and risk headroom (including the budget multiple `evaluate` uses).
 - **Flatten always re-reads the book after cancelling (P1).** An initially empty snapshot used to report flat with no further read.
 - **Stream mode redacts the new dollar fields (P2).** `drawdown_left`, `daily_left`, `heat_usd` and `heat_pct` are removed from the
   digest and state, the UI shows "hidden in stream mode", and the page now passes `stream` to `/state.json`.

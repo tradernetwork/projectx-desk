@@ -2,14 +2,19 @@
 
 Read this before you trust the desk with anything. It is the honest list, kept next to the code so it does not drift.
 
-## Not verified against the real gateway
+## What has been verified against the real gateway, and what has not
 
-Everything is tested against the bundled mock gateway (`dev_gateway.py`). The mock follows the ProjectX documentation,
+**Verified read-only, on the real TopstepX gateway (Combine sim account, 2026-10-15 and 2026-10-16):** login and account lookup, contract
+search, the market hub (quotes and the trade tape, about 85 ms behind the clock), the user hub connecting and seeding, REST bars
+(`live: false` bars equal a candle rebuilt from the tape, OHLC and volume), and that `GatewayTrade.type` carries the aggressor side.
+**Not verified: any order write.** No order has been placed, modified, cancelled or flattened on the real gateway.
+
+Everything else is tested against the bundled mock gateway (`dev_gateway.py`). The mock follows the ProjectX documentation,
 but it is not the real thing. Not yet confirmed on a real account:
 
 - the whole order path (place, stop after fill, flatten, cancel, modify)
 - `PositionType` Short = 2
-- the `live` data-subscription flag on bars and contract search
+- the `live` data-subscription flag on bars and contract search (partly checked: `live: true` bars are refused for the Combine account, see below)
 - how your account's bracket mode is detected (it is never guessed: `PX_BRACKET_MODE` must be set explicitly)
 - whether order search returns `customTag`, which reconcile-by-tag depends on
 - `Position/closeContract` semantics, especially on live accounts
@@ -74,14 +79,16 @@ America/Chicago.
 
 **`PX_MCP_PLACE` is a reserved flag.** No route sets an MCP origin on `place()`, so it does nothing today.
 
-**The digest's GEX section is always `UNAVAILABLE`** until you wire a provider (see `docs/GEX_FUTURES.md`).
+**GEX is display only, and needs a key.** `px_gex.py` fetches levels from the TraderDaddy API (`PX_GEX_KEY`) and converts them with
+`gex_futures.py`; without a key the digest says `GEX: status=NO_KEY` and nothing is drawn. The levels are a translation of index and
+ETF option positioning, not a measurement of the futures book, and they never feed sizing, stops or targets (Round 6).
 
 **Thresholds are hypotheses.** The ADX and ATR scalers, the behavioral-rail defaults and the level-reaction verdict margin
 are starting points, not findings.
 
-**The behavioral rails count closing fills, not round trips.** Cooldown, lockout and the size lock read today's fills that
-carry a realised P&L. At a quantity cap of 1 that is the same thing; a 2-lot closed in two fills counts as two, and a scratch
-(zero P&L) neither extends nor breaks a streak. Setting `PX_COOLDOWN_AFTER_LOSS_S` or `PX_MAX_CONSEC_LOSSES` to `0` turns that
+**The behavioral rails count closed orders, not round trips.** Cooldown, lockout and the size lock read today's fills that
+carry a realised P&L, grouped by order id (`closed_trades()`): one order filled in pieces counts once. Two separate closing orders
+for one position count as two, and a scratch (zero P&L) neither extends nor breaks a streak. Setting `PX_COOLDOWN_AFTER_LOSS_S` or `PX_MAX_CONSEC_LOSSES` to `0` turns that
 rail off on purpose; a blank, garbled or negative value falls back to the default. `PX_SIZE_SCALERS=0` and
 `PX_SIZE_AFTER_LOSS_LOCK=0` also switch their rails off.
 

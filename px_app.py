@@ -189,7 +189,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
     async def flow(request: Request, contract: str):
         """Real buy/sell volume per minute from the trade tape. Coverage starts at `since`; `partial` minutes are unreliable."""
         cid = contract_arg(contract)
-        return request.app.state.live.flow.snapshot(cid)
+        return request.app.state.live.flow.snapshot(cid, int(time.time() * 1000))
 
     @app.get("/api/tickbars/config")
     async def tickbars_config(request: Request):

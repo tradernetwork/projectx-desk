@@ -35,3 +35,10 @@ def test_missing_file_is_fine_and_px_env_file_is_honoured(tmp_path, monkeypatch)
 def test_a_blank_value_followed_by_a_comment_is_blank_not_the_comment_text():
     t = "PX_NO_NEW_AFTER=               # HH:MM America/Chicago, at or before 17:00. Blank refuses opens.\nPX_OK=1  # trailing"
     assert parse_env_text(t) == {"PX_NO_NEW_AFTER": "", "PX_OK": "1"}
+
+
+def test_no_env_file_opt_out_loads_nothing(tmp_path):
+    f = tmp_path / ".env.projectx"
+    f.write_text("PX_SECRET_THING=1\n")
+    env = {"PX_ENV_FILE": str(f), "PX_NO_ENV_FILE": "1"}
+    assert load_env_file(environ=env) == [] and "PX_SECRET_THING" not in env

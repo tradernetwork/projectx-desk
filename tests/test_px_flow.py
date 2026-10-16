@@ -145,3 +145,76 @@ def test_partial_set_stays_bounded_under_invalid_volume_trades():
     for i in range(MAX_MINUTES + 500):
         f.add("C", M + (i + 1) * MIN_MS, 0, 0)                # valid time, invalid volume: no bucket is ever created
     assert len(f._c["C"]["partial"]) <= MAX_MINUTES + 1
+
+
+def _busy(f, n=65, cid="C"):
+    for i in range(n):
+        f.add(cid, M + i * MIN_MS + 10, 1, 0)
+
+
+def test_ongoing_outage_never_ages_into_a_complete_zero_window():
+    from px_flow import summary
+    f = FlowStore()
+    _busy(f)
+    f.mark_gap("C", M + 65 * MIN_MS)
+    s = summary(f, "C", M + 75 * MIN_MS)
+    for w in (5, 15, 60):
+        assert s["w"][w]["complete"] is False
+    assert f.snapshot("C", M + 75 * MIN_MS)["holes"] == [[M + 64 * MIN_MS, M + 75 * MIN_MS]]
+
+
+def test_quiet_healthy_tape_stays_complete():
+    from px_flow import summary
+    f = FlowStore()
+    _busy(f)
+    s = summary(f, "C", M + 75 * MIN_MS)            # no gap flag: a quiet market, not an outage
+    assert s["w"][5] == {"buy": 0, "sell": 0, "unknown": 0, "delta": 0, "complete": True}
+    assert f.snapshot("C", M + 75 * MIN_MS)["holes"] == []
+
+
+def test_open_hole_closes_into_a_normal_hole_when_a_trade_arrives():
+    from px_flow import summary
+    f = FlowStore()
+    _busy(f)
+    f.mark_gap("C", M + 65 * MIN_MS)
+    f.add("C", M + 70 * MIN_MS + 5, 1, 0)
+    assert f.snapshot("C", M + 200 * MIN_MS)["holes"] == [[M + 64 * MIN_MS, M + 70 * MIN_MS]]    # fixed, no longer follows now
+    assert summary(f, "C", M + 90 * MIN_MS)["w"][5]["complete"] is True
+
+
+def test_restart_loaded_store_shows_open_hole_until_first_trade(tmp_path):
+    path = str(tmp_path / "flow.json")
+    a = FlowStore(path=path, save_every_s=0)
+    _busy(a, 3)
+    a.save()
+    b = FlowStore(path=path)
+    assert b.snapshot("C", M + 30 * MIN_MS)["holes"] == [[M + 2 * MIN_MS, M + 30 * MIN_MS]]
+    b.add("C", M + 31 * MIN_MS, 1, 0)
+    assert b.snapshot("C", M + 40 * MIN_MS)["holes"] == [[M + 2 * MIN_MS, M + 31 * MIN_MS]]
+
+
+def test_mark_gap_all_contracts_and_unknown_last_ts_has_no_open_hole():
+    f = FlowStore()
+    f.add("A", M, 1, 0)
+    f.add("B", M, 1, 0)
+    f.mark_gap()                                      # cid=None flags every contract
+    assert f.snapshot("A", M + 5 * MIN_MS)["holes"] == [[M, M + 5 * MIN_MS]]
+    assert f.snapshot("B", M + 5 * MIN_MS)["holes"] == [[M, M + 5 * MIN_MS]]
+    f._c["B"]["last_ts"] = None
+    assert f.snapshot("B", M + 5 * MIN_MS)["holes"] == []
+    assert f.snapshot("nope", M)["holes"] == []
+
+
+def test_odd_now_ms_does_not_raise_and_holes_stay_bounded():
+    from px_flow import MAX_HOLES, summary
+    f = FlowStore()
+    f.add("C", M, 1, 0)
+    f.mark_gap("C")
+    for bad in (None, float("nan"), float("inf"), "x", True, M - 10 * MIN_MS, 0, -5):
+        s = f.snapshot("C", bad)
+        assert len(s["holes"]) == 1 and s["holes"][0][0] <= s["holes"][0][1]
+        assert summary(f, "C", bad)["w"][5]["complete"] is False
+    for i in range(MAX_HOLES + 50):
+        f.add("C", M + (i + 1) * 10 * MIN_MS, 1, 0)
+        f.mark_gap("C")
+    assert len(f.snapshot("C", M)["holes"]) <= MAX_HOLES + 1

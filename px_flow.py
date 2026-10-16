@@ -123,12 +123,20 @@ class FlowStore:
             if now_ms is not None:
                 c["partial"].add(int(now_ms) // MIN_MS * MIN_MS)
 
-    def snapshot(self, cid):
+    def snapshot(self, cid, now_ms=None):
+        """`holes` = the stored closed holes plus, while a gap is flagged and no trade has arrived since, one derived OPEN
+        hole [last trade minute, now minute]: an outage that is still going on must not age into a quiet-looking window."""
         c = self._c.get(cid)
         if not c or c["since"] is None:
             return {"v": 1, "since": None, "minutes": [], "holes": []}
         rows = [[k, b[0], b[1], b[2], 1 if k in c["partial"] else 0] for k, b in sorted(c["m"].items())]
-        return {"v": 1, "since": c["since"], "minutes": rows, "holes": [list(h) for h in c["holes"]]}     # row = [minute_ms, buy, sell, unknown, partial]
+        holes = [list(h) for h in c["holes"]]
+        if c["gap"] and c["last_ts"] is not None:
+            if isinstance(now_ms, bool) or not isinstance(now_ms, (int, float)) or not math.isfinite(now_ms):
+                now_ms = time.time() * 1000
+            lo = c["last_ts"] // MIN_MS * MIN_MS
+            holes.append([lo, max(lo, int(now_ms) // MIN_MS * MIN_MS)])      # derived, never stored
+        return {"v": 1, "since": c["since"], "minutes": rows, "holes": holes}     # row = [minute_ms, buy, sell, unknown, partial]
 
 
 WINDOWS_MIN = (5, 15, 60)
@@ -137,7 +145,9 @@ WINDOWS_MIN = (5, 15, 60)
 def summary(store, cid, now_ms):
     """Trailing windows for the AI surface: {since, w: {minutes: {buy, sell, unknown, delta, complete}}}. A window is
     `complete` only if coverage started before it and no minute in it is partial. Numbers only."""
-    snap = store.snapshot(cid)
+    if isinstance(now_ms, bool) or not isinstance(now_ms, (int, float)) or not math.isfinite(now_ms):
+        now_ms = time.time() * 1000
+    snap = store.snapshot(cid, now_ms)
     since, rows, holes = snap["since"], snap["minutes"], snap["holes"]
     if since is None:
         return None

@@ -81,6 +81,7 @@ class Ticket:
     entry_limit: Optional[float] = None
     rejected_at: float = 0.0        # clock() when a rejection carrying an order id came back
     acked_at: float = 0.0           # clock() when the broker ACKed the entry (in-flight exposure window)
+    position_id: Optional[int] = None   # the broker position this ticket's fill created: evidence of ownership if its stop vanishes
     abandoned: bool = False         # the naked-position path flattened this ticket; a late stop ACK must be cancelled
     account_suffix: str = ""        # sensitive: confirm screen only, never in the AI surface or audit
 
@@ -648,6 +649,36 @@ class Guard:
             return "fresh_state: broker positions/orders differ from the desk's view"
         return None
 
+    def _commit_gate(self, t, ev) -> list:
+        """Synchronous last look before the entry write. Returns refusal reasons (empty = go)."""
+        lim, out = self.limits, []
+        if t.state != STAGED:
+            return [f"recheck: ticket is {t.state} (restaged or consumed while placing)"]
+        if self.halted():
+            out.append("recheck: halted during the broker read")
+        if self.clock() >= t.expires:
+            out.append("recheck: ticket expired during the broker read")
+        hub_age = self.user_hub.feed_age_s() if self.user_hub else None
+        if not (self.user_hub and self.user_hub.up and hub_age is not None and hub_age <= lim.max_hub_age_s
+                and self.live.positions_seeded and self.live.trades_seeded):
+            out.append("recheck: user hub down, stale or unseeded: fills and protection could not be observed")
+        q = self.live.quotes.get(t.contract_id)
+        if not isinstance(q, dict) or self.clock() - q.get("_rx", -1e9) > lim.max_quote_age_s:
+            out.append("recheck: quote stale during the broker read")
+        elif t.order_type == "market":
+            ref = q.get("bestAsk" if t.side == "long" else "bestBid") or q.get("lastPrice")
+            if not _finite_pos(ref):
+                out.append("recheck: quote has no usable price")
+            else:
+                drift = abs(Decimal(str(ref)) - Decimal(str(t.readback["entry_ref"]))) / Decimal(str(ev.spec.tick_size))
+                if drift > lim.max_drift_ticks:
+                    out.append(f"recheck: market moved {drift} ticks during the broker read; restage")
+        remaining, _daily = self.budget(self.wall())
+        risk = t.readback.get("risk_usd")
+        if remaining is None or (isinstance(risk, (int, float)) and risk > remaining):
+            out.append("recheck: risk headroom shrank during the broker read")
+        return out
+
     def _unknown(self, t, code):
         t.state = UNKNOWN
         self._set_intent(t.custom_tag, state="UNKNOWN")
@@ -698,12 +729,13 @@ class Guard:
                 t.state = REJECTED          # a refused place consumes the ticket; restage against the new world
                 return self._deny(t, reasons, origin, REJECTED)
 
-            # Awaited reads above can outlast a halt, the ticket's life, or the quote. Re-check, synchronously, at the commit point.
-            q = self.live.quotes.get(t.contract_id)
-            if self.halted() or self.clock() >= t.expires or not isinstance(q, dict) \
-                    or self.clock() - q.get("_rx", -1e9) > lim.max_quote_age_s:
-                t.state = REJECTED
-                return self._deny(t, ["recheck: halted, expired or quote stale during the broker read"], origin, REJECTED)
+            # Awaited reads above can outlast a halt, the ticket's life, the hub, the quote or a restage. Re-check EVERYTHING
+            # the authorization depended on, synchronously, at the commit point (no await between here and the write).
+            gate = self._commit_gate(t, ev)
+            if gate:
+                if t.state == STAGED:
+                    t.state = REJECTED                  # a superseded ticket keeps its SUPERSEDED state
+                return self._deny(t, gate, origin, t.state)
 
             # ---- commit point: from here a crash or timeout means UNKNOWN, never "probably not sent"
             try:
@@ -845,12 +877,18 @@ class Guard:
                     t.state = "CLOSED"
                     self._cancel_watchdog(t)
                     self._close_intents(t)
+                    if t.stop_state == "SENDING":
+                        t.abandoned = True      # the stop request is still in flight: its ACK must be cancelled, not trusted
+                    elif t.stop_state == "ACKED" and t.stop_order_id is not None:
+                        await self._retire_stop_after_close(t)
                 continue
             if self._pos_side(p) != t.side:
                 continue
             if rejected_live and not t.filled_size:
                 self.trip_halt("rejected_but_filled")       # protect it, then a human looks at why a rejection filled
             t.filled_size = size
+            if t.position_id is None and isinstance(p.get("id"), int) and not isinstance(p.get("id"), bool):
+                t.position_id = p["id"]
             if t.stop_plan["mode"] == "separate_after_fill":
                 if t.stop_state is None:
                     await self._arm_stop(t, size)
@@ -890,9 +928,20 @@ class Guard:
                           and t.state in (PLACING, PLACED, UNKNOWN)), None)
             if owner is not None and owner.stop_state == "ACKED" and working is not None \
                     and owner.stop_order_id not in {o.get("id") for o in working}:
-                # The ticket thinks it has a stop, but the broker has none (it filled or was cancelled while we were
-                # blind). Retire the ticket and judge this position afresh instead of trusting a dead stop.
-                owner.state = "CLOSED"
+                # The ticket thinks it has a stop, but the broker has none. Either the stop filled and something else
+                # opened a NEW position, or the stop was cancelled/lost and this is still OUR position, now naked. Only
+                # the broker's own position id can tell them apart: never infer a hand entry from a missing stop alone.
+                pid = p.get("id")
+                new_position = isinstance(owner.position_id, int) and isinstance(pid, int) and pid != owner.position_id
+                if not new_position:
+                    self._audit("halt", code="owned_position_stop_missing")
+                    try:
+                        await self.flatten(contract_id=cid, origin="ui")
+                    finally:
+                        self.trip_halt("owned_position_stop_missing")
+                    out[cid] = "FLATTENED"
+                    continue
+                owner.state = "CLOSED"           # a different position: the one we owned is gone; judge this one afresh
                 self._cancel_watchdog(owner)
                 self._close_intents(owner)
                 owner = None
@@ -971,6 +1020,18 @@ class Guard:
                 await self._resize_stop(t, now)
         else:
             await self._naked(t, "stop_failed")
+
+    async def _retire_stop_after_close(self, t: Ticket) -> None:
+        """The position closed by some means other than our flatten. A standalone stop that is STILL WORKING would open the
+        opposite position when hit, so prove from the broker book whether it survives (a stop that just filled does not)."""
+        try:
+            working = await self.client.open_orders(self.live.account_id)
+        except Exception:  # noqa: BLE001 - cannot prove the book is clear
+            self._audit("stop", ticket=t.hash8, state="CLOSE_UNVERIFIED")
+            self.trip_halt("stop_unverified_after_close")
+            return
+        if any(o.get("id") == t.stop_order_id for o in working):
+            await self._cancel_late_stop(t, t.stop_order_id)
 
     async def _cancel_late_stop(self, t: Ticket, order_id: int) -> None:
         """A stop ACKed after its position was flattened. Left alone it can open the opposite position."""
@@ -1077,6 +1138,12 @@ class Guard:
                 except Exception:  # noqa: BLE001
                     unread = True
                     reasons.append("working orders could not be read")
+            verified_empty = False
+            try:     # a resting entry can fill while we cancel: the position list read BEFORE the cancels is not proof of flat
+                targets = await self._positions_rest(contract_id)
+                verified_empty = not targets
+            except Exception:  # noqa: BLE001
+                reasons.append("positions could not be re-read after cancelling orders")
             for p in targets:
                 try:
                     await self.client.write(POSITION_CLOSE, {"accountId": self.live.account_id,
@@ -1084,7 +1151,7 @@ class Guard:
                     closed.append("close")
                 except Exception:  # noqa: BLE001 - outcome checked by re-read below
                     reasons.append("closeContract outcome unclear")
-            flat = await self._verify_flat(contract_id) if targets else True
+            flat = await self._verify_flat(contract_id) if targets else verified_empty
             if targets and not flat:
                 if self.limits.flatten_fallback:
                     try:

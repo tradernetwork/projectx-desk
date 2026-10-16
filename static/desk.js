@@ -155,7 +155,8 @@ async function refresh(){
     const p = new URLSearchParams({side: S.side, risk_pct: String(S.riskPct), stop_k: String(S.stopK)});
     if(cid) p.set('contract', cid);
     if(streaming()) p.set('stream', '1');
-    const stateUrl = '/state.json' + (S.contractId ? '?contract=' + encodeURIComponent(S.contractId) : '');
+    const sq = new URLSearchParams(); if(S.contractId) sq.set('contract', S.contractId); if(streaming()) sq.set('stream', '1');
+    const stateUrl = '/state.json' + (sq.toString() ? '?' + sq : '');
     const [ai, st, dg] = await Promise.all([
       j('/ai/state?' + p).catch(() => null), j(stateUrl).catch(() => null),
       S.aiOpen ? fetch('/ai/digest?' + p).then(r => r.ok ? r.text() : null).catch(() => null) : null]);
@@ -220,7 +221,7 @@ function renderSize(){
     const ln = (...parts) => {const d = mk('div'); for(const p of parts) d.append(p); plan.append(d)};
     ln(mk('b', '', 'STOP '), document.createTextNode(z.stop_mode === 'ANCHORED' ? 'beyond ' + String(z.stop_anchor || '').slice(0, 24) + ', ' + z.stop_k_eff + 'x ATR' : z.stop_mode === 'MANUAL' ? 'manual ' + z.stop_k_eff + 'x ATR' : '1.5x ATR (no respected level in reach)'));
     ln(mk('b', '', 'TARGET '), document.createTextNode(typeof z.target === 'number' ? z.target + ' (' + String(z.target_level || '').slice(0, 24) + ') ' + z.rr + 'R, needs ' + z.breakeven_win_rate + '% wins' : 'none: no respected level at 1R or better'));
-    ln(mk('b', '', 'IF STOPPED '), document.createTextNode('drawdown room ' + money(z.drawdown_left) + ', daily ' + money(z.daily_left) + ', total open risk with this trade ' + money(z.heat_usd)));
+    ln(mk('b', '', 'IF STOPPED '), document.createTextNode(streaming() ? 'hidden in stream mode' : 'drawdown room ' + money(z.drawdown_left) + ', daily ' + money(z.daily_left) + ', total open risk with this trade ' + money(z.heat_usd)));
   }
   for(const id of ['stop-dec', 'stop-inc']) $(id).disabled = !ok;
   const box = $('size');

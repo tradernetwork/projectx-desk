@@ -207,3 +207,28 @@ data, concurrency and persistence). Their findings are folded in below; nothing 
 - **Known limits.** The anchor can flip between ANCHORED and ATR as price moves relative to fixed levels. Whether the gateway re-sends
   recent trades on a resubscribe (which would double count) is unverified. `live: true` bars are refused for this account, so the
   digest and chart use the sim data subscription, whose bars were checked identical to the live tape (see LIMITATIONS).
+
+## Round 7: Codex second opinion, all seven findings reproduced and fixed (2026-10-16)
+
+`reviews/review-codex-2026-10-16.md` reviewed `db1be93`. Its embedded reproduction script was run first; every finding reproduced exactly.
+
+- **A vanished stop no longer makes us forget our own position (P1).** `protect_open_positions` used to retire an owned ticket whose
+  stop was gone from the broker book and then call the still-open position `EXTERNAL_UNPROTECTED`, untouched. Tickets now record the
+  broker position id their fill created (`Ticket.position_id`). If the position in the contract is the same one (or the id is
+  unknown), it is ours and unprotected: flatten and halt. Only a *different* broker position id counts as a new, external position
+  (the stop filled, then something else opened one). A missing stop is never, by itself, evidence of a hand entry. Unverified:
+  whether the real gateway keeps a stable position id across partial fills; the mock does.
+- **A stop ACK after an ordinary close is no longer left working (P1).** A position-closed event now marks an in-flight stop
+  `abandoned` so its late ACK is cancelled and halts (the watchdog's late-stop path); an already ACKED stop is checked against the
+  REST order book and cancelled if still working (a stop that just filled is not). Unverifiable book: halt.
+- **`place()` re-validates everything at the commit point (P1, P2).** One synchronous `_commit_gate` after the last await checks the
+  ticket is still STAGED (a restage during placement used to be overwritten and the superseded ticket sent), halt, expiry, user-hub
+  health and seeding, quote freshness, market drift in ticks, and risk headroom.
+- **Flatten always re-reads the book after cancelling (P1).** An initially empty snapshot used to report flat with no further read.
+- **Stream mode redacts the new dollar fields (P2).** `drawdown_left`, `daily_left`, `heat_usd` and `heat_pct` are removed from the
+  digest and state, the UI shows "hidden in stream mode", and the page now passes `stream` to `/state.json`.
+- **An ongoing tape outage no longer ages into a quiet window (P2).** `FlowStore.snapshot` derives an open hole from the last trade to
+  now while a gap is flagged, so every overlapping bar blanks and every digest window is INCOMPLETE until trades resume.
+- **Dev isolation and docs.** `run_dev.sh` sets `PX_NO_ENV_FILE=1`, unsets the advisory feed/GEX variables and uses its own tape file;
+  `docs/LIMITATIONS.md` now separates verified read behavior from unverified order writes and no longer claims GEX is always off.
+- **Not done:** a rendered browser pass of stream-mode DOM transitions, and the operator-led real sim rehearsal.

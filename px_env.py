@@ -36,6 +36,8 @@ def parse_env_text(text: str) -> dict:
 def load_env_file(path=None, environ=None) -> list:
     """Load PX_ENV_FILE, or ./.env.projectx, or the file next to this module. First that exists wins."""
     env = os.environ if environ is None else environ
+    if env.get("PX_NO_ENV_FILE") == "1":        # offline/mock runs must never pick up the real account's settings
+        return []
     candidates = [path] if path else [env.get("PX_ENV_FILE"), pathlib.Path.cwd() / ".env.projectx",
                                       pathlib.Path(__file__).parent / ".env.projectx"]
     for c in candidates:

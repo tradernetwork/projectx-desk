@@ -1,0 +1,3 @@
+# Only for scripts/screenshots.py (regenerates docs/img from the offline mock desk). Then: playwright install chromium
+playwright>=1.40
+Pillow>=10

@@ -25,7 +25,12 @@ and locks you out after a losing streak. Free, MIT, runs offline on a practice m
 
 **Who it is for:** futures traders on prop-firm evals (the funded-account tests) who want position sizing and discipline
 enforced for them, and optionally an AI assistant that can watch the desk and stage ideas but can never place an order.
-No signals. No auto-trading.
+No signals of its own. No auto-trading.
+
+**What is in it:** one guarded order path (a test fails the build if any other file can place an order); sizing off your loss limit
+with an ATR stop that tucks beyond a level price has respected; **real buy and sell volume** built from the trade tape, plus 1024, 2048
+and 4096-trade tick charts; GEX levels drawn on the chart; and an **analyst-callout alert** that flashes when a fresh futures entry
+posts, switches the chart to it when you are flat, and offers a one-click STAGE (you still hold PLACE yourself).
 
 **Terms:** *R* is the amount you risk on a trade. *ATR* is how far price typically moves. *STAGE* drafts an order; nothing
 is sent until you hold *PLACE*. *MCP* is a standard way for AI assistants to use tools. More in the [glossary](#glossary).
@@ -34,9 +39,11 @@ is sent until you hold *PLACE*. *MCP* is a standard way for AI assistants to use
 
 <p align="center"><sub>Practice market with synthetic prices. Nothing on screen is a result.</sub></p>
 
-> **Alpha. Not financial advice.** Tested against the built-in practice market only. Not yet run against a real TopstepX
-> account, and real accounts are blocked until you turn them on. Read [what is unverified](docs/LIMITATIONS.md) before you
-> point it at anything.
+> **Alpha. Not financial advice.** The order path is tested against the built-in practice market only: **no order has ever been placed
+> through a real gateway.** The read side (login, quotes, the trade tape, bars, both hubs) has been run against a real TopstepX Combine
+> simulated account. Real accounts are blocked until you turn them on. Read [what is unverified](docs/LIMITATIONS.md) before you
+> point it at anything. The code has been reviewed by several AI models and one agent audit ([the results](docs/AUDIT_2026-10-16.md)),
+> not yet by a human futures-execution engineer.
 
 ## Try it in two minutes (no account needed)
 
@@ -78,14 +85,19 @@ arithmetic, not the result.
 |---|---|
 | **It sizes every trade** | From your remaining daily-loss and drawdown room and a stop set by ATR. It always rounds **down**. If one contract risks more than your budget it says `REFUSED`; it never rounds up. |
 | **It tells you why** | The size box lists its reasons: your risk %, the ADX and ATR cuts, the stop math, what risk alone would allow versus your cap. |
-| **It gets smaller, never bigger** | Choppy market (ADX under 20, meaning no clear trend) or very volatile (ATR in the top fifth of its recent range): risk is cut. Unknown inputs cut it too. Nothing scales risk up. |
+| **It gets smaller, never bigger** | Choppy market (ADX under 20, meaning no clear trend) or very volatile (ATR in the top fifth of its recent range): risk can be cut. Unknown inputs cut it too. Nothing scales risk up. The ATR cut double-counts a wide ATR stop, so many people switch both cuts off with `PX_SIZE_SCALERS=0` ([why](docs/SIZING.md)). |
 | **Guardrails** | Cooldown after a loss, lockout after 3 losses in a row, and after a loss your risk can't exceed what that trade risked. Defaults are settings. |
 | **A stop is required** | Sent right after the fill and watched for 5 seconds; if it is not acknowledged, the desk flattens and halts. If the live feed misses the fill, no stop is sent, so read the limits. |
 | **Manage the trade** | Live open R, plus one-click stop moves (breakeven, ATR trail, EMA 21 trail). Stops only move toward price, never wider. |
 | **Stats with the fine print** | Win rate sits next to the win rate you need to break even, with the trade count and a SMALL SAMPLE flag under 30 trades. |
 | **Respected levels** | For 5m, 15m, 1h, 4h and 1d: which of about 25 candidate levels (EMAs, SMAs, Keltner, Bollinger, VWAP, prior day or week, swing fibs) price has actually reacted to, scored against a calibrated random baseline, with "tested K candidates" beside the winners and a STABLE badge only if the level passes in both halves of the data. Winners are drawn on the chart (toggle: Respect). History, not a forecast. |
-| **Timeframes** | Three mini charts (5m, 15m, 1h) with the full EMA ribbon 8/13/21/34/55/89 and a bias line: `ribbon N/5 BULL / BEAR / MIXED`, which EMAs price is above, and a BULLISH / BEARISH / NEUTRAL badge that needs the whole ribbon in order. |
+| **Timeframes** | The main chart opens on 5m (switch freely); two mini charts (15m, 1h) with the full EMA ribbon 8/13/21/34/55/89 and a bias line: `ribbon N/5 BULL / BEAR / MIXED`, which EMAs price is above, and a BULLISH / BEARISH / NEUTRAL badge that needs the whole ribbon in order. |
 | **Level reactions** | "Held 5 of 8" for EMA 8/21/34 and VWAP, next to the same test on copies of that line shifted 0.5 to 1.5 ATR away. Reaction history, not a forecast. |
+| **Real buy and sell volume** | A volume pane built from the trade tape's aggressor side (who hit the bid or the ask), not candle colour, plus delta. ProjectX has no tick history, so it records from the moment the desk starts, saves to disk, and shows a gap as a gap, never as a wrong number. |
+| **Tick charts** | 1024, 2048 and 4096-trade bars built from the same tape, each with its buy-minus-sell delta. |
+| **GEX on the chart** | Flip, pin and walls from the TraderDaddy API, converted to futures prices and drawn as labelled lines. Display only: they never feed sizing, stops or targets. |
+| **Analyst alert** | When a fresh futures ENTRY callout posts (Discord bot feed), a banner flashes, the chart switches to that contract if you are flat, the analyst's entry, stop and first target are drawn, and STAGE offers their trade through the normal ticket. PLACE is still your 600 ms hold. |
+| **Level-anchored stop and target** | The stop tucks just beyond a level price has respected (never tighter than 1.5x ATR, never wider than 2x); the target is the nearest respected level at 1R or better, with its R:R and break-even win rate. |
 | **Practice market** | A built-in mock ProjectX gateway with fills, resting stops, and switches that force timeouts, rejections and dropped feeds. |
 | **On camera** | Stream mode removes balance, P&L and risk dollars from the page. |
 | **AI-ready** | A plain-text digest and an MCP server for assistants. They can read and stage. Only you place. |
@@ -94,8 +106,9 @@ arithmetic, not the result.
 
 If you are on an eval, know what the numbers are:
 
-- **Daily loss and drawdown are numbers you type in.** The desk does not read your firm's limits, track a trailing floor,
-  count unrealised P&L, or model a consistency rule. Treat its budget as an upper bound that you keep updated.
+- **Daily loss is a number you type in, and you maintain the drawdown floor.** With `PX_MLL_FLOOR` the drawdown room follows your
+  live balance, but the desk does not read your firm's limits, compute Topstep's end-of-day trailing floor, count unrealised P&L,
+  or model a consistency rule. Treat its budget as an upper bound that you keep updated.
 - **Realised P&L only.** A large open loser is not counted until it closes.
 - Built for the ProjectX Gateway API that TopstepX uses. Other ProjectX-based firms may work; untested.
 
@@ -103,20 +116,43 @@ More in [known limitations](docs/LIMITATIONS.md).
 
 <table>
 <tr>
-<td width="33%"><img src="docs/img/ui-size-box.png" alt="Size box: 1 MES, the ADX and ATR cuts, risk allows 2 but the cap is 1, and every reason listed"></td>
-<td width="34%"><img src="docs/img/ui-bracket-tree.png" alt="Bracket tree: entry filled, stop acknowledged, open R ruler"></td>
+<td width="33%"><img src="docs/img/ui-size-box.png" alt="Size box: 1 MNQ, the reasons for the size, the stop and target, and what is left if the stop fills"></td>
+<td width="34%"><img src="docs/img/ui-bracket-tree.png" alt="Live bracket: entry filled, stop acknowledged"></td>
 <td width="33%"><img src="docs/img/ui-manage-trade.png" alt="Trade manager: open R and three stop buttons marked recommended, not earned yet, or not valid now"></td>
 </tr>
 <tr>
 <td><sub>Every size comes with its reasons.</sub></td>
-<td><sub>The entry, the stop, and where you are in R.</sub></td>
+<td><sub>The entry, the stop, and whether it is acknowledged.</sub></td>
 <td><sub>Stop moves that can only tighten.</sub></td>
 </tr>
 </table>
 
-![The whole desk, idle: no trades yet, so every statistic reads NA](docs/img/desk-idle.png)
+![The whole desk: chart with GEX lines, EMA ribbon and real buy/sell volume, the size box, risk budget and level reactions](docs/img/desk-idle.png)
 
-<sub>Practice market, synthetic prices, no trades. Nothing on screen is a result.</sub>
+<sub>Offline practice market (synthetic prices), flat. Nothing on screen is a result.</sub>
+
+![An analyst entry alert: the banner, the chart switched to the contract, the analyst's levels drawn, and a STAGE button](docs/img/ui-analyst-alert.png)
+
+<sub>A fresh analyst entry: the banner flashes, the chart switches to that contract when you are flat, their entry and stop are drawn, and STAGE
+drafts the trade through the normal ticket. Placing is still a 600 ms hold by you.</sub>
+
+![In a trade: manage panel, live bracket with an acknowledged stop, and the stop and entry lines on the chart](docs/img/desk-in-trade.png)
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/ui-stream-mode.png" alt="Stream mode: dollar amounts and percentages hidden"></td>
+<td width="25%"><img src="docs/img/ui-ai-digest.png" alt="The AI view: the plain-text digest an assistant reads"></td>
+<td width="25%"><img src="docs/img/ui-narrow.png" alt="The desk on a narrow screen"></td>
+</tr>
+<tr>
+<td><sub>Stream mode hides balance, P&amp;L and risk dollars.</sub></td>
+<td><sub>What an AI assistant reads.</sub></td>
+<td><sub>Narrow screens.</sub></td>
+</tr>
+</table>
+
+<sub>Screenshots are regenerated from the offline mock desk by <code>scripts/screenshots.py</code> (Playwright; see
+<code>requirements-screenshots.txt</code>). They never show a real account.</sub>
 
 ## Connect an AI assistant
 
@@ -192,7 +228,10 @@ Login needs the pair `PROJECTX_USERNAME` + `PROJECTX_API_KEY`. `PROJECTX_USERNAM
 platform with (TopstepX): not your email, not an account name or id. Both go in `.env.projectx`.
 
 Start on a simulated account with `PX_TRADING=0` so the desk can look but not place. Step-by-step:
-[docs/GETTING_STARTED_LIVE.md](docs/GETTING_STARTED_LIVE.md). Check your firm's rules on automation first.
+[docs/GETTING_STARTED_LIVE.md](docs/GETTING_STARTED_LIVE.md). Check your firm's rules on automation first. Run it with
+`python -m projectx_desk` from the checkout. Because the buy/sell volume and tick charts are recorded live and ProjectX keeps no tick history,
+**every minute the desk is not running is a gap you cannot fill**: run it as a service so closing a terminal does not stop it
+([docs/DEPLOY.md](docs/DEPLOY.md)).
 
 <details>
 <summary><b>How it is built</b></summary>
@@ -213,9 +252,9 @@ pytest -q            # run offline against the practice market, no broker and no
 <summary><b>GEX on futures</b></summary>
 
 `projectx_desk/gex_futures.py` converts dealer-gamma levels (flip, pin, walls) from SPX, SPY, QQQ, IWM and DIA into ES, NQ, RTY and YM
-price space. It refuses stale data, never picks between two flips, and fetches nothing: bring your own levels.
-[TraderMatrix](https://www.tradermatrix.pro) computes GEX, and its free AI-tool (MCP) integration lets developers pull its
-GEX data into their own assistant. The desk does not ship a provider yet. See [docs/GEX_FUTURES.md](docs/GEX_FUTURES.md).
+price space. It refuses stale data and never picks between two flips. `projectx_desk/gex.py` is the provider: it pulls the levels from the
+[TraderMatrix / TraderDaddy](https://www.tradermatrix.pro) API (set `PX_GEX_KEY`), draws them on the chart and lists them in the AI digest.
+Display only: GEX marks positioning, not targets, and never touches sizing, stops or orders. See [docs/GEX_FUTURES.md](docs/GEX_FUTURES.md).
 </details>
 
 <details id="glossary">
@@ -240,6 +279,7 @@ GEX data into their own assistant. The desk does not ship a provider yet. See [d
 Other ProjectX / TopstepX work worth knowing about: [tsxapi4py](https://github.com/mceesincus/tsxapi4py),
 [projectx-sdk-python](https://github.com/ChristianJStarr/projectx-sdk-python),
 [projectx-api](https://github.com/rundef/projectx-api) (Python),
+[project-x-py](https://github.com/TexasCoding/project-x-py) (Python),
 [projectx-rs](https://github.com/SharurTrading/projectx-rs) (Rust),
 [MarqSpec.Mcp.TopstepX](https://github.com/adammarquette/MarqSpec.Mcp.TopstepX) (an MCP server) and
 [topstepx-skill](https://github.com/blindsipher/topstepx-skill) (a Claude skill).

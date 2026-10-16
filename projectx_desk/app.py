@@ -65,6 +65,8 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         app.state.live = LiveState(m, u, flow_path=(os.getenv("PX_FLOW_FILE") or str(ROOT / "data" / "flow.json")) if connect else None)
         app.state.csrf = secrets.token_urlsafe(32)
         app.state.guard = guard or Guard(c, app.state.live, limits or Limits.from_env(), user_hub=u)
+        # "Multiple sessions detected": the gateway logs this session out. Stop opening; reducing paths (flatten, cancel) stay available.
+        u.on("GatewayLogout", lambda *a: app.state.guard.trip_halt("gateway_logout"))
         app.state.sse = 0
         app.state.boot_error = None
         app.state.bars_cache = {}

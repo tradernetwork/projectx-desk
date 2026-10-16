@@ -310,7 +310,7 @@ class Guard:
 
     FLAT_LEAD = timedelta(minutes=2)
 
-    def _flat_by_time(self) -> Optional[dtime]:
+    def _flat_by_base(self) -> Optional[dtime]:
         fb = self.limits.flat_by
         if not fb:
             return None
@@ -321,26 +321,50 @@ class Guard:
             return None
         return t if t < SESSION_OPEN else None
 
+    def _early_close(self, day) -> Optional[dtime]:
+        """PX_EARLY_CLOSES ("YYYY-MM-DD=HH:MM,...", CT): the flatten time to use on a holiday or early-close date. Entries are
+        YOURS, copied from Topstep's calendar (the lead time before an early close has changed between their articles): the
+        desk ships no calendar of its own. A garbled entry is ignored, never guessed."""
+        for part in (self.limits.early_closes or "").split(","):
+            k, _, v = part.strip().partition("=")
+            try:
+                d = datetime.strptime(k.strip(), "%Y-%m-%d").date()
+                hh, mm = v.strip().split(":")
+                t = dtime(int(hh), int(mm))
+            except (ValueError, AttributeError):
+                continue
+            if d == day and t < SESSION_OPEN:
+                return t
+        return None
+
+    def _flat_by_time(self, now_ct=None) -> Optional[dtime]:
+        """The flatten time in force: PX_FLAT_BY, or an earlier one on a date listed in PX_EARLY_CLOSES."""
+        base = self._flat_by_base()
+        ec = self._early_close(now_ct.date()) if now_ct is not None else None
+        if ec is None:
+            return base
+        return ec if base is None else min(base, ec)
+
     def _flat_by_window(self, now_ct) -> Optional[str]:
         """A configured PX_FLAT_BY must parse (else every open is refused), and no new entry is allowed in the last 2 minutes."""
-        if self.limits.flat_by and self._flat_by_time() is None:
+        if self.limits.flat_by and self._flat_by_base() is None:
             return "PX_FLAT_BY is not HH:MM at or before 17:00 CT"
-        fb = self._flat_by_time()
+        fb = self._flat_by_time(now_ct)
         if fb is None:
             return None
         start = (datetime.combine(now_ct.date(), fb) - self.FLAT_LEAD).time()
         t = now_ct.time()
         if start <= t < SESSION_OPEN:
-            return f"inside the last 2 minutes before the {self.limits.flat_by} CT flat-by deadline"
+            return f"inside the last 2 minutes before the {fb.strftime('%H:%M')} CT flat-by deadline"
         return None
 
     def flat_by_due(self, now=None) -> bool:
         """True from PX_FLAT_BY until the 17:00 CT session open: everything must be flat."""
-        fb = self._flat_by_time()
+        now_ct = (now or self.wall()).astimezone(CT)
+        fb = self._flat_by_time(now_ct)
         if fb is None:
             return False
-        t = (now or self.wall()).astimezone(CT).time()
-        return fb <= t < SESSION_OPEN
+        return fb <= now_ct.time() < SESSION_OPEN
 
     async def enforce_flat_by(self, now=None):
         """Called about once a second by the app. At the deadline, flatten any position or working order. Reduces only."""

@@ -121,7 +121,10 @@ POST routes do not, for the reason given above.
 - Topstep objectives (profit target, 55% and 40% consistency, payout rules, the scaling plan) and conduct rules (news, hedging across accounts, prohibited strategies) are not enforced. See [TOPSTEP_RULES.md](TOPSTEP_RULES.md).
 - `last_risk` (the size-after-loss lock) is replaced at commit time by a subsequent order even if the broker then rejects it.
 - External trades (placed outside the desk) have no known risk cap.
-- No calendar for holiday early closes.
+- **Holiday and early closes need your input.** The desk ships no calendar. Topstep's help article on early closes says to be flat a fixed
+  number of minutes before the close (their 2024 and 2025 articles said 30, a later one 15), so the lead time has changed. Set
+  `PX_EARLY_CLOSES="2026-11-27=12:00,2026-12-24=12:00"` (CT, `YYYY-MM-DD=HH:MM`, copied from Topstep's calendar) and on those dates the desk
+  flattens at that time and refuses opens from two minutes before it. Garbled entries are ignored, never guessed.
 - A missing day-state file resets the order count.
 - `/state.json` and `/contracts` still forward some raw gateway fields (quote timestamps, contract id fallback names) that should be type-validated.
 - A position held at restart that was placed by hand is reported (`EXTERNAL_UNPROTECTED`) but not protected.

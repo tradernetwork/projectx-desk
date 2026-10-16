@@ -363,3 +363,49 @@ async def test_boot_refuses_to_pick_an_arbitrary_account(monkeypatch):          
     monkeypatch.delenv("PX_ACCOUNT_ID", raising=False)
     with pytest.raises(PXError):
         await px_app._boot(app)
+
+
+# ---- from the GitHub research pass ------------------------------------------------------------------------------------------
+
+def _ct(y, mo, d, h, mi, s=0):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime(y, mo, d, h, mi, s, tzinfo=ZoneInfo("America/Chicago"))
+
+
+async def test_an_early_close_date_flattens_and_refuses_opens_at_the_early_time(tmp_path):
+    g, live, clock, gw = build2(tmp_path, flat_by="15:08", early_closes="2026-11-27=12:00,garbage,2026-12-24=25:99")
+    day = (2026, 11, 27)
+    assert g.flat_by_due(_ct(*day, 11, 59)) is False and g.flat_by_due(_ct(*day, 12, 0)) is True
+    assert g._flat_by_window(_ct(*day, 11, 57)) is None and "12:00" in g._flat_by_window(_ct(*day, 11, 58))
+    assert g._flat_by_window(_ct(*day, 13, 0)) is not None                      # opens stay refused until the 17:00 session open
+    other = (2026, 11, 26)                                                      # an ordinary day keeps PX_FLAT_BY
+    assert g.flat_by_due(_ct(*other, 12, 0)) is False and g.flat_by_due(_ct(*other, 15, 8)) is True
+    assert g.flat_by_due(_ct(2026, 12, 24, 13, 0)) is False                    # a garbled entry is ignored, never guessed
+
+
+async def test_early_close_alone_still_flattens_when_no_daily_flat_by_is_set(tmp_path):
+    g, *_ = build2(tmp_path, early_closes="2026-11-27=12:00")
+    assert g.flat_by_due(_ct(2026, 11, 27, 12, 0)) is True and g.flat_by_due(_ct(2026, 11, 26, 12, 0)) is False
+
+
+def test_gateway_logout_halts_new_orders():                                       # "Multiple sessions detected"
+    from fastapi.testclient import TestClient
+
+    from test_px_app import app_and_fake
+    app, _ = app_and_fake()
+    with TestClient(app, base_url="http://testserver"):
+        assert not app.state.guard.halted()
+        for fn in app.state.user._handlers["GatewayLogout"]:
+            fn({"reason": "Multiple sessions detected"})
+        assert app.state.guard.halted()
+        app.state.guard.clear_halt()
+
+
+def test_the_tape_buckets_by_the_trades_own_exchange_timestamp_at_the_minute_boundary():
+    from projectx_desk.state import LiveState
+    live = LiveState()
+    live._on_trade("C", [{"timestamp": "2026-10-16T15:00:59.999+00:00", "volume": 1, "type": 0},
+                         {"timestamp": "2026-10-16T15:01:00.000+00:00", "volume": 2, "type": 1}])
+    rows = {r[0]: r[1:4] for r in live.flow.snapshot("C")["minutes"]}
+    assert len(rows) == 2 and sorted(rows.values()) == [[0, 2, 0], [1, 0, 0]]        # 15:00:59.999 and 15:01:00.000 are different minutes

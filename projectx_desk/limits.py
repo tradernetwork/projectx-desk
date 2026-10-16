@@ -74,6 +74,7 @@ class Limits:
     stop_ack_s: float = 5.0
     min_stop_ticks: int = 4
     max_stop_ticks: int = 200
+    early_closes: str = ""                # PX_EARLY_CLOSES "YYYY-MM-DD=HH:MM,..." CT: on those dates flatten at that time instead (holiday / early closes)
     flat_by: Optional[str] = None         # PX_FLAT_BY "HH:MM" CT: auto-flatten everything at this time, and refuse opens 2 min before. Topstep's hard rule is 15:10 CT
     mll_floor: float = 0.0                # PX_MLL_FLOOR dollars: the firm's maximum-loss floor. Drawdown room = live balance - floor. 0 = use PX_DRAWDOWN_BUFFER
     no_new_after: Optional[str] = None    # "HH:MM" in America/Chicago; unset refuses opens
@@ -119,6 +120,7 @@ class Limits:
             dd_buffer=_f("PX_DRAWDOWN_BUFFER", 0),
             no_new_after=os.getenv("PX_NO_NEW_AFTER") or None,
             flat_by=os.getenv("PX_FLAT_BY") or None,
+            early_closes=os.getenv("PX_EARLY_CLOSES", ""),
             mll_floor=_f("PX_MLL_FLOOR", 0),
             **d,
         )

@@ -867,12 +867,12 @@ window.px = {snapshot(){return S.ai == null ? null : JSON.parse(JSON.stringify(S
 /* ================= chart (KLineChart v10) ================= */
 const err = e => {$('msg').textContent = (e && e.message) || String(e)};
 let cur = {ticker: null, tick: 0.25, tickValue: null, name: '', dec: 2};
-const C = {up: '#22c55e', dn: '#f43f5e', flat: '#76839a', grid: '#121a2a', axis: '#1c2438', text: '#76839a', cyan: '#38bdf8', amber: '#f59e0b', purple: '#a855f7', ink: '#e8eef7'};
+const C = {up: '#22c55e', dn: '#f43f5e', flat: '#76839a', grid: '#111621', axis: '#1a2130', text: '#76839a', cyan: '#38bdf8', amber: '#f59e0b', purple: '#a855f7', ink: '#e6ebf2'};
 const EMA_COL = ['#2dd4bf', '#60a5fa', '#e879f9'];   // EMA 8 / 21 / 34; keep in step with --ema8/21/34 in desk.css
 const RC = {BOUNCE: C.up, FAIL: C.dn, NEUTRAL: '#76839a', PENDING: C.cyan};
 const MONO = '"JetBrains Mono", ui-monospace, monospace';
 const axis = {axisLine: {color: C.axis}, tickLine: {color: C.axis}, tickText: {color: C.text, size: 10, family: MONO}};
-const chs = {line: {color: '#3b4a68', style: 'dashed', dashedValue: [3, 3]}, text: {backgroundColor: '#1b2538', borderColor: '#2a3550', color: C.ink, family: MONO, size: 11}};
+const chs = {line: {color: '#3b4a68', style: 'dashed', dashedValue: [3, 3]}, text: {backgroundColor: '#111722', borderColor: '#2a3550', color: C.ink, family: MONO, size: 11}};
 const legendTxt = {size: 11, family: MONO, color: C.text};
 const STYLES = {
   grid: {horizontal: {color: C.grid, style: 'solid'}, vertical: {color: C.grid, style: 'solid'}},
@@ -881,13 +881,13 @@ const STYLES = {
            priceMark: {high: {show: false}, low: {show: false},
                        last: {upColor: C.cyan, downColor: C.cyan, noChangeColor: C.cyan, line: {style: 'dashed', dashedValue: [2, 3]},
                               text: {color: '#04121c', family: MONO, weight: '600', borderRadius: 3}}},
-           tooltip: {title: {...legendTxt, color: '#94a3b8'}, legend: {...legendTxt, template: [{title: 'O ', value: '{open}'}, {title: 'H ', value: '{high}'}, {title: 'L ', value: '{low}'}, {title: 'C ', value: '{close}'}]}}},
+           tooltip: {title: {...legendTxt, color: '#93a0b4'}, legend: {...legendTxt, template: [{title: 'O ', value: '{open}'}, {title: 'H ', value: '{high}'}, {title: 'L ', value: '{low}'}, {title: 'C ', value: '{close}'}]}}},
   indicator: {bars: [{upColor: 'rgba(34,197,94,.45)', downColor: 'rgba(244,63,94,.45)', noChangeColor: 'rgba(118,131,154,.45)'}],
-              lines: ['#60a5fa', '#c084fc', '#38bdf8', '#fb7185', '#94a3b8'].map(color => ({color, size: 1})),
+              lines: ['#60a5fa', '#c084fc', '#38bdf8', '#fb7185', '#93a0b4'].map(color => ({color, size: 1})),
               tooltip: {title: legendTxt, legend: legendTxt}},
   xAxis: axis, yAxis: axis, separator: {color: C.axis}, crosshair: {horizontal: chs, vertical: chs},
 };
-const dimText = {color: C.ink, backgroundColor: 'rgba(13,18,29,.92)', borderColor: '#2a3550', borderSize: 1, size: 12, family: MONO, paddingLeft: 6, paddingRight: 6, paddingTop: 3, paddingBottom: 3, style: 'stroke_fill', borderRadius: 3};
+const dimText = {color: C.ink, backgroundColor: 'rgba(12,16,24,.92)', borderColor: '#2a3550', borderSize: 1, size: 12, family: MONO, paddingLeft: 6, paddingRight: 6, paddingTop: 3, paddingBottom: 3, style: 'stroke_fill', borderRadius: 3};
 klinecharts.registerOverlay({
   name: 'zoneBand', totalStep: 3, needDefaultPointFigure: true, needDefaultXAxisFigure: false, needDefaultYAxisFigure: true,
   createPointFigures: ({coordinates: cs, bounding, overlay}) => {
@@ -921,7 +921,7 @@ klinecharts.registerOverlay({
     return [
       {type: 'line', attrs: {coordinates: [{x: 0, y}, {x: bounding.width, y}]}, styles: {style: ed.dash ? 'dashed' : 'solid', color: ed.color || C.purple, size: ed.size || 1, dashedValue: [6, 4]}},
       {type: 'text', ignoreEvent: true, attrs: {x: bounding.width - 6, y: y - 2, text: String(ed.label || ''), align: 'right', baseline: 'bottom'},
-       styles: {color: ed.ink || ed.color || C.purple, size: 10, family: MONO, weight: '600', backgroundColor: 'rgba(8,10,15,.78)', borderSize: 0, borderRadius: 2,
+       styles: {color: ed.ink || ed.color || C.purple, size: 10, family: MONO, weight: '600', backgroundColor: 'rgba(7,9,13,.78)', borderSize: 0, borderRadius: 2,
                 paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, style: 'fill'}},
     ];
   }});
@@ -936,7 +936,7 @@ klinecharts.registerOverlay({
       case 'BOUNCE': {
         const up = ed.kind === 'SUPPORT', s = 6;   // support bounce points up, resistance rejection points down
         const pts = up ? [{x, y: y - s}, {x: x + s, y: y + s * 0.8}, {x: x - s, y: y + s * 0.8}] : [{x, y: y + s}, {x: x + s, y: y - s * 0.8}, {x: x - s, y: y - s * 0.8}];
-        return [{type: 'polygon', ignoreEvent: true, attrs: {coordinates: pts}, styles: {style: 'stroke_fill', color: col, borderColor: '#080a0f', borderSize: 1}}];
+        return [{type: 'polygon', ignoreEvent: true, attrs: {coordinates: pts}, styles: {style: 'stroke_fill', color: col, borderColor: '#07090d', borderSize: 1}}];
       }
       case 'FAIL': return [
         {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x - 4.5, y: y - 4.5}, {x: x + 4.5, y: y + 4.5}]}, styles: {style: 'solid', color: col, size: 2}},
@@ -1135,7 +1135,7 @@ const RSP_TFS = ['5m', '15m', '1h', '4h', '1d'];
 const RSP_TF_OF = {'minute,5': '5m', 'minute,15': '15m', 'hour,1': '1h', 'hour,4': '4h', 'day,1': '1d'};
 /* Okabe-Ito based: colorblind-safe on the dark theme; dash pattern is a second channel (solid, long, short, dot-dash, dotted) */
 const RSP_STYLE = {'5m': {c: '#56b4e9', dv: [1, 0]}, '15m': {c: '#f0e442', dv: [10, 4]}, '1h': {c: '#cc79a7', dv: [4, 3]},
-                   '4h': {c: '#ff8a3d', dv: [10, 3, 2, 3]}, '1d': {c: '#e8eef7', dv: [2, 3]}};
+                   '4h': {c: '#ff8a3d', dv: [10, 3, 2, 3]}, '1d': {c: '#e6ebf2', dv: [2, 3]}};
 const RSP_POLL_MS = 60000;
 const R = {on: LS.get('px.respect', true) !== false, data: null, status: 'loading', code: '', pick: {}, sig: '', seq: 0, timer: null};   // pick: tf -> level id, or null for "off"; session only
 klinecharts.registerOverlay({
@@ -1146,7 +1146,7 @@ klinecharts.registerOverlay({
     return [
       {type: 'line', attrs: {coordinates: [{x: 0, y}, {x: bounding.width, y}]}, styles: {style: ed.stable ? 'solid' : 'dashed', color: ed.color, size: ed.stable ? 1.5 : 1, dashedValue: ed.stable ? [1, 0] : ed.dv}},
       {type: 'text', ignoreEvent: true, attrs: {x: 6, y: y - 2, text: String(ed.label || ''), align: 'left', baseline: 'bottom'},
-       styles: {color: ed.color, size: 10, family: MONO, weight: ed.stable ? '700' : '500', backgroundColor: `rgba(8,10,15,${.78 * a + .1})`, borderSize: 0, borderRadius: 2,
+       styles: {color: ed.color, size: 10, family: MONO, weight: ed.stable ? '700' : '500', backgroundColor: `rgba(7,9,13,${.78 * a + .1})`, borderSize: 0, borderRadius: 2,
                 paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, style: 'fill'}},
     ];
   }});
@@ -1295,7 +1295,7 @@ setInterval(() => {if(document.visibilityState === 'visible') feedFetch()}, FD_P
 const MN = {open: LS.get('px.minis', true) !== false, tfs: ['15m', '1h'], unit: {'5m': [2, 5, 300000], '15m': [2, 15, 900000], '1h': [3, 1, 3600000]},
   bars: {}, seq: {}, at: {}, cv: {}, box: {}, px: {}};
 const MN_SHOW = 60, MN_FETCH = 250, MN_MIN_MS = 30000, MN_PER = [8, 13, 21, 34, 55, 89];
-const MN_COL = [EMA_COL[0], '#7fb08a', EMA_COL[1], EMA_COL[2], '#c9a227', '#94a3b8'];   // 8/21/34 as on the main chart; 13/55/89 muted
+const MN_COL = [EMA_COL[0], '#7fb08a', EMA_COL[1], EMA_COL[2], '#c9a227', '#93a0b4'];   // 8/21/34 as on the main chart; 13/55/89 muted
 const MN_DASH = [[], [], [], [], [4, 3], [4, 3]];
 function mnEma(closes, p){   // same recurrence as the main chart's EMA indicator (seeded with the first close)
   const out = []; let prev = null;
@@ -1338,7 +1338,7 @@ function mnDraw(tf){
     g.strokeStyle = st.c; g.lineWidth = rl.stable === true ? 1.5 : 1; g.setLineDash(rl.stable === true ? [] : st.dv); g.beginPath(); g.moveTo(0, yy); g.lineTo(pw, yy); g.stroke(); g.setLineDash([]);
     const txt = rspName(rl.label) + (rspNum(rl.held) && rspNum(rl.tests) ? ` ${rl.held}/${rl.tests}` : '');
     g.font = `600 9.5px ${MONO}`; g.textBaseline = 'bottom'; const tw = g.measureText(txt).width;
-    g.fillStyle = 'rgba(8,10,15,.78)'; g.fillRect(4, yy - 14, tw + 6, 13); g.fillStyle = st.c; g.fillText(txt, 7, yy - 3);
+    g.fillStyle = 'rgba(7,9,13,.78)'; g.fillRect(4, yy - 14, tw + 6, 13); g.fillStyle = st.c; g.fillText(txt, 7, yy - 3);
   }
 }
 function mnBias(tf){   // client-side read of the timeframe's own bars (full 8/13/21/34/55/89 ribbon); text + glyph, never colour alone
@@ -1516,7 +1516,7 @@ function toolbar(){
     else if(b.id === 'lock'){locked = !locked; b.classList.toggle('on', locked); chart.getOverlays().filter(o => !NONUSER.includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, lock: locked}))}
     else if(b.id === 'hide'){hidden = !hidden; b.classList.toggle('on', hidden); chart.getOverlays().filter(o => !NONUSER.includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, visible: !hidden}))}
     else if(b.id === 'clear'){chart.removeOverlay(); LS.set('px.ov.' + cur.ticker, []); drawDesk(true); drawReact(true); drawRespect(true)}
-    else if(b.id === 'shot'){const a = document.createElement('a'); a.href = chart.getConvertPictureUrl(true, 'png', '#0d121d'); a.download = `${cur.name || 'chart'}-${Date.now()}.png`; a.click()}
+    else if(b.id === 'shot'){const a = document.createElement('a'); a.href = chart.getConvertPictureUrl(true, 'png', '#0c1018'); a.download = `${cur.name || 'chart'}-${Date.now()}.png`; a.click()}
   };
 }
 const magLabel = () => {$('mag').textContent = ['Mag', 'Mag~', 'Mag!'][magnet]; $('mag').classList.toggle('on', magnet > 0)};

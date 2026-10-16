@@ -77,24 +77,32 @@ class ContractSpec:
     live: bool  # True when tick_size/tick_value came from the live response
 
 
-def _finite_positive(name: str, value: object) -> float:
+MAX_MAGNITUDE = 1e12      # no price, tick count or dollar figure in this domain is anywhere near this; beyond it Decimal/float math is unsafe
+
+
+def _num(name: str, value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise SizingError(f"{name} must be a number, got {type(value).__name__}")
-    v = float(value)
+    try:
+        v = float(value)
+    except OverflowError:
+        raise SizingError(f"{name} is too large") from None
     if not math.isfinite(v):
         raise SizingError(f"{name} must be finite")
+    if abs(v) > MAX_MAGNITUDE:
+        raise SizingError(f"{name} is out of range")
+    return v
+
+
+def _finite_positive(name: str, value: object) -> float:
+    v = _num(name, value)
     if v <= 0:
         raise SizingError(f"{name} must be > 0")
     return v
 
 
 def _finite(name: str, value: object) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise SizingError(f"{name} must be a number, got {type(value).__name__}")
-    v = float(value)
-    if not math.isfinite(v):
-        raise SizingError(f"{name} must be finite")
-    return v
+    return _num(name, value)
 
 
 def _dec(x: float) -> Decimal:
@@ -256,6 +264,8 @@ def size_position(
     """
     risk = _finite_positive("risk_dollars", risk_dollars)
     ticks = _finite_positive("stop_ticks", stop_ticks)
+    if ticks != int(ticks):
+        raise SizingError("stop_ticks must be a whole number of ticks")       # a stop cannot sit between ticks
     tv = _finite_positive("tick_value", tick_value)
     if max_contracts is not None:
         if isinstance(max_contracts, bool) or not isinstance(max_contracts, int) or max_contracts < 1:
@@ -481,7 +491,9 @@ def describe_trade(
 
     ticks = int((abs(_dec(e) - _dec(sp)) / _dec(spec.tick_size)).to_integral_value(rounding="ROUND_CEILING"))
     ticks = max(ticks, 1)
-    sized = size_position(risk_dollars, ticks, spec.tick_value, max_contracts)
+    # Never size beyond the room that actually remains: a caller that passes a larger risk than the budget (an MCP size
+    # request) gets the budget-limited answer, not one that shows a size the account cannot afford.
+    sized = size_position(min(risk_dollars, budget), ticks, spec.tick_value, max_contracts)
 
     out: "OrderedDict[str, object]" = OrderedDict()
     out["contract"] = spec.root
@@ -515,7 +527,7 @@ MIN_SCALE = 0.25
 
 
 def _ordinal(n: float) -> str:
-    n = int(round(n))
+    n = int(round(_finite("percentile", n)))
     suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
     return f"{n}{suffix}"
 

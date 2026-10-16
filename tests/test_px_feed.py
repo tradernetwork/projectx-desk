@@ -96,3 +96,10 @@ def test_malformed_rows_are_dropped_per_row_not_fatal():
     out = px_feed.sanitize_feed(rows, NOW)
     assert len(out) >= 1 and all(i["analyst"] != "bob\n" for i in out)
     assert any(i["analyst"] == "@analyst1" and i["symbol"] == "NQ" for i in out)
+
+
+def test_items_are_newest_first_even_with_mixed_utc_offsets_and_tiny_prices_are_dropped():     # fuzz pass finding
+    rows = [row(posted_at="2026-10-16T14:30:00+00:00"), row(posted_at="2026-10-16T09:50:00-05:00", entry_px=0.004)]
+    out = px_feed.sanitize_feed(rows, NOW)
+    assert [i["age_s"] for i in out] == sorted(i["age_s"] for i in out) and out[0]["ts"].endswith("+00:00")
+    assert out[0]["entry"] is None and px_feed.sanitize_feed([row()], NOW.replace(tzinfo=None))

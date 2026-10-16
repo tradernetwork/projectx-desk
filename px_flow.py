@@ -60,7 +60,7 @@ class FlowStore:
                 partial = {int(x) for x in (c.get("partial") or [])[-MAX_MINUTES:] if okts(x)}
                 self._c[str(cid)] = {"since": since, "m": m, "partial": partial, "gap": True,   # not listening while the desk was down
                                      "holes": holes, "last_ts": last}
-        except (OSError, ValueError, TypeError, AttributeError, OverflowError):
+        except (OSError, ValueError, TypeError, AttributeError, OverflowError, RecursionError):
             self._c = {}          # unreadable or wrongly-shaped file: start clean rather than trust it
 
     def save(self):
@@ -95,7 +95,8 @@ class FlowStore:
                 c["partial"].add(c["last_ts"] // MIN_MS * MIN_MS)
                 c["holes"] = (c["holes"] + [[c["last_ts"] // MIN_MS * MIN_MS, k]])[-MAX_HOLES:]
         c["last_ts"] = int(ts_ms) if c["last_ts"] is None else max(c["last_ts"], int(ts_ms))
-        if isinstance(vol, bool) or not isinstance(vol, (int, float)) or not math.isfinite(vol) or not 0 < vol <= MAX_TRADE_VOL:
+        if isinstance(vol, bool) or not isinstance(vol, (int, float)) or not math.isfinite(vol) or not 0 < vol <= MAX_TRADE_VOL \
+                or vol != int(vol):                    # futures trade in whole contracts: a fraction is a bad print, never silently truncated
             c["partial"].add(k)
             if len(c["partial"]) > MAX_MINUTES:           # invalid trades create no bucket, so eviction never prunes these
                 c["partial"] = set(sorted(c["partial"])[-MAX_MINUTES:])
@@ -114,6 +115,8 @@ class FlowStore:
             self.save()
 
     def mark_gap(self, cid=None, now_ms=None):
+        if now_ms is not None and (isinstance(now_ms, bool) or not isinstance(now_ms, (int, float)) or not math.isfinite(now_ms)):
+            now_ms = None
         """A hub reconnect/resync: trades may have been lost. The minute it happened in and the next one are partial."""
         for key in ([cid] if cid is not None else list(self._c)):
             c = self._c.get(key)
@@ -130,6 +133,9 @@ class FlowStore:
         if not c or c["since"] is None:
             return {"v": 1, "since": None, "minutes": [], "holes": []}
         rows = [[k, b[0], b[1], b[2], 1 if k in c["partial"] else 0] for k, b in sorted(c["m"].items())]
+        have = set(c["m"])
+        rows += [[k, 0, 0, 0, 1] for k in sorted(c["partial"]) if k not in have]      # a bad print leaves a partial minute with no bucket
+        rows.sort(key=lambda r: r[0])
         holes = [list(h) for h in c["holes"]]
         if c["gap"] and c["last_ts"] is not None:
             if isinstance(now_ms, bool) or not isinstance(now_ms, (int, float)) or not math.isfinite(now_ms):

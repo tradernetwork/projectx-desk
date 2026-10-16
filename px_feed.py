@@ -49,7 +49,8 @@ def _fin(v):
 def _price(v):
     if not _fin(v) or not 0 < v <= 10_000_000:
         return None
-    return round(float(v), 2)
+    r = round(float(v), 2)
+    return r if r > 0 else None
 
 
 def _points(v):
@@ -78,6 +79,8 @@ def sanitize_feed(rows, now=None, channels=("futures",)):
     """Raw API rows -> newest-first list of allowlisted items. Pure. Drops deleted rows, rows outside the
     channel filter, and rows carrying no structured information (a bare COMMENT with nothing parsed)."""
     now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
     out = []
     for r in rows if isinstance(rows, list) else []:
         if not isinstance(r, dict) or r.get("deleted"):
@@ -89,7 +92,7 @@ def sanitize_feed(rows, now=None, channels=("futures",)):
         if t is None:
             continue
         item = {
-            "ts": t.isoformat(timespec="seconds"),
+            "ts": t.astimezone(timezone.utc).isoformat(timespec="seconds"),
             "age_s": max(0, int((now - t).total_seconds())),
             "channel": tag,
             "analyst": r["author_name"] if isinstance(r.get("author_name"), str) and _NAME_RE.fullmatch(r["author_name"]) else None,

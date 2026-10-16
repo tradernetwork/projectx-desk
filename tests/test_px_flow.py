@@ -218,3 +218,22 @@ def test_odd_now_ms_does_not_raise_and_holes_stay_bounded():
         f.add("C", M + (i + 1) * 10 * MIN_MS, 1, 0)
         f.mark_gap("C")
     assert len(f.snapshot("C", M)["holes"]) <= MAX_HOLES + 1
+
+
+def test_a_bad_print_leaves_a_partial_minute_that_makes_its_window_incomplete():       # fuzz pass finding
+    from px_flow import summary
+    f = FlowStore()
+    for i in range(10):
+        f.add("C", M + i * MIN_MS, 5, 0)
+    f.add("C", M + 10 * MIN_MS, float("nan"), 0)                # the only print in minute 10 is garbage: no bucket
+    assert summary(f, "C", M + 10 * MIN_MS)["w"][5]["complete"] is False
+    f.add("C", M + 11 * MIN_MS, 5, 0)
+    assert summary(f, "C", M + 11 * MIN_MS)["w"][5]["complete"] is False
+    f.add("C", M + 12 * MIN_MS, 2.5, 1)                         # a fractional volume is a bad print, never truncated
+    assert 2 not in [r[2] for r in f.snapshot("C")["minutes"] if r[0] == M + 12 * MIN_MS and r[4] == 0]
+
+
+def test_loading_deeply_nested_json_does_not_crash_the_constructor(tmp_path):
+    p = tmp_path / "flow.json"
+    p.write_bytes(b"[" * 100_000)
+    assert FlowStore(path=str(p)).snapshot("C")["minutes"] == []

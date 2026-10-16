@@ -305,3 +305,10 @@ def test_env_file_can_set_the_port_and_api_because_they_are_read_at_call_time(mo
     assert px_app._port() == 9123
     assert PXClient(username="u", api_key="k")._api == "http://example.invalid"
     assert SignalRHub(None, "user").url == "ws://example.invalid/hubs/user"
+
+
+
+async def test_an_absurd_stop_price_is_a_refusal_not_an_exception(tmp_path):                 # fuzz pass finding
+    g, live, clock = make(tmp_path)[:3] if isinstance(make(tmp_path), tuple) else (None, None, None)
+    p = await g.preview(contract_id=CID, side="short", stop_price=1e30, risk_dollars=50.0)
+    assert not p.ok

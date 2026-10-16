@@ -24,9 +24,10 @@ def parse_sizes(raw=None):
     out = []
     for part in str(raw).split(","):
         part = part.strip()
-        if not part.lstrip("-").isdigit():
+        try:
+            n = min(MAX_N, max(MIN_N, int(part)))
+        except ValueError:                      # '²' passes str.isdigit() but not int(): skip any garbage
             continue
-        n = min(MAX_N, max(MIN_N, int(part)))
         if n not in out:
             out.append(n)
     if not out or len(out) > MAX_SIZES:
@@ -109,7 +110,7 @@ class TickBars:
             bars.append(c["cur"][n])
         try:
             limit = max(1, min(int(limit), MAX_BARS + 1))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             limit = 500
         rows = [[b["t"], b["o"], b["h"], b["l"], b["c"], b["v"], b["buy"], b["sell"], 1 if b["gap"] else 0, b["n"]]
                 for b in bars[-limit:]]

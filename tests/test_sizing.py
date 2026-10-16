@@ -40,7 +40,7 @@ def test_risk_never_exceeded_property():
     rng = random.Random(1234)
     for _ in range(5000):
         risk = rng.uniform(0.01, 10_000)
-        ticks = rng.choice([1, 2, 3, 4, 7, 16, 40, 100, rng.uniform(0.5, 500)])
+        ticks = rng.choice([1, 2, 3, 4, 7, 16, 40, 100, rng.randint(1, 500)])
         tv = rng.choice([0.5, 1.0, 1.25, 5.0, 10.0, 12.5])
         cap = rng.choice([None, 1, 3, 10])
         r = sz.size_position(risk, ticks, tv, cap)
@@ -266,3 +266,23 @@ def test_describe_trade_uses_live_tick_value():
     d = sz.describe_trade("MES", "long", 5000.0, 4990.0, 100, live_tick_value=2.0)
     assert d["tick_value"] == 2.0 and d["risk_per_contract"] == 80.0 and d["contracts"] == 1
     assert math.isfinite(d["pct_of_risk_budget_used"])
+
+
+def test_a_stop_must_be_a_whole_number_of_ticks_and_absurd_magnitudes_are_sizing_errors_not_crashes():
+    import pytest
+    with pytest.raises(sz.SizingError):
+        sz.size_position(100, 2.5, 1.25)                     # a stop cannot sit between ticks
+    for bad in (1e300, 10 ** 400, float("inf"), float("nan"), True, "5"):
+        with pytest.raises(sz.SizingError):
+            sz.size_position(bad, 3, 2)
+        with pytest.raises(sz.SizingError):
+            sz.size_position(3, bad, 2)
+    with pytest.raises(sz.SizingError):
+        sz.stop_from_atr(3, 10 ** 400)
+    with pytest.raises(sz.SizingError):
+        sz.risk_scale(3, float("inf"))
+
+
+def test_describe_trade_never_sizes_beyond_the_remaining_budget():
+    d = sz.describe_trade("MES", "long", 5000.0, 4990.0, 500.0, risk_budget_dollars=100.0)
+    assert d["total_risk_dollars"] <= 100.0

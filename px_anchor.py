@@ -284,5 +284,7 @@ def heat(open_stop_risk_usd: object, new_risk_usd: object, budget_base: object) 
     if o is None or n is None or o < 0 or n < 0:
         return {"total_usd": None, "pct": None}
     total = o + n
-    pct = (100.0 * total / b) if (b is not None and b > 0) else None
+    pct = (100.0 * total / b) if (b is not None and b > 1e-9) else None
+    if pct is not None and not math.isfinite(pct):
+        pct = None
     return {"total_usd": total, "pct": pct}

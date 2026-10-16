@@ -501,8 +501,11 @@ class Guard:
                 entry_px = float(entry)
 
         if spec and entry_px:
-            ticks_dec = abs(Decimal(str(entry_px)) - Decimal(str(stop_price))) / Decimal(str(spec.tick_size))
-            aligned = (Decimal(str(stop_price)) / Decimal(str(spec.tick_size))) % 1 == 0
+            try:
+                ticks_dec = abs(Decimal(str(entry_px)) - Decimal(str(stop_price))) / Decimal(str(spec.tick_size))
+                aligned = (Decimal(str(stop_price)) / Decimal(str(spec.tick_size))) % 1 == 0
+            except ArithmeticError:                 # an absurd stop price overflows Decimal: refuse it, never raise
+                ticks_dec, aligned = Decimal(10) ** 9, False
             chk("stop_aligned", aligned, "stop is not on a tick")
             chk("stop_side", (side == "long" and stop_price < entry_px) or (side == "short" and stop_price > entry_px),
                 "stop is on the wrong side of entry")

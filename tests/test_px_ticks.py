@@ -138,3 +138,8 @@ def test_route_and_state_hook(monkeypatch):
         assert c.get("/api/tickbars", params={"contract": "bad contract!", "n": 2}).status_code in (400, 422)
         live.ticks.mark_gap(None)
         assert c.get("/api/tickbars", params={"contract": cid, "n": 5}).json()["bars"][-1][8] == 1
+
+
+def test_parse_sizes_survives_unicode_digits_and_garbage():                                 # fuzz pass finding
+    from px_ticks import DEFAULT_SIZES, parse_sizes
+    assert parse_sizes("\u00b2,1024") == (1024,) and parse_sizes("\u00b2") == DEFAULT_SIZES

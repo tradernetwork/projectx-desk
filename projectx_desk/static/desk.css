@@ -14,8 +14,8 @@
 :root{
   color-scheme:dark;
   /* surfaces */
-  --bg-app:#080a0f; --bg-card:#0d121d; --bg-sub:#121826; --bg-raise:#161e2e;
-  --border:#1c2438; --border-sub:#161e30; --border-strong:#2a3550;
+  --bg-app:#07090d; --bg-card:#0c1018; --bg-sub:#111722; --bg-raise:#151c29;
+  --border:#1a2130; --border-sub:#161c29; --border-strong:#2a3550;
   /* accents */
   --cyan:#38bdf8; --blue:#60a5fa; --green:#22c55e; --magenta:#f43f5e; --purple:#a855f7; --amber:#f59e0b;
   /* accent ink for small text on dark (AA at 11px) */
@@ -25,14 +25,14 @@
   --cyan-line:rgba(56,189,248,.45); --green-line:rgba(34,197,94,.45); --mag-line:rgba(244,63,94,.55); --amber-line:rgba(245,158,11,.5);
   /* text */
   --ema8:#2dd4bf; --ema21:#60a5fa; --ema34:#e879f9;
-  --text:#e8eef7; --text-2:#94a3b8; --text-muted:#76839a; --text-dim:#334155;
+  --text:#e6ebf2; --text-2:#93a0b4; --text-muted:#76839a; --text-dim:#334155;
   /* type */
   --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
   --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --fs-2xs:10px; --fs-xs:11px; --fs-sm:12px; --fs-md:13px; --fs-lg:15px;
   --fs-num:clamp(18px,1.35vw,24px); --fs-price:clamp(20px,1.6vw,28px); --fs-hero:clamp(44px,3.6vw,64px);
   /* shape + space */
-  --r:8px; --r-sm:5px; --gap:6px; --pad:12px;
+  --r:10px; --r-sm:7px; --gap:6px; --pad:12px;
   --glow-cyan:0 0 0 1px var(--cyan-line),0 0 14px -2px rgba(56,189,248,.35),inset 0 0 12px -6px rgba(56,189,248,.4);
   --glow-mag:0 0 0 1px var(--mag-line),0 0 18px -2px rgba(244,63,94,.45);
 }
@@ -577,3 +577,34 @@ button.primary.lockbtn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis
 
 .plan{margin:6px 0 2px;padding:5px 7px;border:1px solid var(--border);border-radius:var(--r-sm);font:400 var(--fs-xs)/1.45 var(--mono);color:var(--text-muted)}
 .plan b{color:var(--text);font-weight:600}.plan .up{color:var(--green,#3fb950)}
+
+/* ---- PX Desk redesign (2026-10): same layout, refined surfaces, tighter type. Tokens above; dimensions only when there is room. ---- */
+.ribbon,.kpi,.panel,.placebar,.chartwrap{box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
+h2{letter-spacing:.12em}
+.k-t{letter-spacing:.12em}
+.seg{border-radius:8px}
+.seg button{border-radius:5px}
+.step{border-radius:7px}
+.hero{background:radial-gradient(120% 70% at 0% 0%,rgba(56,189,248,.06),transparent 60%),var(--bg-card)}
+.node{border-radius:8px;background:var(--bg-sub)}
+.node.entry{border-left-color:var(--cyan)}
+.tree.live.filled .node.entry{box-shadow:inset 0 0 0 0 transparent,0 0 18px -8px rgba(34,197,94,.5)}
+.manage{background:linear-gradient(180deg,rgba(56,189,248,.04),transparent 40%),var(--bg-card)}
+.lvrow[aria-pressed="true"]{background:var(--bg-sub)}
+.mn.cur,.rsptf.cur{background:var(--bg-sub)}
+.pill{background:transparent}
+.pill.ok{background:var(--green-bg)}
+.pill.sim{background:var(--cyan-bg)}
+.pill.warn{background:rgba(245,158,11,.1)}
+button.danger{border-radius:7px}
+@media (min-width:1100px) and (min-height:821px){
+  :root{--gap:8px;--pad:16px}
+  .ribbon{padding:0 8px 0 14px;min-height:54px}
+  .ribbon button,.ribbon select,.ribbon input{min-height:32px}
+  .panel{padding:14px var(--pad) 16px}
+  .kpi{padding:12px 16px;gap:6px}
+  .placebar{padding:12px var(--pad)}
+  #place-btn{min-height:52px;border-radius:8px}
+  .strip{min-height:22px;padding:0 8px;font-size:var(--fs-xs)}
+}
+@media (min-width:1600px) and (min-height:821px){.big .num{font-size:64px}}

@@ -43,6 +43,12 @@ def _rail(name, default):
     return v if v >= 0 else default
 
 
+def _display_money(name):
+    """A display-only dollar figure (never a limit): finite and > 0, else 0.0 meaning 'unknown, print NA'."""
+    v = _f(name, 0)
+    return v if v == v and v not in (float("inf"), float("-inf")) and v > 0 else 0.0
+
+
 def _i(name, default):
     try:
         return int(os.getenv(name, default))
@@ -67,7 +73,11 @@ class Limits:
     max_consecutive_losses: int = 3       # PX_MAX_CONSEC_LOSSES: locked for the session after this many losses in a row (0 = off)
     size_after_loss_lock: bool = True     # PX_SIZE_AFTER_LOSS_LOCK=0 to disable: after a loss, risk may not exceed the last trade's risk
     risk_base: str = "drawdown"          # PX_RISK_BASE: "drawdown" (1R = risk_pct of the live drawdown room, balance minus the MLL floor; the loss limit is the base, not the account size) or "remaining" (old: risk_pct of min(daily, drawdown) room)
-    size_scalers: bool = True             # PX_SIZE_SCALERS=0 disables the ADX/ATR risk cuts (they only ever reduce)
+    size_scalers: bool = False            # PX_SIZE_SCALERS=1 enables the ADX/ATR risk cuts (they only ever reduce). OFF by default since Round 10:
+                                          # the stop is already k x ATR, so the ATR cut prices volatility twice (exposure ~ ATR^-1.4)
+    cost_rt_usd: float = 0.0              # PX_COST_RT_USD: commission + exchange + clearing fees per contract per ROUND TURN. 0/unset = unknown: cost prints NA
+    slippage_ticks: int = 2               # PX_SLIPPAGE_TICKS: assumed slippage per round turn (one tick in, one out). Display only; 0 allowed
+    feed_stage: bool = False              # PX_FEED_STAGE=1 shows the one-click STAGE button on analyst callouts. OFF: the banner shows, the button does not
     daily_loss_limit: float = 0.0         # dollars; 0 = refuse
     dd_buffer: float = 0.0                # dollars of trailing-drawdown room; 0 = refuse
     max_loss_frac: float = 0.25           # one trade may risk at most this share of remaining budget
@@ -117,7 +127,10 @@ class Limits:
             max_qty_total=_i("PX_MAX_QTY_TOTAL", 3),
             max_orders_day=_i("PX_MAX_ORDERS_DAY", 10),
             risk_base="remaining" if os.getenv("PX_RISK_BASE", "drawdown").strip().lower() == "remaining" else "drawdown",
-            size_scalers=os.getenv("PX_SIZE_SCALERS", "1") != "0",
+            size_scalers=os.getenv("PX_SIZE_SCALERS", "0") == "1",
+            cost_rt_usd=_display_money("PX_COST_RT_USD"),
+            slippage_ticks=_rail("PX_SLIPPAGE_TICKS", 2),
+            feed_stage=os.getenv("PX_FEED_STAGE", "0") == "1",
             cooldown_after_loss_s=_rail("PX_COOLDOWN_AFTER_LOSS_S", 300),
             max_consecutive_losses=_rail("PX_MAX_CONSEC_LOSSES", 3),
             size_after_loss_lock=os.getenv("PX_SIZE_AFTER_LOSS_LOCK", "1") != "0",

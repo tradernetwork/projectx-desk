@@ -113,6 +113,7 @@ def main():
         "PX_STATE_PATH": str(tmp / "day.json"), "PX_INTENT_PATH": str(tmp / "intents.json"), "PX_AUDIT_PATH": str(tmp / "audit.jsonl"),
         "PX_HALT_FILE": str(tmp / "HALT"), "PX_FLOW_FILE": str(tmp / "flow.json"), "PYTHONUNBUFFERED": "1",
         "PX_FEED_URL": f"http://127.0.0.1:{FEED}/analyst-callouts", "PX_FEED_KEY": "demo",
+        "PX_FEED_STAGE": "1",            # the one-click STAGE on a callout is opt-in (Round 10); the screenshot shows it on
         "PX_GEX_URL": f"http://127.0.0.1:{GEXP}/api/v1", "PX_GEX_KEY": "demo", "DEV_GATEWAY_PORT": str(GW),
     })
     py = ROOT / ".venv" / "bin" / "python"

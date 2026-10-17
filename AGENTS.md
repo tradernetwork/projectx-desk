@@ -32,7 +32,7 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 | `projectx_desk/net.py` | bind and exposure rules: loopback detection, host/origin allowlists, the operator login, the refusal to start unsafe |
 | `projectx_desk/app.py` | FastAPI: chart data, SSE ticks, CSRF-gated POST routes, mounts MCP |
 | `projectx_desk/levels.py` | EMA stack, ATR series, level-reaction statistics with a random-line baseline |
-| `projectx_desk/respect.py` | which levels each timeframe (5m/15m/1h/4h/1d) respects: ~25 candidate levels scored against a calibrated placebo, with a no-lookahead guarantee and a half/half stability check. Pure, no I/O |
+| `projectx_desk/respect.py` | which levels each timeframe (5m/15m/1h/4h/1d) respects: ~25 candidate levels scored against a placebo calibrated on block-bootstrap surrogates, with a no-lookahead guarantee and a half/half stability check. RESPECTED needs 30 tests, a 15-point gap, a binomial p-value AND a Benjamini-Hochberg pass over the whole scan (Round 10). Pure, no I/O |
 | `projectx_desk/flow.py` | real buy/sell volume from the trade tape (`GatewayTrade.type`: 0 buy, 1 sell), 1-minute buckets per contract. Pure. No tick history exists, so coverage starts when the desk subscribed (`since`); minutes touching a reconnect gap or a bad trade are `partial` and never drawn. Unknown side is counted apart, never guessed. Persisted to `data/flow.json` (`PX_FLOW_FILE`) with holes for any time the tape was not received. Served at `/api/flow`, drawn as the BUY/SELL VOL pane, summarised in the digest as `FLOW:` |
 | `projectx_desk/anchor.py` | pure level-anchored stop and target (respected levels only, never GEX), plus `projection` (room left if the stop fills) and `heat`. Fails closed. See Round 6 |
 | `projectx_desk/gex.py` | GEX levels from the TraderDaddy API converted to futures price space: display and digest only, never sizing. `PX_GEX_KEY`, `PX_GEX_URL`, `PX_GEX_MAX_AGE_S` |
@@ -66,6 +66,15 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
   A broker rejection that carries an `orderId` is still possible exposure: if a position appears it is protected and the desk halts.
 - **`PXClient` read wrappers raise** on `success:false` or a non-list payload; an empty list means empty. MCP preview cannot supersede a
   ticket staged at the desk (`ui_ticket_pending`). `POST /api/intent/resolve` is human-only; give it no MCP tool.
+- **The loss room counts open P&L.** `Guard.draw()` is the worse of the stop risk our tickets commit and the unrealised loss on every open
+  position, marked from a fresh quote; both rooms are net of it. A position the desk cannot value makes the room UNKNOWN and opens refuse
+  (`open_pnl_known`). Never let a gain widen the room, and never default an unvaluable position to zero.
+- **A level is RESPECTED only through all three gates** in `respect.py`: effect size (`levels.MIN_TESTS`=30 tests, 15-point gap), the exact
+  binomial p-value, and the FDR pass over the whole scan. Do not lower `MIN_N`, `HALF_MIN_N` or raise `FDR_Q` to make the panel look busier;
+  `anchor.py` trusts that verdict with real stops.
+- **The ADX/ATR scalers default OFF** (`PX_SIZE_SCALERS=1` to enable): the ATR stop already prices volatility. The one-click STAGE on analyst
+  callouts defaults OFF (`PX_FEED_STAGE=1`); when used, the ticket is audited as `stage_source=callout`. The cost line needs
+  `PX_COST_RT_USD`; unknown cost prints NA, never 0.
 - **Sizing is always computed** and rounds down. 1R is `risk_pct` of the live drawdown room (balance minus `PX_MLL_FLOOR`), never of the account
   balance and never above the remaining daily or drawdown room; unreadable inputs size to 0 (`PX_RISK_BASE`, `docs/DECISIONS.md` Round 4). ADX/ATR scalers and the behavioral rails only ever refuse or reduce.
 - **Stops only tighten** (`move_stop`): toward price, never wider, never into the market, simulated accounts only.

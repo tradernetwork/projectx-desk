@@ -13,6 +13,7 @@ Definitions (all hypotheses to be judged by their sample sizes, not trusted):
   NEUTRAL neither happened within `look` bars. PENDING: fewer than `look` bars of future exist yet;
           pending events are shown but never counted in the rate.
 """
+import math
 from typing import Optional, Sequence
 
 
@@ -144,8 +145,16 @@ def placebo_rate(bars, level, atr, offsets=PLACEBO_OFFSETS, **kw) -> dict:
     return {"n": n, "bounced": bounced, "rate": round(100.0 * bounced / n, 1) if n else None}
 
 
-def verdict(real: dict, placebo: dict, min_n: int = 8, margin: float = 15.0) -> str:
-    """Plain-language read of real vs placebo. Conservative: needs both enough tests and a clear gap."""
+MIN_TESTS = 30   # resolved tests before a verdict says anything positive. At 8 (the old value) a 15-point gap was 0.87 standard
+                 # errors at p=0.6, so about one candidate in five cleared it on pure noise; at 30 the same gap is 1.7 SE.
+
+
+def verdict(real: dict, placebo: dict, min_n: int = MIN_TESTS, margin: float = 15.0) -> str:
+    """Plain-language read of real vs placebo. Conservative: needs both enough tests and a clear gap.
+
+    This is the EFFECT-SIZE gate only (is the gap big enough to matter, on enough tests). It is not a significance test:
+    `binom_sf` gives the p-value and `benjamini_hochberg` the multiple-comparison cut; projectx_desk/respect.py requires
+    all three before it calls a level respected."""
     if real["n"] < min_n or real["rate"] is None or placebo["rate"] is None or placebo["n"] < min_n * 3:
         return "TOO_FEW_TESTS"
     gap = real["rate"] - placebo["rate"]
@@ -154,3 +163,45 @@ def verdict(real: dict, placebo: dict, min_n: int = 8, margin: float = 15.0) -> 
     if gap <= -margin:
         return "BELOW_RANDOM"
     return "NOT_DISTINGUISHABLE"
+
+
+def binom_sf(k: int, n: int, p: float) -> float:
+    """P(X >= k) for X ~ Binomial(n, p): the chance of AT LEAST k bounces in n tests if the true rate were the placebo's.
+
+    One-sided, exact, stdlib only (log-space terms so n in the hundreds cannot underflow). p is clamped to [0, 1] because the
+    calibrated placebo rate can be pushed past 100 by the surrogate correction. k <= 0 or n <= 0 is 1.0 (no evidence)."""
+    if n <= 0 or k <= 0:
+        return 1.0
+    if k > n:
+        return 0.0
+    p = min(1.0, max(0.0, float(p)))
+    if p >= 1.0:
+        return 1.0
+    if p <= 0.0:
+        return 0.0
+    lp, lq, lgn = math.log(p), math.log1p(-p), math.lgamma(n + 1)
+    tot = 0.0
+    for i in range(k, n + 1):
+        tot += math.exp(lgn - math.lgamma(i + 1) - math.lgamma(n - i + 1) + i * lp + (n - i) * lq)
+    return min(1.0, max(0.0, tot))
+
+
+def benjamini_hochberg(pvals: Sequence[Optional[float]], q: float = 0.10) -> list:
+    """Which hypotheses survive at false-discovery rate q (Benjamini and Hochberg 1995), aligned to the input.
+
+    Testing ~25 candidate lines on 5 timeframes is 125 hypotheses; without this, a 5% test hands out about six false
+    "respected" badges per scan with no effect present. A None or non-finite p-value is not a hypothesis: it stays None
+    and never passes. Returns True/False/None per entry."""
+    idx = [i for i, p in enumerate(pvals) if isinstance(p, (int, float)) and not isinstance(p, bool) and math.isfinite(p)]
+    out: list = [None] * len(pvals)
+    m = len(idx)
+    if m == 0 or not (0.0 < q < 1.0):
+        return out
+    order = sorted(idx, key=lambda i: pvals[i])
+    cut = None
+    for rank, i in enumerate(order, 1):
+        if pvals[i] <= q * rank / m:
+            cut = pvals[i]
+    for i in idx:
+        out[i] = cut is not None and pvals[i] <= cut
+    return out

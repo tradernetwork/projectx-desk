@@ -30,7 +30,7 @@ No signals of its own. No auto-trading.
 **What is in it:** one guarded order path (a test fails the build if any other file can place an order); sizing off your loss limit
 with an ATR stop that tucks beyond a level price has respected; **real buy and sell volume** built from the trade tape, plus 1024, 2048
 and 4096-trade tick charts; GEX levels drawn on the chart; and an **analyst-callout alert** that flashes when a fresh futures entry
-posts, switches the chart to it when you are flat, and offers a one-click STAGE (you still hold PLACE yourself).
+posts, switches the chart to it when you are flat, and, if you turn it on (`PX_FEED_STAGE=1`), offers a one-click STAGE (you still hold PLACE yourself).
 
 **Terms:** *R* is the amount you risk on a trade. *ATR* is how far price typically moves. *STAGE* drafts an order; nothing
 is sent until you hold *PLACE*. *MCP* is a standard way for AI assistants to use tools. More in the [glossary](#glossary).
@@ -85,7 +85,8 @@ arithmetic, not the result.
 |---|---|
 | **It sizes every trade** | From your remaining daily-loss and drawdown room and a stop set by ATR. It always rounds **down**. If one contract risks more than your budget it says `REFUSED`; it never rounds up. |
 | **It tells you why** | The size box lists its reasons: your risk %, the ADX and ATR cuts, the stop math, what risk alone would allow versus your cap. |
-| **It gets smaller, never bigger** | Choppy market (ADX under 20, meaning no clear trend) or very volatile (ATR in the top fifth of its recent range): risk can be cut. Unknown inputs cut it too. Nothing scales risk up. The ATR cut double-counts a wide ATR stop, so many people switch both cuts off with `PX_SIZE_SCALERS=0` ([why](docs/SIZING.md)). |
+| **It gets smaller, never bigger** | Nothing scales risk up. Optional cuts for a choppy market (ADX under 20) or a very volatile one (ATR in the top fifth of its recent range) exist but are **off by default**: the stop is already sized by ATR, so the ATR cut priced volatility twice ([why](docs/SIZING.md)). `PX_SIZE_SCALERS=1` turns them on. |
+| **It shows what friction costs** | Set `PX_COST_RT_USD` (your fees per contract per round turn) and the size box shows the cost of the trade as a share of 1R and the win rate 1:1 needs after costs. On micros that number is the one that decides. |
 | **Guardrails** | Cooldown after a loss, lockout after 3 losses in a row, and after a loss your risk can't exceed what that trade risked. Defaults are settings. |
 | **A stop is required** | Sent right after the fill and watched for 5 seconds; if it is not acknowledged, the desk flattens and halts. If the live feed misses the fill, no stop is sent, so read the limits. |
 | **Manage the trade** | Live open R, plus one-click stop moves (breakeven, ATR trail, EMA 21 trail). Stops only move toward price, never wider. |
@@ -96,7 +97,7 @@ arithmetic, not the result.
 | **Real buy and sell volume** | A volume pane built from the trade tape's aggressor side (who hit the bid or the ask), not candle colour, plus delta. ProjectX has no tick history, so it records from the moment the desk starts, saves to disk, and shows a gap as a gap, never as a wrong number. |
 | **Tick charts** | 1024, 2048 and 4096-trade bars built from the same tape, each with its buy-minus-sell delta. |
 | **GEX on the chart** | Flip, pin and walls from the TraderDaddy API, converted to futures prices and drawn as labelled lines. Display only: they never feed sizing, stops or targets. |
-| **Analyst alert** | When a fresh futures ENTRY callout posts (Discord bot feed), a banner flashes, the chart switches to that contract if you are flat, the analyst's entry, stop and first target are drawn, and STAGE offers their trade through the normal ticket. PLACE is still your 600 ms hold. |
+| **Analyst alert** | When a fresh futures ENTRY callout posts (Discord bot feed), a banner flashes, the chart switches to that contract if you are flat, the analyst's entry, stop and first target are drawn. With `PX_FEED_STAGE=1` a STAGE button offers their trade through the normal ticket; it is off by default because the feed is an unmeasured signal and should not be the easiest entry on the screen. PLACE is still your 600 ms hold. |
 | **Level-anchored stop and target** | The stop tucks just beyond a level price has respected (never tighter than 1.5x ATR, never wider than 2x); the target is the nearest respected level at 1R or better, with its R:R and break-even win rate. |
 | **Practice market** | A built-in mock ProjectX gateway with fills, resting stops, and switches that force timeouts, rejections and dropped feeds. |
 | **On camera** | Stream mode removes balance, P&L and risk dollars from the page. |
@@ -107,9 +108,11 @@ arithmetic, not the result.
 If you are on an eval, know what the numbers are:
 
 - **Daily loss is a number you type in, and you maintain the drawdown floor.** With `PX_MLL_FLOOR` the drawdown room follows your
-  live balance, but the desk does not read your firm's limits, compute Topstep's end-of-day trailing floor, count unrealised P&L,
-  or model a consistency rule. Treat its budget as an upper bound that you keep updated.
-- **Realised P&L only.** A large open loser is not counted until it closes.
+  live balance, but the desk does not read your firm's limits, compute Topstep's end-of-day trailing floor, or model a consistency
+  rule. Treat its budget as an upper bound that you keep updated.
+- **Open P&L is marked from the last quote, by the desk.** An open loss shrinks the room (and a position the desk cannot value makes
+  the room unknown and refuses opens). It is the desk's mark, not the firm's: a gap through your stop can still breach before anything
+  here reacts.
 - Built for the ProjectX Gateway API that TopstepX uses. Other ProjectX-based firms may work; untested.
 
 More in [known limitations](docs/LIMITATIONS.md).
@@ -133,8 +136,8 @@ More in [known limitations](docs/LIMITATIONS.md).
 
 ![An analyst entry alert: the banner, the chart switched to the contract, the analyst's levels drawn, and a STAGE button](docs/img/ui-analyst-alert.png)
 
-<sub>A fresh analyst entry: the banner flashes, the chart switches to that contract when you are flat, their entry and stop are drawn, and STAGE
-drafts the trade through the normal ticket. Placing is still a 600 ms hold by you.</sub>
+<sub>A fresh analyst entry: the banner flashes, the chart switches to that contract when you are flat, their entry and stop are drawn, and (with
+`PX_FEED_STAGE=1`, as in this screenshot) STAGE drafts the trade through the normal ticket. Placing is still a 600 ms hold by you.</sub>
 
 ![In a trade: manage panel, live bracket with an acknowledged stop, and the stop and entry lines on the chart](docs/img/desk-in-trade.png)
 

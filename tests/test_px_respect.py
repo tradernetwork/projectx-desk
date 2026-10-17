@@ -179,15 +179,19 @@ def test_output_shape_json_and_ordering():
     assert json.loads(s) == r
     assert r["v"] == 1
     keys = {"id", "family", "label", "tests", "held", "failed", "neutral", "hold_rate", "placebo_rate", "verdict",
-            "stable", "price"}
+            "stable", "price", "p_value", "fdr"}
     for tf, t in r["tfs"].items():
-        assert set(t) == {"bars", "tested", "note", "levels"} and len(t["levels"]) <= 4
+        assert set(t) == {"bars", "tested", "note", "family", "levels"} and len(t["levels"]) <= 4
+        assert t["family"] >= t["tested"] > 0                                # one family for the whole scan
         prev = None
         for x in t["levels"]:
             assert set(x) == keys
             assert x["id"] in R.CATALOG and x["family"] == R.CATALOG[x["id"]][0] and x["label"] == R.CATALOG[x["id"]][1]
             assert x["held"] + x["failed"] + x["neutral"] == x["tests"] > 0
             assert x["stable"] in (True, False, None)
+            assert x["fdr"] in (True, False, None) and (x["p_value"] is None or 0.0 <= x["p_value"] <= 1.0)
+            if x["verdict"] == R.RESPECTED:
+                assert x["fdr"] is True and x["tests"] >= R.MIN_N and x["hold_rate"] - x["placebo_rate"] >= 15
             assert x["price"] is None or math.isfinite(x["price"])
             edge = x["hold_rate"] - x["placebo_rate"] if x["hold_rate"] is not None and x["placebo_rate"] is not None else -1e9
             k = (x["verdict"] == R.RESPECTED, edge, x["tests"])

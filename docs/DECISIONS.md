@@ -281,3 +281,62 @@ Everything below was reproduced before it was fixed and has a regression test.
 - **GRANULARITY refusals on volatile days were the ATR scaler, not the rule.** At ATR in the 99th percentile the 1.5x ATR stop already cost $80 per
   MES, and the untested x0.67 cut then shrank a $100 budget to $67, so one contract could never fit. The "never round up" rule is unchanged; the
   owner's config now sets `PX_SIZE_SCALERS=0` (documented in `docs/SIZING.md`). The scalers stay available, default on, for anyone who wants them.
+  **Superseded by Round 10:** the default is now off.
+
+## Round 10: the statistics review (2026-10-17)
+
+An outside review (`reviews/review-statistics-2026-10-17.md`) graded the repo as a cost-control layer plus one research-shaped
+module, and found the problems were statistical, not engineering. Each claim was checked against the code before anything moved.
+What it got right, what it had stale, and what changed:
+
+- **Right: `min_n=8` with a 15-point margin was 0.87 standard errors.** At p = 0.6 and n = 8 the standard error of a proportion is
+  17 points, so one candidate in five clears a 15-point gap on pure noise, and the scan tests ~125 of them. The surrogate calibration
+  (Round 5) already pulled the measured false-positive rate on random walks to 2 of 600 rows, which the review did not account for, but
+  calibration is not a significance test. A level is now RESPECTED only when three gates pass: (1) at least 30 resolved tests and a
+  15-point gap over the calibrated placebo (`levels.MIN_TESTS`, the effect-size gate), (2) a one-sided exact binomial p-value of that
+  many bounces against the placebo rate (`levels.binom_sf`), (3) that p-value survives a Benjamini-Hochberg cut at q = 0.10 over every
+  candidate on every timeframe in the scan (`levels.benjamini_hochberg`, `respect.FDR_Q`; the family size is reported as `family`).
+  A gap that clears the margin but not the FDR cut reads NOT_DISTINGUISHABLE. Rows carry `p_value` and `fdr` so a reader can see
+  which gate failed. The stability halves need 15 tests each (was 5). Measured on 600 null rows (Gaussian and volatility-switching
+  walks) the new gates cost nothing: 2 and 0 false RESPECTED before, 2 and 0 after. They bind on real data, where the calibration can
+  under-correct, and that is the point. `anchor.py` inherits the stricter verdict, so fewer stops are anchored; the base ATR stop stands.
+- **Right in spirit on the placebo, done differently.** The review asked for a 1000-draw circular block bootstrap so the verdict becomes
+  a p-value. The scan runs live in pure Python on five timeframes; 1000 draws is minutes, not milliseconds. The surrogates ARE now a
+  circular block bootstrap of the bar shapes (blocks of 20 bars, `respect.BLOCK`), so volatility clustering survives in the null while
+  the tie between a line and the bars after it is broken, but there are still three of them and they calibrate the placebo rate. The
+  p-value comes from the exact binomial against that calibrated rate, not from the surrogate distribution. If the scan ever moves out
+  of the request path, raise `SURRG` and derive the p-value from the surrogates directly.
+- **Not changed, on purpose: the wick-versus-close asymmetry.** BOUNCE is judged on a wick at 0.75 ATR, FAIL on a close at 0.25 ATR.
+  The review is right that the hold RATE drifts with the volatility regime for mechanical reasons. The placebo lines are scored with
+  the identical rules at the same bars, so whatever the asymmetry does to the hold rate it does to the placebo rate; the gap and the
+  p-value compare like with like. Symmetrising would change what "held" means on every chart and every test fixture for a bias the
+  design already cancels to first order. Noted in the module docstring.
+- **Right: the ATR scaler prices volatility twice.** `contracts = risk / (k x ATR x tick value)` already makes exposure proportional
+  to 1/ATR; a further x0.67 above the 80th percentile makes it roughly ATR^-1.4. Round 9 admitted this and left the default on.
+  `PX_SIZE_SCALERS` now defaults to OFF; `1` turns both cuts on. Nothing else about them changed: they still only ever reduce.
+- **Right: cost was shown nowhere.** On micros a 15-tick MES stop risks $18.75 against about $3.50 of commission and two ticks of
+  slippage, so 1:1 breaks even at 59% wins, not 50%. The size box, `/ai/state` and the digest now carry `SIZE_COST`: cost per contract
+  per round turn, that cost as a percentage of 1R, and the win rate 1:1 needs after costs. Inputs: `PX_COST_RT_USD` (your fees per
+  contract per round turn; unset means the cost prints NA, never 0) and `PX_SLIPPAGE_TICKS` (default 2, one in and one out). The
+  KPI block adds `KPI_COST`: fees actually paid today and fees as a share of gross P&L moved. Stream mode hides the dollar figures
+  and keeps the percentages.
+- **Right, and the most important one: the room ignored open P&L.** Topstep watches the maximum-loss limit on equity including
+  unrealised loss; the balance the gateway reports moves on fills. The room was live balance minus the floor, less the stop risk of
+  our own live tickets, so one large open loser inside its stop (or an external position with no stop at all) could liquidate the
+  account while the digest read `locked=NO`. The review was stale on one point: with `PX_MLL_FLOOR` the room already followed the
+  live balance, it was never only a typed number. Now `Guard.open_pnl()` marks every open position at the last trade of a quote no
+  older than `PX_MAX_HUB_AGE_S`, using the contract's tick size and value; `Guard.draw()` is the WORSE of the committed stop risk of
+  our tickets and the open loss showing (a gain is never banked); both rooms are net of it. If any open position cannot be valued (no
+  fresh quote, no contract record, a PositionType other than 1 or 2) the room is UNKNOWN and opens refuse with `open_pnl_known`, the
+  same way an unknown day P&L refuses. `RISK_OPEN` carries `open_pnl` and `draw`; stream mode hides both. Assumption, unverified
+  until a sim run: the gateway's `balance` excludes open P&L (the mock gateway behaves that way). If a real account's balance turns
+  out to include it, the open loss is counted twice, which errs small, and the fix is one line in `draw()`.
+- **Right: the analyst feed was the lowest-friction entry on the screen.** Every statistical control pointed at levels and none at
+  the one third-party signal with a STAGE button. The one-click STAGE on a callout now sits behind `PX_FEED_STAGE=1` (default off:
+  the banner, the chart switch and the drawn levels stay; staging the idea takes the same typing as any other). When it is on, a
+  ticket staged from a callout writes a `stage_source=callout` audit event, so callout-origin tickets can be measured apart. The
+  backtest the review asked for (100+ historical ENTRY posts net of costs) needs history the desk does not store; nothing here
+  pretends to answer it.
+- **Not actionable here:** the invalidation tests for the behavioral rails and the scalers (200+ logged trades, KS tests on R after a
+  loss versus after a win) need a trade log this desk does not yet have. The audit file now records enough (ticket, risk, source) to
+  build one. The "mocks encode the author's assumptions" point stands and is why nothing has been pointed at a real account.

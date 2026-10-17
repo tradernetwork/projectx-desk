@@ -223,6 +223,7 @@ function renderSize(){
     ln(mk('b', '', 'STOP '), document.createTextNode(z.stop_mode === 'ANCHORED' ? 'beyond ' + String(z.stop_anchor || '').slice(0, 24) + ', ' + z.stop_k_eff + 'x ATR' : z.stop_mode === 'MANUAL' ? 'manual ' + z.stop_k_eff + 'x ATR' : '1.5x ATR (no respected level in reach)'));
     ln(mk('b', '', 'TARGET '), document.createTextNode(typeof z.target === 'number' ? z.target + ' (' + String(z.target_level || '').slice(0, 24) + ') ' + z.rr + 'R, needs ' + z.breakeven_win_rate + '% wins' : 'none: no respected level at 1R or better'));
     ln(mk('b', '', 'IF STOPPED '), document.createTextNode(streaming() ? 'hidden in stream mode' : 'drawdown room ' + money(z.drawdown_left) + ', daily ' + money(z.daily_left) + ', total open risk with this trade ' + money(z.heat_usd)));
+    ln(mk('b', '', 'COST '), document.createTextNode(typeof z.cost_pct_r === 'number' ? z.cost_pct_r + '% of 1R' + (streaming() || typeof z.cost_usd !== 'number' ? '' : ' ($' + z.cost_usd.toFixed(2) + ' per contract, ' + z.slippage_ticks + 't slippage + fees)') + ', 1:1 needs ' + z.breakeven_1r_net + '% wins after costs' : 'unknown: set PX_COST_RT_USD (fees per contract per round turn)'));
   }
   for(const id of ['stop-dec', 'stop-inc']) $(id).disabled = !ok;
   const box = $('size');
@@ -1206,7 +1207,7 @@ function renderRespect(){
     const lv = ok && t ? rspLevels(tf).slice(0, 3) : [];
     if(ok && t){
       th.append(mk('span', '', rspNum(t.bars) ? t.bars + ' bars' : ''));
-      th.append(mk('span', 'tested', rspNum(t.tested) ? 'tested ' + t.tested + ' candidates' : ''));
+      th.append(mk('span', 'tested', rspNum(t.tested) ? 'tested ' + t.tested + ' candidates' + (rspNum(t.family) && t.family > t.tested ? ' (FDR over ' + t.family + ')' : '') : ''));
     }
     box.append(th);
     if(!ok){box.append(mk('p', 'none', R.status === 'loading' ? 'loading...' : 'respect data unavailable'))}
@@ -1223,7 +1224,7 @@ function renderRespect(){
         const vk = resp ? 'RESPECTED' : Object.prototype.hasOwnProperty.call(VERDICT, l.verdict) ? l.verdict : null;
         row.append(mk('span', 'rn', rspName(l.label)),
           mk('span', '', `held ${rspNum(l.held) ? l.held : 'NA'}/${rspNum(l.tests) ? l.tests : 'NA'}`),
-          mk('span', '', `hold ${hr} vs placebo ${pr}`),
+          mk('span', '', `hold ${hr} vs placebo ${pr}` + (rspNum(l.p_value) ? ` p=${l.p_value < 0.001 ? '<0.001' : l.p_value.toFixed(3)}` : '')),
           mk('span', 'vd vd-' + (vk ? vk.toLowerCase() : 'na'), vk === 'RESPECTED' ? 'RESPECTED' : vk ? VERDICT[vk] : 'NA'));
         if(l.stable === true) row.append(mk('span', 'stb y', 'STABLE'));
         else if(l.stable === false) row.append(mk('span', 'stb n', 'NOT STABLE'));
@@ -1277,7 +1278,7 @@ R.timer = setInterval(() => {if(document.visibilityState === 'visible') respectF
 const FD_POLL_MS = 20000, FD_AGE = s => s < 90 ? s + 's' : s < 5400 ? Math.round(s / 60) + 'm' : (s / 3600).toFixed(1) + 'h';
 /* ---- analyst ENTRY alert: a fresh futures entry posts -> flash a banner, draw its levels, and (only if you are flat) switch the chart to
    that contract. Display only: it never stages or places anything. Seen entries are remembered so a reload does not re-flash them. ---- */
-const CALL = {live: null, seen: new Set(LS.get('px.callSeen', [])), hideT: 0, titleT: 0};
+const CALL = {live: null, seen: new Set(LS.get('px.callSeen', [])), hideT: 0, titleT: 0, stage: false};   // stage: server says PX_FEED_STAGE=1
 const TO_MICRO = {NQ: 'MNQ', ES: 'MES', GC: 'MGC', CL: 'MCL', RTY: 'M2K', YM: 'MYM'};      // this desk trades micros: show the micro chart
 const rootOf = s => TO_MICRO[s] || s;
 const curRoot = () => String(S.contractId || '').split('.')[3] || '';
@@ -1294,7 +1295,7 @@ function calloutAlert(i){
   const px = [['E', i.entry], ['SL', i.stop], ['T1', i.tp1]].filter(p => typeof p[1] === 'number').map(p => p[0] + ' ' + p[1]).join('   ');
   box.append(mk('b', '', 'ANALYST ENTRY'), mk('span', 'ca-main', [root, i.side || '', px].filter(Boolean).join('  ')),
     mk('span', 'ca-sub', (i.analyst || 'analyst').slice(0, 24) + ' ' + FD_AGE(i.age_s) + ' ago' + (switched ? ' · chart switched to ' + root : flat ? '' : ' · you have an open trade: chart not switched')));
-  if(flat && typeof i.entry === 'number' && typeof i.stop === 'number'){
+  if(flat && CALL.stage && typeof i.entry === 'number' && typeof i.stop === 'number'){   // one-click staging only with PX_FEED_STAGE=1: an unmeasured signal should not be the easiest entry on the screen
     const sd = i.side ? String(i.side).toUpperCase() : (i.stop > i.entry ? 'SHORT' : 'LONG');
     const go = mk('button', 'ca-go', 'STAGE ' + sd + ' \u00B7 stop ' + i.stop);
     go.onclick = async ev => {ev.stopPropagation(); calloutDismiss(); await stageCallout()};
@@ -1312,7 +1313,7 @@ async function stageCallout(){
   const side = cl.side ? String(cl.side).toLowerCase() : (cl.stop > cl.entry ? 'short' : 'long');     // stop above entry = short; the ticket readback shows the side in words
   const cid = await sizeContract();
   S.side = side; syncSizeInputs(); schedule(0);        // the LONG/SHORT chip must show the side we are staging
-  await doStage({contract: cid, side, stop_price: cl.stop, risk_pct: S.riskPct, order_type: 'market'}, cid);   // the server sizes it and runs every check
+  await doStage({contract: cid, side, stop_price: cl.stop, risk_pct: S.riskPct, order_type: 'market', source: 'callout'}, cid);   // the server sizes it and runs every check; source is audited
 }
 function calloutDismiss(){const b = $('callout-alert'); b.hidden = true; clearInterval(CALL.titleT); document.title = 'PXDESK'}
 function calloutWatch(items){
@@ -1332,6 +1333,7 @@ async function feedFetch(){
     box.replaceChildren();
     if(f.status === 'OFF'){st.textContent = 'off'; box.append(mk('p', 'none', 'feed not configured (PX_FEED_URL)')); return}
     if(f.status !== 'OK'){st.textContent = 'error'; box.append(mk('p', 'none', 'feed unavailable' + (typeof f.code === 'string' ? ' (' + f.code.slice(0, 20) + ')' : ''))); return}
+    CALL.stage = f.stage === true;
     st.textContent = f.items.length ? 'newest ' + FD_AGE(f.items[0].age_s) + ' ago' : 'none';
     if(!f.items.length){box.append(mk('p', 'none', 'no structured callouts in the window')); return}
     calloutWatch(f.items);

@@ -168,15 +168,16 @@ def test_digest_lines_format_badge_footer_and_allowlist(stub):
                                     hold_rate=25.0, placebo_rate=50.0, verdict="REJECTED", stable=False)]}}})["tfs"]["1h"]["levels"]
     res["tfs"]["1d"]["levels"] = []
     L = px_digest.respect_lines(res)
-    assert "RESPECT 5m: ema21 held=7/11 hold_rate=64% placebo=41% verdict=RESPECTED stable=YES price=29873.5 (tested=36)" in L
-    assert any(l.startswith("RESPECT 1h: vwap held=3/12 hold_rate=25% placebo=50% verdict=REJECTED stable=NO") and
-               l.endswith("(tested=12) SMALL_SAMPLE") for l in L)
+    assert "RESPECT 5m: ema21 held=7/11 hold_rate=64% placebo=41% p=NA fdr=NA verdict=RESPECTED stable=YES price=29873.5 (tested=36 family=NA)" in L
+    assert any(l.startswith("RESPECT 1h: vwap held=3/12 hold_rate=25% placebo=50% p=NA fdr=NA verdict=REJECTED stable=NO") and
+               l.endswith("(tested=12 family=NA) SMALL_SAMPLE") for l in L)
     assert not any("ema21" in l and "SMALL_SAMPLE" in l for l in L)
     assert "RESPECT 1d: NA bars=0 tested=36" in L
     assert L[-1] == f"RESPECT_NOTE: {px_digest.RESPECT_DISCLAIMER}" and "not a forecast" in L[-1]
     for l in L[:-1]:
         assert re.fullmatch(r"RESPECT (5m|15m|1h|4h|1d): (NA bars=\d+ tested=\d+|[a-z0-9_]+ held=\d+/\d+ hold_rate=(\d+|NA)% "
-                            r"placebo=(\d+|NA)% verdict=[A-Z_]+ stable=(YES|NO|NA) price=[-\d.NA]+ \(tested=\d+\)( SMALL_SAMPLE)?)", l), l
+                            r"placebo=(\d+|NA)% p=([\d.]+|NA) fdr=(YES|NO|NA) verdict=[A-Z_]+ stable=(YES|NO|NA) price=[-\d.NA]+ "
+                            r"\(tested=\d+ family=(\d+|NA)\)( SMALL_SAMPLE)?)", l), l
 
 
 def test_digest_and_state_routes_carry_respect_normal_and_stream(tmp_path, monkeypatch):
@@ -192,7 +193,7 @@ def test_digest_and_state_routes_carry_respect_normal_and_stream(tmp_path, monke
         llms = c.get("/llms.txt").text
     assert norm.status_code == 200
     for t in (norm.text, strm.text):
-        assert "RESPECT 15m: ema21 held=7/11 hold_rate=64% placebo=41% verdict=RESPECTED stable=YES price=29873.5 (tested=36)" in t
+        assert "RESPECT 15m: ema21 held=7/11 hold_rate=64% placebo=41% p=NA fdr=NA verdict=RESPECTED stable=YES price=29873.5 (tested=36 family=NA)" in t
         assert "RESPECT_NOTE:" in t
     assert [l for l in norm.text.splitlines() if l.startswith("RESPECT")] == [l for l in strm.text.splitlines() if l.startswith("RESPECT")]
     assert js["respect"]["tfs"]["4h"]["levels"][0]["id"] == "ema21"

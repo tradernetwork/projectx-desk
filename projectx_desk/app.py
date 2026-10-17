@@ -346,6 +346,9 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
                                 order_type=b.get("order_type", "market"), entry=b.get("entry"), origin="ui")
         except (TypeError, ValueError, GuardError) as e:
             raise HTTPException(400, str(e)[:80])
+        if p.ok and p.ticket is not None and b.get("source") == "callout":
+            # the idea came from the analyst feed: say so in the audit, so callout-origin tickets can be measured apart (Round 10)
+            g._audit("stage_source", ticket=p.ticket.hash8, origin="ui", code="callout", sha8=p.ticket.hash8)
         return {"ok": p.ok, "placeable": p.placeable, "reasons": p.reasons,
                 "verdict": [{"check": n, "ok": ok, "detail": d} for n, ok, d in p.verdict],
                 "sizing": p.sizing, "ticket": ticket_view(p.ticket, g) if p.ticket else None,

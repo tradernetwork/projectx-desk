@@ -389,16 +389,70 @@ class Guard:
             return float(bal) - lim.mll_floor
         return lim.dd_buffer if lim.dd_buffer > 0 else None
 
+    def open_pnl(self) -> Optional[float]:
+        """Unrealised P&L of every open position in dollars, marked at the last trade of a fresh quote. None means UNKNOWN,
+        never zero: any position that cannot be valued (no quote younger than PX_MAX_HUB_AGE_S, no contract record, a
+        PositionType that is not 1 or 2) makes the whole figure None, and a caller must refuse to open on None.
+
+        Why: the firm watches the maximum-loss limit on equity INCLUDING open P&L (docs/TOPSTEP_RULES.md), while the balance
+        the gateway reports moves on fills only. A room built from realised P&L alone can read 'locked=NO' while a large open
+        loser is liquidating the account. Round 10."""
+        total = 0.0
+        for p in self.live.positions.values():
+            size = p.get("size")
+            if not isinstance(size, (int, float)) or isinstance(size, bool) or size == 0:
+                continue
+            kind, avg, cid = p.get("type"), p.get("averagePrice"), p.get("contractId")
+            hit = self._contracts.get(cid)
+            rec = hit[1] if hit else None
+            q = self.live.quotes.get(cid) or {}
+            last = q.get("lastPrice")
+            if kind not in (1, 2) or isinstance(kind, bool) or not _finite_pos(avg) or not isinstance(rec, dict) \
+                    or not _finite_pos(rec.get("tickSize")) or not _finite_pos(rec.get("tickValue")) or not _finite_pos(last) \
+                    or self.clock() - q.get("_rx", float("-inf")) > self.limits.max_hub_age_s:
+                return None
+            direction = 1.0 if kind == 1 else -1.0
+            total += (float(last) - float(avg)) * direction * abs(float(size)) / float(rec["tickSize"]) * float(rec["tickValue"])
+        return round(total, 2)
+
+    async def mark_positions(self) -> None:
+        """Fetch what open_pnl() needs for every open position: the contract record and a fresh quote. Never raises; a
+        failed lookup simply leaves that position unvalued, and open_pnl() then says UNKNOWN."""
+        for cid in {p.get("contractId") for p in self.live.positions.values() if p.get("size")}:
+            if not isinstance(cid, str) or not CONTRACT_RE.match(cid):
+                continue
+            try:
+                await self._contract(cid)
+            except Exception:  # noqa: BLE001
+                pass
+            if hasattr(self.live, "ensure_quote"):
+                await self.live.ensure_quote(cid, wait=0.5)
+
+    def draw(self) -> Optional[float]:
+        """Dollars already spoken for against the loss room: the WORSE of the stop risk committed by our live tickets and the
+        unrealised loss showing right now. A position in profit draws nothing extra (a gain is not banked until it closes).
+        None if a position is open and its P&L is UNKNOWN."""
+        ob = self._open_risk()
+        if not any(p.get("size") for p in self.live.positions.values()):
+            return ob
+        op = self.open_pnl()
+        if op is None:
+            return None
+        return max(ob, -min(op, 0.0))
+
     def budget(self, now=None):
-        """(remaining, daily_room) in dollars, or (None, None) if P&L or limits are unknown. Fails closed."""
+        """(remaining, daily_room) in dollars, or (None, None) if P&L, limits or the value of an open position are unknown.
+        Fails closed. Both rooms are net of draw(): committed stop risk or the open loss, whichever is worse."""
         lim = self.limits
         pnl = self.live.day_pnl(now or self.wall())
         dd = self.dd_room()
         if pnl is None or lim.daily_loss_limit <= 0 or dd is None:
             return None, None
-        ob = self._open_risk()
-        room = lim.daily_loss_limit + pnl - ob
-        return min(room, dd - ob), room
+        dr = self.draw()
+        if dr is None:
+            return None, None
+        room = lim.daily_loss_limit + pnl - dr
+        return min(room, dd - dr), room
 
     def risk_dollars_for(self, risk_pct: float, now=None) -> float:
         """1R in dollars. Base (PX_RISK_BASE=drawdown, default): risk_pct of the live drawdown room (balance minus the MLL
@@ -545,6 +599,7 @@ class Guard:
         why = self._past_cutoff(now.astimezone(CT))
         chk("session_window", why is None, why or "")
 
+        await self.mark_positions()                 # open P&L needs each position's contract record and a fresh quote
         pnl = self.live.day_pnl(now)
         chk("day_pnl_known", pnl is not None, "today's P&L is unknown (trades not read from REST)")
         dd = self.dd_room()
@@ -553,9 +608,11 @@ class Guard:
         chk("drawdown_known", lim.mll_floor <= 0 or dd is not None, "PX_MLL_FLOOR is set but the account balance is unreadable")
         remaining = None
         if pnl is not None and lim.daily_loss_limit > 0 and dd is not None:
-            ob = self._open_risk()
-            remaining = min(lim.daily_loss_limit + pnl - ob, dd - ob)
-            chk("budget_remaining", remaining > 0, "no loss room left today")
+            dr = self.draw()
+            if chk("open_pnl_known", dr is not None,
+                   "an open position cannot be valued (no fresh quote or contract record), so the loss room is unknown"):
+                remaining = min(lim.daily_loss_limit + pnl - dr, dd - dr)
+                chk("budget_remaining", remaining > 0, "no loss room left today")
         chk("orders_today", self.day.orders_today(now) < lim.max_orders_day, "daily order count reached")
         b = self.behavior(now)
         chk("cooldown_after_loss", b["cooldown_left_s"] == 0,

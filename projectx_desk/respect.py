@@ -3,18 +3,29 @@
 Runs the machinery in px_levels (bounce_stats, the random-line placebo, verdict) over a fixed family of candidate
 level series on each timeframe and ranks them by edge over the placebo. This is DESCRIPTIVE HISTORY, never a forecast.
 
-Honesty rules:
-  * `tested` is reported next to the winners: with ~25 candidates per timeframe a few will look good by luck.
-  * Each timeframe's events are split into an earlier and a later half. `stable` is True only if the level passes
-    (verdict ABOVE_RANDOM, the value px_levels.verdict returns for "respected") in BOTH halves, False if it fails
-    either, None if either half has too few tests to judge.
-  * The headline verdict is px_levels.verdict on the full sample (same margin, same min tests). Callers should badge
-    SMALL SAMPLE when `tests` < 30.
+Honesty rules (Round 10 tightened the first three; docs/DECISIONS.md has the arithmetic):
+  * A level is RESPECTED only when THREE gates pass: (1) effect size: at least MIN_N resolved tests and a hold rate
+    `margin` points above the calibrated placebo (px_levels.verdict); (2) significance: the one-sided exact binomial
+    p-value of that many bounces against the placebo rate; (3) multiplicity: that p-value survives a Benjamini-Hochberg
+    cut at FDR_Q over EVERY candidate on EVERY timeframe this scan tested (`family` in the output, about 125). A gap that
+    clears the margin but not the FDR cut is reported NOT_DISTINGUISHABLE. Rows carry `p_value` and `fdr` so a reader
+    can see which gate failed.
+  * `tested` (per timeframe) and `family` (whole scan) are reported next to the winners: disclosure, with the correction
+    above doing the actual work.
+  * Each timeframe's events are split into an earlier and a later half. `stable` is True only if the level passes the
+    effect-size gate (ABOVE_RANDOM at HALF_MIN_N tests) in BOTH halves, False if it fails either, None if either half
+    has too few tests to judge. Stability is a robustness check, not a second significance test.
+  * Callers should still badge SMALL SAMPLE when `tests` < 30; with MIN_N = 30 that now coincides with TOO_FEW_TESTS.
   * Self-referential levels (Bollinger/Keltner bands, tight EMAs) are tested at price extremes, so the random-line
     placebo is biased against them: on pure random walks bb_lo/bb_up show ~+20 points of fake edge. Each candidate is
-    therefore also scored on SURRG shuffled-return surrogates of the same bars (dependence destroyed, distribution
-    kept); any positive mean gap it shows there is ADDED to its placebo rate. This only ever raises the bar, so
-    `placebo_rate` in the output is the calibrated baseline, not the raw px_levels number.
+    therefore also scored on SURRG surrogates of the same bars built by a CIRCULAR BLOCK bootstrap of the bar shapes
+    (blocks of BLOCK bars, so volatility clustering survives while any tie between a line and the bars after it is
+    destroyed); any positive mean gap it shows there is ADDED to its placebo rate. This only ever raises the bar, so
+    `placebo_rate` in the output is the calibrated baseline, not the raw px_levels number. SURRG is small because the
+    scan runs live in pure Python; it calibrates the baseline, it is not a 1000-draw null distribution (see Round 10).
+  * Not changed on purpose: BOUNCE is judged on a wick (0.75 ATR) and FAIL on a close (0.25 ATR). The placebo lines are
+    scored with the identical rules at the same bars, so whatever that asymmetry does to the hold rate it does to the
+    placebo rate too; the gap and the p-value compare like with like.
   * NO LOOKAHEAD: every level value at bar i uses bars <= i only (tests/test_px_respect.py proves it by truncation).
     Swing pivots are only used once `pivot_lookback` bars have confirmed them.
 Bars may use the keys o,h,l,c,v,t (px_levels) or open,high,low,close,volume,timestamp (the /bars endpoint).
@@ -28,10 +39,12 @@ from projectx_desk.tradeday import parse_ts, trade_date
 
 TIMEFRAMES = ("5m", "15m", "1h", "4h", "1d")
 INTRADAY = ("5m", "15m", "1h", "4h")
-SURRG = 3            # shuffled surrogates used to calibrate the placebo bias per candidate
+SURRG = 3            # block-bootstrap surrogates used to calibrate the placebo bias per candidate
+BLOCK = 20           # bars per bootstrap block: long enough to keep intraday volatility clustering, short enough to break level ties
 MIN_BARS = 60
-MIN_N = 8            # px_levels.verdict default: minimum resolved tests for a headline verdict
-HALF_MIN_N = 5       # per-half minimum for the stability check (half samples are smaller by construction)
+MIN_N = L.MIN_TESTS  # 30: minimum resolved tests for a headline verdict (was 8; see docs/DECISIONS.md Round 10)
+HALF_MIN_N = 15      # per-half minimum for the stability check (half samples are smaller by construction)
+FDR_Q = 0.10         # Benjamini-Hochberg false-discovery rate over every candidate x timeframe in one scan
 NOTES = ("TOO_FEW_BARS",)
 RESPECTED = "ABOVE_RANDOM"   # what px_levels.verdict returns when real beats placebo by the margin with enough tests
 
@@ -264,13 +277,21 @@ def _shift(plc: dict, d: float) -> dict:
     return {**plc, "rate": plc["rate"] + d}
 
 
-def surrogate(bars, seed: int) -> list:
-    """Same bars with the bar-to-bar shapes (o/h/l/c offsets from the prior close) shuffled. Timestamps and volumes
-    keep their positions. Deterministic per seed."""
+def surrogate(bars, seed: int, block: int = BLOCK) -> list:
+    """Same bars with the bar-to-bar shapes (o/h/l/c offsets from the prior close) resampled by a circular block
+    bootstrap: runs of `block` consecutive shapes are drawn at random start offsets (wrapping at the end) and laid end to
+    end until the series is full. Short-range dependence (volatility clustering) survives; the tie between a candidate
+    line and the bars that follow it does not. Timestamps and volumes keep their positions. Deterministic per seed."""
     shapes = [(b["o"] - a["c"], b["h"] - a["c"], b["l"] - a["c"], b["c"] - a["c"]) for a, b in zip(bars, bars[1:])]
-    random.Random(seed).shuffle(shapes)
+    m = len(shapes)
+    rng = random.Random(seed)
+    k = max(1, min(int(block), m)) if m else 1
+    draw = []
+    while len(draw) < m:
+        start = rng.randrange(m)
+        draw.extend(shapes[(start + j) % m] for j in range(k))
     out, pc = [dict(bars[0])], bars[0]["c"]
-    for b, (o, h, l, c) in zip(bars[1:], shapes):
+    for b, (o, h, l, c) in zip(bars[1:], draw):
         out.append({"o": pc + o, "h": pc + h, "l": pc + l, "c": pc + c, "v": b["v"], "t": b["t"]})
         pc += c
     return out
@@ -300,15 +321,16 @@ def _fin(x) -> Optional[float]:
     return round(x, 4) if isinstance(x, float) and math.isfinite(x) else None
 
 
-def scan_tf(raw_bars, tf: str, top: int = 3, pivot_lookback: int = 5) -> dict:
+def _rows_tf(raw_bars, tf: str, pivot_lookback: int = 5):
+    """(meta, rows) for one timeframe. Rows carry a p-value but no FDR decision yet: that needs the whole family."""
     bars = normalize(raw_bars)
-    res = {"bars": len(bars), "tested": 0, "note": None, "levels": []}
+    meta = {"bars": len(bars), "tested": 0, "note": None}
     if len(bars) < MIN_BARS:
-        res["note"] = "TOO_FEW_BARS"
-        return res
+        meta["note"] = "TOO_FEW_BARS"
+        return meta, []
     atr = L.atr_series([b["h"] for b in bars], [b["l"] for b in bars], [b["c"] for b in bars], 14)
     levels = build_levels(bars, tf, pivot_lookback)
-    res["tested"] = len(levels)
+    meta["tested"] = len(levels)
     rows = []
     null = _null_gaps(bars, tf, pivot_lookback)
     for cid, series in levels.items():
@@ -319,28 +341,59 @@ def scan_tf(raw_bars, tf: str, top: int = 3, pivot_lookback: int = 5) -> dict:
         if real["n"] == 0:
             continue
         hold, base = real["rate"], plc["rate"]
-        last = series[-1]
+        pv = L.binom_sf(real["bounced"], real["n"], base / 100.0) if base is not None else None
         rows.append({"id": cid, "family": CATALOG[cid][0], "label": CATALOG[cid][1], "tests": real["n"],
                      "held": real["bounced"], "failed": real["failed"], "neutral": real["neutral"],
-                     "hold_rate": hold, "placebo_rate": round(base, 1) if base is not None else None, "verdict": L.verdict(real, plc, min_n=MIN_N),
-                     "stable": _stable(parts), "price": _fin(last)})
+                     "hold_rate": hold, "placebo_rate": round(base, 1) if base is not None else None,
+                     "p_value": round(pv, 4) if pv is not None else None, "fdr": None,
+                     "verdict": L.verdict(real, plc, min_n=MIN_N), "stable": _stable(parts), "price": _fin(series[-1])})
+    return meta, rows
 
+
+def _decide(groups, q: float = FDR_Q) -> int:
+    """One Benjamini-Hochberg pass over EVERY row in `groups` (the family of hypotheses this scan tested). A row keeps
+    RESPECTED only if its p-value survives; otherwise the verdict collapses to NOT_DISTINGUISHABLE. Returns the family size."""
+    rows = [r for g in groups for r in g]
+    passes = L.benjamini_hochberg([r["p_value"] for r in rows], q)
+    for r, ok in zip(rows, passes):
+        r["fdr"] = ok
+        if r["verdict"] == RESPECTED and ok is not True:
+            r["verdict"] = "NOT_DISTINGUISHABLE"
+    return sum(1 for r in rows if r["p_value"] is not None)
+
+
+def _finish(meta: dict, rows: list, top: int, family: int) -> dict:
     def key(r):
         edge = (r["hold_rate"] - r["placebo_rate"]) if r["hold_rate"] is not None and r["placebo_rate"] is not None \
             else float("-inf")
         return (r["verdict"] == RESPECTED, edge, r["tests"])
-    rows.sort(key=key, reverse=True)
-    res["levels"] = rows[:max(0, int(top))]
-    return res
+    rows = sorted(rows, key=key, reverse=True)
+    return {**meta, "family": family, "levels": rows[:max(0, int(top))]}
+
+
+def scan_tf(raw_bars, tf: str, top: int = 3, pivot_lookback: int = 5) -> dict:
+    """One timeframe on its own: the FDR family is that timeframe's candidates. `scan` uses the whole scan as the family."""
+    meta, rows = _rows_tf(raw_bars, tf, pivot_lookback)
+    fam = _decide([rows])
+    return _finish(meta, rows, top, fam)
+
+
+def _empty(note="TOO_FEW_BARS") -> dict:
+    return {"bars": 0, "tested": 0, "note": note, "family": 0, "levels": []}
 
 
 def scan(bars_by_tf: dict, *, top: int = 3, pivot_lookback: int = 5) -> dict:
-    """Rank candidate levels per timeframe by edge over the random-line placebo. See module docstring."""
+    """Rank candidate levels per timeframe by edge over the random-line placebo, with one FDR correction over every
+    candidate on every timeframe. See module docstring."""
     out = {"v": 1, "tfs": {}}
     src = bars_by_tf if isinstance(bars_by_tf, dict) else {}
+    parts = {}
     for tf in TIMEFRAMES:
         try:
-            out["tfs"][tf] = scan_tf(src.get(tf), tf, top=top, pivot_lookback=pivot_lookback)
+            parts[tf] = _rows_tf(src.get(tf), tf, pivot_lookback)
         except (ValueError, TypeError, ZeroDivisionError, OverflowError):
-            out["tfs"][tf] = {"bars": 0, "tested": 0, "note": "TOO_FEW_BARS", "levels": []}
+            parts[tf] = ({"bars": 0, "tested": 0, "note": "TOO_FEW_BARS"}, [])
+    fam = _decide([rows for _, rows in parts.values()])
+    for tf, (meta, rows) in parts.items():
+        out["tfs"][tf] = _finish(meta, rows, top, fam)
     return out

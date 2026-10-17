@@ -83,11 +83,12 @@ LEVEL: EMA8 5000.05 -0.05pt BELOW tested=8 held=7 failed=1 neutral=0 hold_rate=8
 LEVEL: EMA21 4998.75 +1.25pt ABOVE tested=4 held=3 failed=1 neutral=0 hold_rate=75% SMALL_SAMPLE random_lines=82.8%(n=29) verdict=TOO_FEW_TESTS last=FAIL 78bars_ago
 LEVEL: EMA34 4997.51 +2.49pt ABOVE tested=3 held=2 failed=1 neutral=0 hold_rate=66.7% SMALL_SAMPLE random_lines=73.1%(n=26) verdict=TOO_FEW_TESTS last=BOUNCE 78bars_ago
 LEVEL: VWAP 4993.04 +6.96pt ABOVE tested=3 held=3 failed=0 neutral=0 hold_rate=100% SMALL_SAMPLE random_lines=66.7%(n=15) verdict=TOO_FEW_TESTS last=BOUNCE 43bars_ago
-RESPECT 15m: ema21 held=7/11 hold_rate=64% placebo=41% verdict=ABOVE_RANDOM stable=YES price=4998.75 (tested=11) SMALL_SAMPLE
+RESPECT 15m: ema21 held=7/11 hold_rate=64% placebo=41% p=0.0712 fdr=NO verdict=NOT_DISTINGUISHABLE stable=NA price=4998.75 (tested=11 family=118) SMALL_SAMPLE
 RESPECT_NOTE: RESPECT is history of how price reacted to each level, not a forecast.
 SIZE_INPUT: side=LONG risk_pct=5 stop_atr=1.5 budget_usd=33.5
 SIZE_IDEA: entry=5000.25 stop=4998.75 stop_t=6 stop_pt=1.5
 SIZE_WHY: Risk: 1R = 5% of drawdown room = $50.00 (capped by $1,000 loss room)
+SIZE_WHY: Cost: $3.34 per MES round turn (2t slippage + $0.84 fees) = 44.5% of 1R; 1:1 needs 72.3% wins after costs
 SIZE_WHY: ADX 55.9 >= 20: trending enough, no cut (x1)
 SIZE_WHY: ATR in the 100th percentile: volatile, wide stops (x0.67)
 SIZE_WHY: After cuts: $33.50 (x0.67)

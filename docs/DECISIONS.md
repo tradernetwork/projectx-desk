@@ -401,5 +401,5 @@ binding, no POST, no hold, halt or flatten control changed.
 - **Level reactions and Respected levels:** the SMALL SAMPLE, TOO FEW TESTS, STABLE and verdict chips became one muted line per row,
   colour carrying the state. The verdict and every sample size are still shown.
 - **Kept loud on purpose:** state enums (TRADING ON, NOT ALLOWED, REFUSED, UNPROTECTED), HALT, FLATTEN, BUY and SELL.
-- `docs/img/*.png` regenerated from the offline mock desk; `demo.gif` was not (the system python has no PIL) and still shows the old look.
+- `docs/img/*.png` and `demo.gif` regenerated from the offline mock desk by `scripts/screenshots.py` (Playwright takes the shots; the gif step needs Pillow, so install `requirements-screenshots.txt` into the same venv as Playwright).
 

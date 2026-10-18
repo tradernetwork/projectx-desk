@@ -48,7 +48,7 @@ docker compose up --build
 ```
 
 The image binds `0.0.0.0` inside the container, runs as a non-root user with all capabilities dropped, and keeps its state (the halt
-file, the day's order count, the order intents, the audit log) in the `px-data` volume. **Losing that volume clears a halt and the
+file, the day's order count, the order intents, the audit log, the one-desk lock) in the `px-data` volume. **Losing that volume clears a halt and the
 day's counters.** `docker-compose.yml` publishes the port on the host's loopback only (`127.0.0.1:8600`). Changing that is a decision:
 whatever address you publish on needs to be in `PX_ALLOWED_HOSTS`, and anything that leaves the host needs TLS.
 

@@ -387,3 +387,19 @@ poll-only broker; this desk trades futures on a streaming hub, so only the safet
   even; the live panel in the same screenshots ran at 75% and a negative expectancy. The desk's own cost and break-even lines exist to
   show that arithmetic before a trade, not after.
 
+## Round 13: a calmer desk, same layout (2026-10-18)
+
+The owner liked the chart-first, low-noise look of a reference 0DTE scalper dashboard (see Round 12). The layout is unchanged (three
+columns, same panels); only the density came down, in `index.html`, `desk.css` and `desk.js`. No server code, no id or `data-ai`
+binding, no POST, no hold, halt or flatten control changed.
+
+- **KPI ribbon:** a small title, one big value, at most one quiet sub line. Tag text moved to tooltips; the progress meters and the
+  wins/losses bar are hidden (elements kept); the number takes the tone instead of a coloured card edge. The win-rate card keeps
+  `need X%` and `n`, and says "small sample" under 30 trades: sample size stays on screen.
+- **Panels:** sentence-case titles, one chip at a time in the size box (lock, then scale, then cap; the rest stay in the WHY lines), the
+  prose math line hidden (its values stay in the DOM), no glows or gradients, hairline borders, three type sizes (11, 12, 15).
+- **Level reactions and Respected levels:** the SMALL SAMPLE, TOO FEW TESTS, STABLE and verdict chips became one muted line per row,
+  colour carrying the state. The verdict and every sample size are still shown.
+- **Kept loud on purpose:** state enums (TRADING ON, NOT ALLOWED, REFUSED, UNPROTECTED), HALT, FLATTEN, BUY and SELL.
+- `docs/img/*.png` regenerated from the offline mock desk; `demo.gif` was not (the system python has no PIL) and still shows the old look.
+

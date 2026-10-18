@@ -356,6 +356,10 @@ What it got right, what it had stale, and what changed:
 - **What still stops you, and the knobs:** the cooldown and lockout (`PX_COOLDOWN_AFTER_LOSS_S=0`, `PX_MAX_CONSEC_LOSSES=0` turn them
   off), the after-loss size cap (`PX_SIZE_AFTER_LOSS_LOCK=0`), the daily loss limit and `PX_MLL_FLOOR` (not negotiable, Topstep ends
   the account), the per-order cap (`PX_MAX_QTY_ORDER`) and one open trade per contract. None of these were loosened.
-- **Candles are gold (up) and slate (down)**, `C.up`/`C.dn` in `desk.js` and `--gold`/`--slate` in `desk.css`, on the candle chart,
-  the volume bars, the buy/sell volume pane, the tick bars and the timeframe mini-charts. Green and magenta stay for outcomes
-  (held/failed, stop lines, badges): a colour that means "price went up" must not also mean "good". BUY is gold, SELL is slate.
+- **The TraderMatrix chart-card palette**, taken from the chart engine's constants rather than from pixels: gold `#D6A73A` up candles,
+  steel `#7088AD` down candles with light `#C8D8EE` wicks, card `#0A0E17` on brand navy `#070E1F`, panel `#0F1522`, ink `#F2F5FA`,
+  the EMA-21 blue `#5FB3D9` as the desk's accent, lilac `#B49AE0` for the third line, and the card's text tones (`#8EA3C4`, `#6C7A92`,
+  `#56637A`). `C` in `desk.js` and the `:root` tokens in `desk.css` carry them; the volume bars, buy/sell volume pane, tick bars and
+  mini-charts use the same up/down pair. Two golds exist: the brand kit's `#D4A62A` and the card's `#D6A73A`; the desk is a chart, so
+  it uses the card column. Green and magenta stay for outcomes (held/failed, stop lines, badges): a colour that means "price went up"
+  must not also mean "good". BUY is gold, SELL is steel.

@@ -901,30 +901,31 @@ window.px = {snapshot(){return S.ai == null ? null : JSON.parse(JSON.stringify(S
 /* ================= chart (KLineChart v10) ================= */
 const err = e => {$('msg').textContent = (e && e.message) || String(e)};
 let cur = {ticker: null, tick: 0.25, tickValue: null, name: '', dec: 2};
-// Candles: up = gold, down = slate (the TraderMatrix palette; keep in step with --gold/--slate in desk.css). Green/magenta stay
-// for outcomes (held/failed, stop lines, badges): a colour that means "price went up" must not also mean "good".
-const C = {up: '#e5b53f', dn: '#8c9bb5', flat: '#76839a', grid: '#111621', axis: '#1a2130', text: '#76839a', cyan: '#38bdf8', amber: '#f59e0b', purple: '#a855f7', ink: '#e6ebf2',
-           green: '#22c55e', mag: '#f43f5e'};
-const EMA_COL = ['#2dd4bf', '#60a5fa', '#e879f9'];   // EMA 8 / 21 / 34; keep in step with --ema8/21/34 in desk.css
+// The TraderMatrix chart-card palette (engine constants, not eyeballed): gold up candles, steel down candles with light wicks, the
+// EMA-21 blue, the ink and text tones. Keep in step with the :root tokens in desk.css. Green/magenta stay for OUTCOMES (held/failed,
+// stop lines, badges): a colour that means "price went up" must not also mean "good".
+const C = {up: '#D6A73A', dn: '#7088AD', dnWick: '#C8D8EE', flat: '#6C7A92', grid: 'rgba(200,216,238,.07)', axis: '#1A2238', text: '#6C7A92',
+           cyan: '#5FB3D9', amber: '#D6A73A', purple: '#B49AE0', ink: '#F2F5FA', light: '#C8D8EE', green: '#22c55e', mag: '#f43f5e'};
+const EMA_COL = ['#E9EEF6', '#5FB3D9', '#B49AE0'];   // EMA 8 / 21 / 34: the card's SMA light, EMA-21 blue and magnet lilac; keep in step with --ema8/21/34 in desk.css
 const RC = {BOUNCE: C.green, FAIL: C.mag, NEUTRAL: '#76839a', PENDING: C.cyan};
 const MONO = '"JetBrains Mono", ui-monospace, monospace';
 const axis = {axisLine: {color: C.axis}, tickLine: {color: C.axis}, tickText: {color: C.text, size: 10, family: MONO}};
-const chs = {line: {color: '#3b4a68', style: 'dashed', dashedValue: [3, 3]}, text: {backgroundColor: '#111722', borderColor: '#2a3550', color: C.ink, family: MONO, size: 11}};
+const chs = {line: {color: '#3B4A68', style: 'dashed', dashedValue: [3, 3]}, text: {backgroundColor: '#0F1522', borderColor: '#2A3550', color: C.ink, family: MONO, size: 11}};
 const legendTxt = {size: 11, family: MONO, color: C.text};
 const STYLES = {
   grid: {horizontal: {color: C.grid, style: 'solid'}, vertical: {color: C.grid, style: 'solid'}},
   candle: {bar: {upColor: C.up, downColor: C.dn, noChangeColor: C.flat, upBorderColor: C.up, downBorderColor: C.dn,
-                 noChangeBorderColor: C.flat, upWickColor: C.up, downWickColor: C.dn, noChangeWickColor: C.flat},
+                 noChangeBorderColor: C.flat, upWickColor: C.up, downWickColor: C.dnWick, noChangeWickColor: C.flat},
            priceMark: {high: {show: false}, low: {show: false},
                        last: {upColor: C.cyan, downColor: C.cyan, noChangeColor: C.cyan, line: {style: 'dashed', dashedValue: [2, 3]},
                               text: {color: '#04121c', family: MONO, weight: '600', borderRadius: 3}}},
            tooltip: {title: {...legendTxt, color: '#93a0b4'}, legend: {...legendTxt, template: [{title: 'O ', value: '{open}'}, {title: 'H ', value: '{high}'}, {title: 'L ', value: '{low}'}, {title: 'C ', value: '{close}'}]}}},
-  indicator: {bars: [{upColor: 'rgba(229,181,63,.5)', downColor: 'rgba(140,155,181,.5)', noChangeColor: 'rgba(118,131,154,.45)'}],
-              lines: ['#60a5fa', '#c084fc', '#38bdf8', '#fb7185', '#93a0b4'].map(color => ({color, size: 1})),
+  indicator: {bars: [{upColor: 'rgba(214,167,58,.55)', downColor: 'rgba(112,136,173,.55)', noChangeColor: 'rgba(108,122,146,.45)'}],
+              lines: ['#5FB3D9', '#B49AE0', '#C8D8EE', '#fb7185', '#8EA3C4'].map(color => ({color, size: 1})),
               tooltip: {title: legendTxt, legend: legendTxt}},
   xAxis: axis, yAxis: axis, separator: {color: C.axis}, crosshair: {horizontal: chs, vertical: chs},
 };
-const dimText = {color: C.ink, backgroundColor: 'rgba(12,16,24,.92)', borderColor: '#2a3550', borderSize: 1, size: 12, family: MONO, paddingLeft: 6, paddingRight: 6, paddingTop: 3, paddingBottom: 3, style: 'stroke_fill', borderRadius: 3};
+const dimText = {color: C.ink, backgroundColor: 'rgba(10,14,23,.92)', borderColor: '#2a3550', borderSize: 1, size: 12, family: MONO, paddingLeft: 6, paddingRight: 6, paddingTop: 3, paddingBottom: 3, style: 'stroke_fill', borderRadius: 3};
 klinecharts.registerOverlay({
   name: 'zoneBand', totalStep: 3, needDefaultPointFigure: true, needDefaultXAxisFigure: false, needDefaultYAxisFigure: true,
   createPointFigures: ({coordinates: cs, bounding, overlay}) => {
@@ -1389,7 +1390,7 @@ setInterval(() => {if(document.visibilityState === 'visible') feedFetch()}, FD_P
 const MN = {open: LS.get('px.minis', true) !== false, tfs: ['15m', '1h'], unit: {'5m': [2, 5, 300000], '15m': [2, 15, 900000], '1h': [3, 1, 3600000]},
   bars: {}, seq: {}, at: {}, cv: {}, box: {}, px: {}};
 const MN_SHOW = 60, MN_FETCH = 250, MN_MIN_MS = 30000, MN_PER = [8, 13, 21, 34, 55, 89];
-const MN_COL = [EMA_COL[0], '#7fb08a', EMA_COL[1], EMA_COL[2], '#c9a227', '#93a0b4'];   // 8/21/34 as on the main chart; 13/55/89 muted
+const MN_COL = [EMA_COL[0], '#7fb08a', EMA_COL[1], EMA_COL[2], '#D6A73A', '#8EA3C4'];   // 8/21/34 as on the main chart; 13/55/89 muted
 const MN_DASH = [[], [], [], [], [4, 3], [4, 3]];
 function mnEma(closes, p){   // same recurrence as the main chart's EMA indicator (seeded with the first close)
   const out = []; let prev = null;
@@ -1610,7 +1611,7 @@ function toolbar(){
     else if(b.id === 'lock'){locked = !locked; b.classList.toggle('on', locked); chart.getOverlays().filter(o => !NONUSER.includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, lock: locked}))}
     else if(b.id === 'hide'){hidden = !hidden; b.classList.toggle('on', hidden); chart.getOverlays().filter(o => !NONUSER.includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, visible: !hidden}))}
     else if(b.id === 'clear'){chart.removeOverlay(); LS.set('px.ov.' + cur.ticker, []); drawDesk(true); drawReact(true); drawRespect(true)}
-    else if(b.id === 'shot'){const a = document.createElement('a'); a.href = chart.getConvertPictureUrl(true, 'png', '#0c1018'); a.download = `${cur.name || 'chart'}-${Date.now()}.png`; a.click()}
+    else if(b.id === 'shot'){const a = document.createElement('a'); a.href = chart.getConvertPictureUrl(true, 'png', '#0A0E17'); a.download = `${cur.name || 'chart'}-${Date.now()}.png`; a.click()}
   };
 }
 const magLabel = () => {$('mag').textContent = ['Mag', 'Mag~', 'Mag!'][magnet]; $('mag').classList.toggle('on', magnet > 0)};

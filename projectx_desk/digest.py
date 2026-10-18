@@ -429,7 +429,7 @@ async def scaled_risk(app, contract_id, risk_pct):
     chosen = g.risk_dollars_for(risk_pct)
     ind = await indicators(app, contract_id) if contract_id else {}
     scale = sizing.risk_scale(ind.get("adx"), ind.get("atr_pctile")) if g.limits.size_scalers else \
-        {"multiplier": 1.0, "reasons": ["ADX/ATR scalers off (PX_SIZE_SCALERS=0)"], "reduced": False, "status": "off"}
+        {"multiplier": 1.0, "reasons": ["ADX/ATR scalers off (default; PX_SIZE_SCALERS=1 enables)"], "reduced": False, "status": "off"}
     return chosen * scale["multiplier"], scale
 
 
@@ -576,7 +576,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.05, stop_k
     if q:
         ref = q.get("bestAsk" if side == "long" else "bestBid") or q.get("lastPrice")
     scale_info = sizing.risk_scale(ind.get("adx"), ind.get("atr_pctile")) if lim.size_scalers else \
-        {"multiplier": 1.0, "reasons": ["ADX/ATR scalers off (PX_SIZE_SCALERS=0)"], "reduced": False, "status": "off"}
+        {"multiplier": 1.0, "reasons": ["ADX/ATR scalers off (default; PX_SIZE_SCALERS=1 enables)"], "reduced": False, "status": "off"}
     root = None
     if rec:
         try:

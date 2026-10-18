@@ -392,7 +392,7 @@ class Guard:
 
     def open_pnl(self) -> Optional[float]:
         """Unrealised P&L of every open position in dollars, marked at the last trade of a fresh quote. None means UNKNOWN,
-        never zero: any position that cannot be valued (no quote younger than PX_MAX_HUB_AGE_S, no contract record, a
+        never zero: any position that cannot be valued (no quote younger than the fixed 30 s max_hub_age_s, no contract record, a
         PositionType that is not 1 or 2) makes the whole figure None, and a caller must refuse to open on None.
 
         Why: the firm watches the maximum-loss limit on equity INCLUDING open P&L (docs/TOPSTEP_RULES.md), while the balance
@@ -401,8 +401,10 @@ class Guard:
         total = 0.0
         for p in self.live.positions.values():
             size = p.get("size")
-            if not isinstance(size, (int, float)) or isinstance(size, bool) or size == 0:
+            if not size:
                 continue
+            if not isinstance(size, (int, float)) or isinstance(size, bool) or size != size:
+                return None                           # a size we cannot read is UNKNOWN, never flat
             kind, avg, cid = p.get("type"), p.get("averagePrice"), p.get("contractId")
             hit = self._contracts.get(cid)
             rec = hit[1] if hit else None

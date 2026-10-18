@@ -41,7 +41,7 @@ token's length. If you front a loopback-bound desk with a reverse proxy, set the
 **The floor is yours to maintain, and the open P&L is the desk's mark.** With `PX_MLL_FLOOR` set, drawdown room is the live balance minus
 the floor, so it follows the account, but the desk does not compute Topstep's end-of-day trailing floor, its lock, your high-water mark or a
 consistency rule: you update the floor. Without it, `PX_DRAWDOWN_BUFFER` is a number you type. Since Round 10 the room is also net of the
-unrealised loss on every open position, marked at the last trade of a quote no older than `PX_MAX_HUB_AGE_S` (or of the stop risk our own
+unrealised loss on every open position, marked at the last trade of a quote no older than a fixed 30 s (`max_hub_age_s` in `limits.py`, not an environment variable) (or of the stop risk our own
 tickets commit, whichever is worse); a position the desk cannot value makes the room UNKNOWN and opens refuse (`open_pnl_known`). That mark
 is not the firm's: it assumes the gateway's `balance` excludes open P&L (true of the mock, unverified on a real account) and it lags a fast
 market by a quote. Treat the budget as an upper bound that you keep updated by hand.

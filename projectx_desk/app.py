@@ -335,6 +335,8 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         b = await body(request)
         g = request.app.state.guard
         try:
+            if b.get("source") == "callout" and not g.limits.feed_stage:
+                raise HTTPException(403, "callout staging is off (PX_FEED_STAGE=1 enables)")
             qty = b.get("qty")                      # manual BUY/SELL: the trader's own contracts; the risk is derived, every check still runs
             if qty is not None and (isinstance(qty, bool) or not isinstance(qty, int)):
                 raise HTTPException(400, "qty must be a whole number")

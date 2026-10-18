@@ -280,7 +280,7 @@ Everything below was reproduced before it was fixed and has a regression test.
   human-set value, to be proven with one watched sim order.
 - **GRANULARITY refusals on volatile days were the ATR scaler, not the rule.** At ATR in the 99th percentile the 1.5x ATR stop already cost $80 per
   MES, and the untested x0.67 cut then shrank a $100 budget to $67, so one contract could never fit. The "never round up" rule is unchanged; the
-  owner's config now sets `PX_SIZE_SCALERS=0` (documented in `docs/SIZING.md`). The scalers stay available, default on, for anyone who wants them.
+  owner's config now sets `PX_SIZE_SCALERS=0` (documented in `docs/SIZING.md`). The scalers stay available for anyone who wants them (`PX_SIZE_SCALERS=1`).
   **Superseded by Round 10:** the default is now off.
 
 ## Round 10: the statistics review (2026-10-17)
@@ -325,7 +325,7 @@ What it got right, what it had stale, and what changed:
   our own live tickets, so one large open loser inside its stop (or an external position with no stop at all) could liquidate the
   account while the digest read `locked=NO`. The review was stale on one point: with `PX_MLL_FLOOR` the room already followed the
   live balance, it was never only a typed number. Now `Guard.open_pnl()` marks every open position at the last trade of a quote no
-  older than `PX_MAX_HUB_AGE_S`, using the contract's tick size and value; `Guard.draw()` is the WORSE of the committed stop risk of
+  older than the fixed 30 s `max_hub_age_s` (not an env variable), using the contract's tick size and value; `Guard.draw()` is the WORSE of the committed stop risk of
   our tickets and the open loss showing (a gain is never banked); both rooms are net of it. If any open position cannot be valued (no
   fresh quote, no contract record, a PositionType other than 1 or 2) the room is UNKNOWN and opens refuse with `open_pnl_known`, the
   same way an unknown day P&L refuses. `RISK_OPEN` carries `open_pnl` and `draw`; stream mode hides both. Assumption, unverified

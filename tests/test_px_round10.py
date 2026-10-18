@@ -4,6 +4,7 @@ Open P&L counts against the loss room (fail closed when a position cannot be val
 and digest; the respect verdict needs 30 tests, a p-value and an FDR pass; the ADX/ATR scalers default off; the one-click STAGE
 on analyst callouts sits behind PX_FEED_STAGE and is audited when used."""
 import asyncio
+import dataclasses
 import json
 import types
 
@@ -201,8 +202,19 @@ def test_feed_result_says_whether_one_click_stage_is_on():
     assert px_feed.feed_lines({"status": "OK", "items": [item]})[-1].endswith("one_click_stage=OFF")
 
 
+def test_callout_staging_is_refused_server_side_when_the_flag_is_off(tmp_path):
+    app, g, live, gw = make_app(tmp_path)
+    with TestClient(app) as c:
+        app.state.live = g.live
+        tok = c.get("/api/csrf").json()["token"]
+        r = post(c, "/api/preview", tok, {"contract": CID, "side": "long", "stop_price": 4994.0, "risk_dollars": 50, "source": "callout"})
+        assert r.status_code == 403
+    assert not (tmp_path / "audit.jsonl").exists() or "stage_source" not in (tmp_path / "audit.jsonl").read_text()
+
+
 def test_callout_sourced_tickets_are_audited(tmp_path):
     app, g, live, gw = make_app(tmp_path)
+    g.limits = dataclasses.replace(g.limits, feed_stage=True)
     with TestClient(app) as c:
         app.state.live = g.live
         tok = c.get("/api/csrf").json()["token"]
@@ -258,3 +270,12 @@ def test_block_surrogate_keeps_runs_of_bar_shapes_together():
     got = [(round(y["c"] - x["c"], 9)) for x, y in zip(a, a[1:])]
     assert any(got[i:i + 20] == orig[j:j + 20] for i in range(0, len(got) - 20, 1) for j in range(len(orig) - 20))
     assert R.surrogate(w[:1], 3) == w[:1]
+
+
+def test_open_pnl_is_unknown_for_a_position_size_it_cannot_read(tmp_path):
+    app, g, live, gw = make_app(tmp_path)
+    for bad in ("1", [1], float("nan"), True):
+        g.live.positions = {"x": {"size": bad, "type": 1, "averagePrice": 5000.0, "contractId": CID}}
+        assert g.open_pnl() is None, bad
+    g.live.positions = {"x": {"size": 0, "type": 1, "averagePrice": 5000.0, "contractId": CID}}
+    assert g.open_pnl() == 0.0

@@ -211,8 +211,9 @@ async def test_corrupt_day_state_refuses_instead_of_assuming_zero(tmp_path):
 
 
 async def test_exposure_headroom_caps_size_and_refuses_when_full(tmp_path):
-    g, live, _ = make(tmp_path, max_qty_order=5, max_qty_symbol=2, max_qty_total=3)
-    live.positions[1] = {"id": 1, "accountId": 7, "contractId": "CON.F.US.MES.H27", "size": 2}   # same root, other expiry
+    g, live, clock = make(tmp_path, max_qty_order=5, max_qty_symbol=2, max_qty_total=3)
+    live.positions[1] = {"id": 1, "accountId": 7, "contractId": "CON.F.US.MES.H27", "type": 1, "size": 2, "averagePrice": 5010.0}   # same root, other expiry
+    live.quotes["CON.F.US.MES.H27"] = {"lastPrice": 5010.0, "bestBid": 5009.75, "bestAsk": 5010.0, "_rx": clock()}   # valued: flat, so the room is unchanged
     p = await prev(g)
     assert not p.ok and "exposure_headroom" in failed(p)
 

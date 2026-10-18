@@ -19,7 +19,7 @@ import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, time as dtime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 from typing import Callable, Optional
 
 from projectx_desk import sizing
@@ -76,6 +76,7 @@ class Ticket:
     stop_size: int = 0
     stop_current: Optional[float] = None   # where the working stop is NOW (starts at the staged stop, only tightens)
     risk_requested: float = 0.0
+    qty: Optional[int] = None       # a MANUAL ticket: the trader's contracts; the commit-point re-check sizes from it, not from risk_requested
     stop_price: float = 0.0
     order_type: str = "market"
     entry_limit: Optional[float] = None
@@ -389,16 +390,72 @@ class Guard:
             return float(bal) - lim.mll_floor
         return lim.dd_buffer if lim.dd_buffer > 0 else None
 
+    def open_pnl(self) -> Optional[float]:
+        """Unrealised P&L of every open position in dollars, marked at the last trade of a fresh quote. None means UNKNOWN,
+        never zero: any position that cannot be valued (no quote younger than the fixed 30 s max_hub_age_s, no contract record, a
+        PositionType that is not 1 or 2) makes the whole figure None, and a caller must refuse to open on None.
+
+        Why: the firm watches the maximum-loss limit on equity INCLUDING open P&L (docs/TOPSTEP_RULES.md), while the balance
+        the gateway reports moves on fills only. A room built from realised P&L alone can read 'locked=NO' while a large open
+        loser is liquidating the account. Round 10."""
+        total = 0.0
+        for p in self.live.positions.values():
+            size = p.get("size")
+            if not size:
+                continue
+            if not isinstance(size, (int, float)) or isinstance(size, bool) or size != size:
+                return None                           # a size we cannot read is UNKNOWN, never flat
+            kind, avg, cid = p.get("type"), p.get("averagePrice"), p.get("contractId")
+            hit = self._contracts.get(cid)
+            rec = hit[1] if hit else None
+            q = self.live.quotes.get(cid) or {}
+            last = q.get("lastPrice")
+            if kind not in (1, 2) or isinstance(kind, bool) or not _finite_pos(avg) or not isinstance(rec, dict) \
+                    or not _finite_pos(rec.get("tickSize")) or not _finite_pos(rec.get("tickValue")) or not _finite_pos(last) \
+                    or self.clock() - q.get("_rx", float("-inf")) > self.limits.max_hub_age_s:
+                return None
+            direction = 1.0 if kind == 1 else -1.0
+            total += (float(last) - float(avg)) * direction * abs(float(size)) / float(rec["tickSize"]) * float(rec["tickValue"])
+        return round(total, 2)
+
+    async def mark_positions(self) -> None:
+        """Fetch what open_pnl() needs for every open position: the contract record and a fresh quote. Never raises; a
+        failed lookup simply leaves that position unvalued, and open_pnl() then says UNKNOWN."""
+        for cid in {p.get("contractId") for p in self.live.positions.values() if p.get("size")}:
+            if not isinstance(cid, str) or not CONTRACT_RE.match(cid):
+                continue
+            try:
+                await self._contract(cid)
+            except Exception:  # noqa: BLE001
+                pass
+            if hasattr(self.live, "ensure_quote"):
+                await self.live.ensure_quote(cid, wait=0.5)
+
+    def draw(self) -> Optional[float]:
+        """Dollars already spoken for against the loss room: the WORSE of the stop risk committed by our live tickets and the
+        unrealised loss showing right now. A position in profit draws nothing extra (a gain is not banked until it closes).
+        None if a position is open and its P&L is UNKNOWN."""
+        ob = self._open_risk()
+        if not any(p.get("size") for p in self.live.positions.values()):
+            return ob
+        op = self.open_pnl()
+        if op is None:
+            return None
+        return max(ob, -min(op, 0.0))
+
     def budget(self, now=None):
-        """(remaining, daily_room) in dollars, or (None, None) if P&L or limits are unknown. Fails closed."""
+        """(remaining, daily_room) in dollars, or (None, None) if P&L, limits or the value of an open position are unknown.
+        Fails closed. Both rooms are net of draw(): committed stop risk or the open loss, whichever is worse."""
         lim = self.limits
         pnl = self.live.day_pnl(now or self.wall())
         dd = self.dd_room()
         if pnl is None or lim.daily_loss_limit <= 0 or dd is None:
             return None, None
-        ob = self._open_risk()
-        room = lim.daily_loss_limit + pnl - ob
-        return min(room, dd - ob), room
+        dr = self.draw()
+        if dr is None:
+            return None, None
+        room = lim.daily_loss_limit + pnl - dr
+        return min(room, dd - dr), room
 
     def risk_dollars_for(self, risk_pct: float, now=None) -> float:
         """1R in dollars. Base (PX_RISK_BASE=drawdown, default): risk_pct of the live drawdown room (balance minus the MLL
@@ -462,7 +519,10 @@ class Guard:
 
     # ---- shared evaluation (preview and place run the SAME checks) ---------------------------
 
-    async def _evaluate(self, *, contract_id, side, stop_price, risk_dollars, order_type, entry, origin) -> Eval:
+    async def _evaluate(self, *, contract_id, side, stop_price, risk_dollars, order_type, entry, origin, qty=None) -> Eval:
+        """qty: a MANUAL order (the BUY/SELL buttons). The trader chose the contracts and the stop; the risk is derived from them
+        (qty x stop ticks x tick value) and every other check runs unchanged. Not a second order path: the same ticket, the same
+        place(). The desk only refuses a manual order for what the ATR sizing would have refused it for too (room, caps, rails)."""
         lim, v = self.limits, []
 
         def chk(name, ok, detail=""):
@@ -470,11 +530,15 @@ class Guard:
             return bool(ok)
 
         side = (side or "").lower()
+        manual = qty is not None
+        qty_ok = isinstance(qty, int) and not isinstance(qty, bool) and qty >= 1
         chk("inputs", side in ("long", "short") and origin in ("ui", "mcp") and CONTRACT_RE.match(contract_id or "")
-            and order_type in ("market", "limit") and _finite_pos(stop_price) and _finite_pos(risk_dollars),
+            and order_type in ("market", "limit") and _finite_pos(stop_price) and (qty_ok if manual else _finite_pos(risk_dollars)),
             "side/origin/contract/order_type/stop/risk invalid")
         if not v[-1][1]:
             return Eval(v, None, None, None, None, None)
+        if manual:
+            chk("manual_qty_cap", qty <= lim.max_qty_order, f"asked {qty}: PX_MAX_QTY_ORDER is {lim.max_qty_order}")
 
         chk("halt", not self.halted(), "halted: a human must clear it")
         chk("day_state", self.day.ok, "day-state file is corrupt")
@@ -535,6 +599,9 @@ class Guard:
                 "stop is on the wrong side of entry")
             chk("stop_distance", lim.min_stop_ticks <= ticks_dec <= lim.max_stop_ticks,
                 f"stop must be {lim.min_stop_ticks} to {lim.max_stop_ticks} ticks away")
+            if manual:        # the risk IS the trader's choice: exactly qty contracts at this stop (exact decimal, so the floor lands on qty)
+                ticks_int = max(1, int(ticks_dec.to_integral_value(rounding=ROUND_CEILING)))
+                risk_dollars = float(Decimal(qty) * ticks_int * Decimal(str(spec.tick_value)))
 
         if chk("bracket_mode", lim.bracket_mode in BRACKET_MODES, "PX_BRACKET_MODE is unset: opens refused"):
             if lim.account_kind == "live":
@@ -545,6 +612,7 @@ class Guard:
         why = self._past_cutoff(now.astimezone(CT))
         chk("session_window", why is None, why or "")
 
+        await self.mark_positions()                 # open P&L needs each position's contract record and a fresh quote
         pnl = self.live.day_pnl(now)
         chk("day_pnl_known", pnl is not None, "today's P&L is unknown (trades not read from REST)")
         dd = self.dd_room()
@@ -553,9 +621,11 @@ class Guard:
         chk("drawdown_known", lim.mll_floor <= 0 or dd is not None, "PX_MLL_FLOOR is set but the account balance is unreadable")
         remaining = None
         if pnl is not None and lim.daily_loss_limit > 0 and dd is not None:
-            ob = self._open_risk()
-            remaining = min(lim.daily_loss_limit + pnl - ob, dd - ob)
-            chk("budget_remaining", remaining > 0, "no loss room left today")
+            dr = self.draw()
+            if chk("open_pnl_known", dr is not None,
+                   "an open position cannot be valued (no fresh quote or contract record), so the loss room is unknown"):
+                remaining = min(lim.daily_loss_limit + pnl - dr, dd - dr)
+                chk("budget_remaining", remaining > 0, "no loss room left today")
         chk("orders_today", self.day.orders_today(now) < lim.max_orders_day, "daily order count reached")
         b = self.behavior(now)
         chk("cooldown_after_loss", b["cooldown_left_s"] == 0,
@@ -586,31 +656,46 @@ class Guard:
                     if not d["refused"]:
                         chk("budget_multiple", remaining >= lim.min_budget_multiple * d["total_risk_dollars"],
                             "remaining budget is under the safety multiple of this trade's max loss")
+                        if manual:
+                            chk("manual_qty", int(d["contracts"]) == qty,
+                                f"asked {qty}: the loss room, the after-loss cap or the contract caps allow {int(d['contracts'])}")
+        elif manual and spec and entry_px and remaining is not None and remaining > 0:
+            chk("manual_qty", False, "asked for a manual size but an earlier check refused")
         return Eval(v, d, rec, spec, entry_px, simulated)
 
     # ---- preview ----------------------------------------------------------------------------
 
-    async def preview(self, *, contract_id: str, side: str, stop_price: float, risk_dollars: float,
-                      order_type: str = "market", entry: Optional[float] = None, origin: str = "ui") -> Preview:
-        """Run every check; stage a ticket only if all pass. Never raises on a refusal."""
+    async def preview(self, *, contract_id: str, side: str, stop_price: float, risk_dollars: Optional[float],
+                      order_type: str = "market", entry: Optional[float] = None, origin: str = "ui",
+                      qty: Optional[int] = None) -> Preview:
+        """Run every check; stage a ticket only if all pass. Never raises on a refusal.
+
+        qty (UI only, the BUY/SELL buttons): a manual order of exactly `qty` contracts at `stop_price`; risk_dollars is then
+        derived, not read. The same checks, ticket and place() apply; the audit records it as `manual`."""
         if origin == "mcp" and any(t.state == STAGED and t.origin == "ui" and self.clock() < t.expires
                                    for t in self.tickets.values()):
             return self._refuse([("ui_ticket_pending", False, "a ticket staged at the desk is waiting; the desk owns it")], origin)
         if isinstance(contract_id, str) and CONTRACT_RE.match(contract_id) and hasattr(self.live, "ensure_quote"):
             await self.live.ensure_quote(contract_id)
         ev = await self._evaluate(contract_id=contract_id, side=side, stop_price=stop_price, risk_dollars=risk_dollars,
-                                  order_type=order_type, entry=entry, origin=origin)
+                                  order_type=order_type, entry=entry, origin=origin, qty=qty)
         if not ev.ok:
             return self._refuse(ev.verdict, origin, ev.d)
-        return self._stage(ev, (side or "").lower(), order_type, entry, stop_price, risk_dollars, origin, contract_id)
+        p = self._stage(ev, (side or "").lower(), order_type, entry, stop_price, risk_dollars, origin, contract_id, qty=qty)
+        if qty is not None and p.ticket is not None:
+            self._audit("manual", ticket=p.ticket.hash8, origin=origin, size=int(qty), sha8=p.ticket.hash8)
+        return p
 
     def _refuse(self, v, origin, d=None):
         failed = next((n for n, ok, _ in v if not ok), None)
         self._audit("reject", origin=origin, check=failed)
         return Preview(False, None, v, dict(d) if d else None, False)
 
-    def _stage(self, ev, side, order_type, entry, stop_price, risk_requested, origin, contract_id):
+    def _stage(self, ev, side, order_type, entry, stop_price, risk_requested, origin, contract_id, qty=None):
         lim, d, rec, spec = self.limits, ev.d, ev.rec, ev.spec
+        manual = qty is not None
+        if manual:
+            risk_requested = d["total_risk_dollars"]      # derived from qty x stop; the ticket keeps qty for the commit-point re-check
         now_m = self.clock()
         for t in self.tickets.values():           # restaging supersedes; one live intent at a time
             if t.state == STAGED:
@@ -641,11 +726,12 @@ class Guard:
             ("risk_usd", d["total_risk_dollars"]), ("pct_of_budget", round(d["pct_of_risk_budget_used"], 1)),
             ("binding", d["binding_constraint"]),
             ("stop_plan", stop_plan["mode"].upper()),
+            ("sized_by", "MANUAL" if manual else "RISK"),
             ("protection", "ATOMIC" if lim.bracket_mode == "oco" else "UNPROTECTED UNTIL STOP ACKED"),
         ])
         t = Ticket(ticket_id=tid, contract_id=contract_id, root=spec.root, side=side, origin=origin, payload=body,
                    stop_plan=stop_plan, sha256=digest, custom_tag=tag, readback=readback, sizing=d, verdict=ev.verdict,
-                   created=now_m, expires=now_m + lim.ticket_ttl_s, risk_requested=float(risk_requested),
+                   created=now_m, expires=now_m + lim.ticket_ttl_s, risk_requested=float(risk_requested), qty=qty,
                    stop_price=float(stop_price), order_type=order_type,
                    entry_limit=float(entry) if order_type == "limit" else None,
                    account_suffix=str(self.live.account_id)[-3:])
@@ -739,7 +825,7 @@ class Guard:
 
             ev = await self._evaluate(contract_id=t.contract_id, side=t.side, stop_price=t.stop_price,
                                       risk_dollars=t.risk_requested, order_type=t.order_type,
-                                      entry=t.entry_limit, origin=origin)
+                                      entry=t.entry_limit, origin=origin, qty=t.qty)
             reasons = [f"{n}: {dtl}" for n, ok, dtl in ev.verdict if not ok]
             if ev.ok and ev.d["contracts"] < t.payload["size"]:
                 reasons.append("size: headroom shrank since staging")

@@ -132,10 +132,12 @@ def test_placebo_uses_same_rules_on_shifted_lines_and_sample_size_is_pooled():
 def test_verdict_is_conservative():
     assert verdict({"n": 4, "rate": 100.0}, {"n": 200, "rate": 50.0}) == "TOO_FEW_TESTS"              # tiny real sample
     assert verdict({"n": 20, "rate": 90.0}, {"n": 10, "rate": 50.0}) == "TOO_FEW_TESTS"               # tiny control sample
-    assert verdict({"n": 20, "rate": 70.0}, {"n": 200, "rate": 60.0}) == "NOT_DISTINGUISHABLE"        # 10pt gap is not enough
-    assert verdict({"n": 20, "rate": 80.0}, {"n": 200, "rate": 60.0}) == "ABOVE_RANDOM"
-    assert verdict({"n": 20, "rate": 30.0}, {"n": 200, "rate": 60.0}) == "BELOW_RANDOM"
-    assert verdict({"n": 20, "rate": None}, {"n": 200, "rate": 60.0}) == "TOO_FEW_TESTS"
+    assert verdict({"n": 20, "rate": 80.0}, {"n": 200, "rate": 60.0}) == "TOO_FEW_TESTS"               # 20 tests: a 20pt gap is still 1.8 SE
+    assert verdict({"n": 40, "rate": 70.0}, {"n": 200, "rate": 60.0}) == "NOT_DISTINGUISHABLE"        # 10pt gap is not enough
+    assert verdict({"n": 40, "rate": 80.0}, {"n": 200, "rate": 60.0}) == "ABOVE_RANDOM"
+    assert verdict({"n": 40, "rate": 30.0}, {"n": 200, "rate": 60.0}) == "BELOW_RANDOM"
+    assert verdict({"n": 40, "rate": None}, {"n": 200, "rate": 60.0}) == "TOO_FEW_TESTS"
+    assert verdict({"n": 20, "rate": 80.0}, {"n": 200, "rate": 60.0}, min_n=8) == "ABOVE_RANDOM"      # the old gate, on request only
 
 
 def test_a_level_that_is_just_a_random_neighbour_is_not_distinguished_from_random():
@@ -151,3 +153,32 @@ def test_a_level_that_is_just_a_random_neighbour_is_not_distinguished_from_rando
     real = bounce_stats(bars, level, atr)
     pl = placebo_rate(bars, level, atr)
     assert verdict({"n": real["n"], "rate": real["rate"]}, pl) in ("NOT_DISTINGUISHABLE", "TOO_FEW_TESTS", "BELOW_RANDOM")
+
+
+def test_binomial_tail_is_exact_and_clamped():
+    from math import comb
+    from projectx_desk.levels import binom_sf
+    n, p = 30, 0.45
+    exact = sum(comb(n, i) * p ** i * (1 - p) ** (n - i) for i in range(22, n + 1))
+    assert binom_sf(22, n, p) == pytest.approx(exact, rel=1e-9)
+    assert binom_sf(0, 30, 0.5) == 1.0 and binom_sf(5, 0, 0.5) == 1.0 and binom_sf(31, 30, 0.5) == 0.0
+    assert binom_sf(10, 30, 1.2) == 1.0 and binom_sf(10, 30, -0.1) == 0.0          # calibrated placebo can leave [0, 1]
+    assert binom_sf(1, 30, 0.5) == pytest.approx(1 - 0.5 ** 30)
+    # the reviewer's arithmetic: 8 tests, 60% vs 45%: about one in five clears a 15-point gap by luck
+    assert 0.15 < binom_sf(5, 8, 0.45) < 0.30
+    assert binom_sf(18, 30, 0.45) < 0.10 and binom_sf(19, 30, 0.45) < 0.05            # 30 tests at the same gap: not luck
+
+
+def test_benjamini_hochberg_controls_the_family_and_skips_unknowns():
+    from projectx_desk.levels import benjamini_hochberg as bh
+    assert bh([]) == [] and bh([None, float("nan")]) == [None, None]
+    # one real signal among 124 null p-values: it survives, the nulls do not
+    ps = [0.0001] + [0.3 + 0.005 * i for i in range(124)]
+    r = bh(ps, 0.10)
+    assert r[0] is True and not any(r[1:])
+    # a p-value that beats 0.05 alone does NOT survive against 124 siblings
+    assert bh([0.04] + [0.5] * 124, 0.10)[0] is False
+    # step-up: a p above its own threshold still passes when a larger p below it does
+    assert bh([0.01, 0.02, 0.06, 0.9], 0.10) == [True, True, True, False]
+    assert bh([0.5, None, 0.001], 0.10) == [False, None, True]
+    assert bh([0.001], 0.0) == [None] and bh([0.001], 1.0) == [None]             # q outside (0, 1): nothing is decided

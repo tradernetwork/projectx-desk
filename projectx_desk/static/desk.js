@@ -126,7 +126,8 @@ function syncSizeInputs(){
   $('risk-val').textContent = (S.riskPct * 100).toFixed(S.riskPct * 100 % 1 ? 1 : 0) + '%';
   LS.set('px.riskPct3', S.riskPct); LS.set('px.stopK', S.stopK);
 }
-function inputChanged(){syncSizeInputs(); schedule(100)}
+const MQ = {qty: 1, stopTouched: false};   // manual BUY/SELL state (filled in below)
+function inputChanged(){MQ.stopTouched = false; syncSizeInputs(); schedule(100)}   // the stop chips moved: the manual stop follows the ATR stop again
 $('risk-pct').onclick = e => {const b = e.target.closest('[data-v]'); if(b){S.riskPct = +b.dataset.v; inputChanged()}};
 $('risk-dec').onclick = () => {S.riskPct = Math.max(0.005, Math.round((S.riskPct - 0.005) * 1000) / 1000); inputChanged()};
 $('risk-inc').onclick = () => {S.riskPct = Math.min(0.1, Math.round((S.riskPct + 0.005) * 1000) / 1000); inputChanged()};
@@ -223,6 +224,7 @@ function renderSize(){
     ln(mk('b', '', 'STOP '), document.createTextNode(z.stop_mode === 'ANCHORED' ? 'beyond ' + String(z.stop_anchor || '').slice(0, 24) + ', ' + z.stop_k_eff + 'x ATR' : z.stop_mode === 'MANUAL' ? 'manual ' + z.stop_k_eff + 'x ATR' : '1.5x ATR (no respected level in reach)'));
     ln(mk('b', '', 'TARGET '), document.createTextNode(typeof z.target === 'number' ? z.target + ' (' + String(z.target_level || '').slice(0, 24) + ') ' + z.rr + 'R, needs ' + z.breakeven_win_rate + '% wins' : 'none: no respected level at 1R or better'));
     ln(mk('b', '', 'IF STOPPED '), document.createTextNode(streaming() ? 'hidden in stream mode' : 'drawdown room ' + money(z.drawdown_left) + ', daily ' + money(z.daily_left) + ', total open risk with this trade ' + money(z.heat_usd)));
+    ln(mk('b', '', 'COST '), document.createTextNode(typeof z.cost_pct_r === 'number' ? z.cost_pct_r + '% of 1R' + (streaming() || typeof z.cost_usd !== 'number' ? '' : ' ($' + z.cost_usd.toFixed(2) + ' per contract, ' + z.slippage_ticks + 't slippage + fees)') + ', 1:1 needs ' + z.breakeven_1r_net + '% wins after costs' : 'unknown: set PX_COST_RT_USD (fees per contract per round turn)'));
   }
   for(const id of ['stop-dec', 'stop-inc']) $(id).disabled = !ok;
   const box = $('size');
@@ -517,7 +519,7 @@ function renderPlaceResult(){
 }
 function renderAll(){
   applySlots();
-  renderWhy(); renderRibbon(); renderKpi(); renderSize(); renderTicketFields(); renderTicketMeta(); renderRisk(); renderBlotter(); renderAiPanel(); renderPlaceResult();
+  renderWhy(); renderRibbon(); renderKpi(); renderSize(); renderManual(); renderTicketFields(); renderTicketMeta(); renderRisk(); renderBlotter(); renderAiPanel(); renderPlaceResult();
   fill($('size'), S.ai);
   renderPair(); renderEma(); renderLevels(); renderManage(); drawReact(false);
   syncDesk();
@@ -789,6 +791,35 @@ async function doStage(body, cid){        // ONE staging path for the STAGE butt
   renderAll(); schedule(0);
   if(S.ticket && S.ticket.ticket_id) say('p', 'Ticket staged');
 }
+/* ---- manual BUY / SELL: the trader's own contracts and stop, through the SAME preview and ticket (server derives the risk and runs every check) ---- */
+MQ.qty = Math.max(1, parseInt(LS.get('px.mq', 1), 10) || 1);
+function renderManual(){
+  const a = S.ai, z = a && a.size, ok = !!(z && z.status === 'OK');
+  const cap = ok && typeof z.cap === 'number' ? Math.max(1, z.cap) : null;
+  if(cap !== null && MQ.qty > cap) MQ.qty = cap;
+  $('mq-val').textContent = String(MQ.qty);
+  const st = $('mq-stop');
+  if(!MQ.stopTouched && ok && typeof z.stop_ticks === 'number') st.value = String(z.stop_ticks);   // mirrors the ATR stop until you type your own
+  const can = !!(a && S.contractId) && !staging && parseInt(st.value, 10) >= 1;
+  for(const id of ['buy-btn', 'sell-btn']) $(id).disabled = !can;
+  $('mq-dec').disabled = MQ.qty <= 1; $('mq-inc').disabled = cap !== null && MQ.qty >= cap;
+  $('mq-cap').textContent = cap !== null ? 'cap ' + cap : '';
+}
+$('mq-dec').onclick = () => {MQ.qty = Math.max(1, MQ.qty - 1); LS.set('px.mq', MQ.qty); renderManual()};
+$('mq-inc').onclick = () => {MQ.qty += 1; LS.set('px.mq', MQ.qty); renderManual()};
+$('mq-stop').oninput = () => {MQ.stopTouched = true; renderManual()};
+$('mq-atr').onclick = () => {MQ.stopTouched = false; renderManual()};
+async function manualStage(side){
+  const t = parseInt($('mq-stop').value, 10);
+  if(!(t >= 1)){$('msg').textContent = 'Manual order needs a stop distance in ticks.'; return}
+  const cid = await sizeContract();
+  if(!cid){$('msg').textContent = 'Pick a contract first.'; return}
+  S.side = side; syncSizeInputs(); schedule(0);          // the LONG/SHORT chip shows the side being staged
+  await doStage({contract: cid, side, stop_ticks: t, qty: MQ.qty, order_type: 'market', source: 'manual'}, cid);   // same checks, same ticket, same hold-to-place
+}
+$('buy-btn').onclick = () => manualStage('long');
+$('sell-btn').onclick = () => manualStage('short');
+
 $('stage-btn').onclick = async () => {
   const z = S.ai && S.ai.size; if(!z || z.status !== 'OK' || z.refused || z.allowed === false) return;
   const cid = await sizeContract();
@@ -870,27 +901,31 @@ window.px = {snapshot(){return S.ai == null ? null : JSON.parse(JSON.stringify(S
 /* ================= chart (KLineChart v10) ================= */
 const err = e => {$('msg').textContent = (e && e.message) || String(e)};
 let cur = {ticker: null, tick: 0.25, tickValue: null, name: '', dec: 2};
-const C = {up: '#22c55e', dn: '#f43f5e', flat: '#76839a', grid: '#111621', axis: '#1a2130', text: '#76839a', cyan: '#38bdf8', amber: '#f59e0b', purple: '#a855f7', ink: '#e6ebf2'};
-const EMA_COL = ['#2dd4bf', '#60a5fa', '#e879f9'];   // EMA 8 / 21 / 34; keep in step with --ema8/21/34 in desk.css
-const RC = {BOUNCE: C.up, FAIL: C.dn, NEUTRAL: '#76839a', PENDING: C.cyan};
+// The TraderMatrix chart-card palette (engine constants, not eyeballed): gold up candles, steel down candles with light wicks, the
+// EMA-21 blue, the ink and text tones. Keep in step with the :root tokens in desk.css. Green/magenta stay for OUTCOMES (held/failed,
+// stop lines, badges): a colour that means "price went up" must not also mean "good".
+const C = {up: '#D6A73A', dn: '#7088AD', dnWick: '#C8D8EE', flat: '#6C7A92', grid: 'rgba(200,216,238,.07)', axis: '#1A2238', text: '#6C7A92',
+           cyan: '#5FB3D9', amber: '#D6A73A', purple: '#B49AE0', ink: '#F2F5FA', light: '#C8D8EE', green: '#22c55e', mag: '#f43f5e'};
+const EMA_COL = ['#E9EEF6', '#5FB3D9', '#B49AE0'];   // EMA 8 / 21 / 34: the card's SMA light, EMA-21 blue and magnet lilac; keep in step with --ema8/21/34 in desk.css
+const RC = {BOUNCE: C.green, FAIL: C.mag, NEUTRAL: '#76839a', PENDING: C.cyan};
 const MONO = '"JetBrains Mono", ui-monospace, monospace';
 const axis = {axisLine: {color: C.axis}, tickLine: {color: C.axis}, tickText: {color: C.text, size: 10, family: MONO}};
-const chs = {line: {color: '#3b4a68', style: 'dashed', dashedValue: [3, 3]}, text: {backgroundColor: '#111722', borderColor: '#2a3550', color: C.ink, family: MONO, size: 11}};
+const chs = {line: {color: '#3B4A68', style: 'dashed', dashedValue: [3, 3]}, text: {backgroundColor: '#0F1522', borderColor: '#2A3550', color: C.ink, family: MONO, size: 11}};
 const legendTxt = {size: 11, family: MONO, color: C.text};
 const STYLES = {
   grid: {horizontal: {color: C.grid, style: 'solid'}, vertical: {color: C.grid, style: 'solid'}},
   candle: {bar: {upColor: C.up, downColor: C.dn, noChangeColor: C.flat, upBorderColor: C.up, downBorderColor: C.dn,
-                 noChangeBorderColor: C.flat, upWickColor: C.up, downWickColor: C.dn, noChangeWickColor: C.flat},
+                 noChangeBorderColor: C.flat, upWickColor: C.up, downWickColor: C.dnWick, noChangeWickColor: C.flat},
            priceMark: {high: {show: false}, low: {show: false},
                        last: {upColor: C.cyan, downColor: C.cyan, noChangeColor: C.cyan, line: {style: 'dashed', dashedValue: [2, 3]},
                               text: {color: '#04121c', family: MONO, weight: '600', borderRadius: 3}}},
            tooltip: {title: {...legendTxt, color: '#93a0b4'}, legend: {...legendTxt, template: [{title: 'O ', value: '{open}'}, {title: 'H ', value: '{high}'}, {title: 'L ', value: '{low}'}, {title: 'C ', value: '{close}'}]}}},
-  indicator: {bars: [{upColor: 'rgba(34,197,94,.45)', downColor: 'rgba(244,63,94,.45)', noChangeColor: 'rgba(118,131,154,.45)'}],
-              lines: ['#60a5fa', '#c084fc', '#38bdf8', '#fb7185', '#93a0b4'].map(color => ({color, size: 1})),
+  indicator: {bars: [{upColor: 'rgba(214,167,58,.55)', downColor: 'rgba(112,136,173,.55)', noChangeColor: 'rgba(108,122,146,.45)'}],
+              lines: ['#5FB3D9', '#B49AE0', '#C8D8EE', '#fb7185', '#8EA3C4'].map(color => ({color, size: 1})),
               tooltip: {title: legendTxt, legend: legendTxt}},
   xAxis: axis, yAxis: axis, separator: {color: C.axis}, crosshair: {horizontal: chs, vertical: chs},
 };
-const dimText = {color: C.ink, backgroundColor: 'rgba(12,16,24,.92)', borderColor: '#2a3550', borderSize: 1, size: 12, family: MONO, paddingLeft: 6, paddingRight: 6, paddingTop: 3, paddingBottom: 3, style: 'stroke_fill', borderRadius: 3};
+const dimText = {color: C.ink, backgroundColor: 'rgba(10,14,23,.92)', borderColor: '#2a3550', borderSize: 1, size: 12, family: MONO, paddingLeft: 6, paddingRight: 6, paddingTop: 3, paddingBottom: 3, style: 'stroke_fill', borderRadius: 3};
 klinecharts.registerOverlay({
   name: 'zoneBand', totalStep: 3, needDefaultPointFigure: true, needDefaultXAxisFigure: false, needDefaultYAxisFigure: true,
   createPointFigures: ({coordinates: cs, bounding, overlay}) => {
@@ -1097,15 +1132,15 @@ function deskLines(){
   if(t && t.ticket_id && !t.consumed && !t.gone && t.contract === S.contractId && t.readback){
     const e = Number(t.readback.entry_ref), s = Number(t.readback.stop_price);
     if(isFinite(e)) out.push({price: e, label: 'ENTRY ' + e, color: C.cyan, ink: '#7dd3fc', dash: false, size: 1});
-    if(isFinite(s)) out.push({price: s, label: 'STOP ' + s, color: C.dn, ink: '#fb7185', dash: false, size: 1});
+    if(isFinite(s)) out.push({price: s, label: 'STOP ' + s, color: C.mag, ink: '#fb7185', dash: false, size: 1});
   }else{
     const tr = S.ai && S.ai.trade;   // live bracket on the contract we placed it on
     if(tr && S.placed && S.placed.contract === S.contractId){
       if(num(tr.entry_ref)) out.push({price: tr.entry_ref, label: 'ENTRY ' + tr.entry_ref + ' ' + (tr.state === 'PLACED' ? ((tr.filled || 0) > 0 ? 'FILLED' : tr.acked ? 'ACCEPTED' : 'PLACED') : tr.state), color: C.cyan, ink: '#7dd3fc', dash: false, size: 1});
       const sp = S.ai.manage && num(S.ai.manage.stop) ? S.ai.manage.stop : tr.stop_price;   // manage.stop follows a moved stop
-      if(num(sp)) out.push({price: sp, label: 'STOP ' + sp + ' ' + (tr.stop_state || 'PENDING'), color: C.dn, ink: '#fb7185', dash: tr.stop_state !== 'ACKED' && tr.stop_state !== 'ATOMIC', size: 1});
+      if(num(sp)) out.push({price: sp, label: 'STOP ' + sp + ' ' + (tr.stop_state || 'PENDING'), color: C.mag, ink: '#fb7185', dash: tr.stop_state !== 'ACKED' && tr.stop_state !== 'ATOMIC', size: 1});
     }else if(S.ai && S.ai.manage && num(S.ai.manage.stop)){   // position not placed from this page: still show where its stop is
-      out.push({price: S.ai.manage.stop, label: 'STOP ' + S.ai.manage.stop, color: C.dn, ink: '#fb7185', dash: false, size: 1});
+      out.push({price: S.ai.manage.stop, label: 'STOP ' + S.ai.manage.stop, color: C.mag, ink: '#fb7185', dash: false, size: 1});
     }
   }
   return out;
@@ -1206,7 +1241,7 @@ function renderRespect(){
     const lv = ok && t ? rspLevels(tf).slice(0, 3) : [];
     if(ok && t){
       th.append(mk('span', '', rspNum(t.bars) ? t.bars + ' bars' : ''));
-      th.append(mk('span', 'tested', rspNum(t.tested) ? 'tested ' + t.tested + ' candidates' : ''));
+      th.append(mk('span', 'tested', rspNum(t.tested) ? 'tested ' + t.tested + ' candidates' + (rspNum(t.family) && t.family > t.tested ? ' (FDR over ' + t.family + ')' : '') : ''));
     }
     box.append(th);
     if(!ok){box.append(mk('p', 'none', R.status === 'loading' ? 'loading...' : 'respect data unavailable'))}
@@ -1223,7 +1258,7 @@ function renderRespect(){
         const vk = resp ? 'RESPECTED' : Object.prototype.hasOwnProperty.call(VERDICT, l.verdict) ? l.verdict : null;
         row.append(mk('span', 'rn', rspName(l.label)),
           mk('span', '', `held ${rspNum(l.held) ? l.held : 'NA'}/${rspNum(l.tests) ? l.tests : 'NA'}`),
-          mk('span', '', `hold ${hr} vs placebo ${pr}`),
+          mk('span', '', `hold ${hr} vs placebo ${pr}` + (rspNum(l.p_value) ? ` p=${l.p_value < 0.001 ? '<0.001' : l.p_value.toFixed(3)}` : '')),
           mk('span', 'vd vd-' + (vk ? vk.toLowerCase() : 'na'), vk === 'RESPECTED' ? 'RESPECTED' : vk ? VERDICT[vk] : 'NA'));
         if(l.stable === true) row.append(mk('span', 'stb y', 'STABLE'));
         else if(l.stable === false) row.append(mk('span', 'stb n', 'NOT STABLE'));
@@ -1277,7 +1312,7 @@ R.timer = setInterval(() => {if(document.visibilityState === 'visible') respectF
 const FD_POLL_MS = 20000, FD_AGE = s => s < 90 ? s + 's' : s < 5400 ? Math.round(s / 60) + 'm' : (s / 3600).toFixed(1) + 'h';
 /* ---- analyst ENTRY alert: a fresh futures entry posts -> flash a banner, draw its levels, and (only if you are flat) switch the chart to
    that contract. Display only: it never stages or places anything. Seen entries are remembered so a reload does not re-flash them. ---- */
-const CALL = {live: null, seen: new Set(LS.get('px.callSeen', [])), hideT: 0, titleT: 0};
+const CALL = {live: null, seen: new Set(LS.get('px.callSeen', [])), hideT: 0, titleT: 0, stage: false};   // stage: server says PX_FEED_STAGE=1
 const TO_MICRO = {NQ: 'MNQ', ES: 'MES', GC: 'MGC', CL: 'MCL', RTY: 'M2K', YM: 'MYM'};      // this desk trades micros: show the micro chart
 const rootOf = s => TO_MICRO[s] || s;
 const curRoot = () => String(S.contractId || '').split('.')[3] || '';
@@ -1294,7 +1329,7 @@ function calloutAlert(i){
   const px = [['E', i.entry], ['SL', i.stop], ['T1', i.tp1]].filter(p => typeof p[1] === 'number').map(p => p[0] + ' ' + p[1]).join('   ');
   box.append(mk('b', '', 'ANALYST ENTRY'), mk('span', 'ca-main', [root, i.side || '', px].filter(Boolean).join('  ')),
     mk('span', 'ca-sub', (i.analyst || 'analyst').slice(0, 24) + ' ' + FD_AGE(i.age_s) + ' ago' + (switched ? ' · chart switched to ' + root : flat ? '' : ' · you have an open trade: chart not switched')));
-  if(flat && typeof i.entry === 'number' && typeof i.stop === 'number'){
+  if(flat && CALL.stage && typeof i.entry === 'number' && typeof i.stop === 'number'){   // one-click staging only with PX_FEED_STAGE=1: an unmeasured signal should not be the easiest entry on the screen
     const sd = i.side ? String(i.side).toUpperCase() : (i.stop > i.entry ? 'SHORT' : 'LONG');
     const go = mk('button', 'ca-go', 'STAGE ' + sd + ' \u00B7 stop ' + i.stop);
     go.onclick = async ev => {ev.stopPropagation(); calloutDismiss(); await stageCallout()};
@@ -1312,7 +1347,7 @@ async function stageCallout(){
   const side = cl.side ? String(cl.side).toLowerCase() : (cl.stop > cl.entry ? 'short' : 'long');     // stop above entry = short; the ticket readback shows the side in words
   const cid = await sizeContract();
   S.side = side; syncSizeInputs(); schedule(0);        // the LONG/SHORT chip must show the side we are staging
-  await doStage({contract: cid, side, stop_price: cl.stop, risk_pct: S.riskPct, order_type: 'market'}, cid);   // the server sizes it and runs every check
+  await doStage({contract: cid, side, stop_price: cl.stop, risk_pct: S.riskPct, order_type: 'market', source: 'callout'}, cid);   // the server sizes it and runs every check; source is audited
 }
 function calloutDismiss(){const b = $('callout-alert'); b.hidden = true; clearInterval(CALL.titleT); document.title = 'PXDESK'}
 function calloutWatch(items){
@@ -1332,6 +1367,7 @@ async function feedFetch(){
     box.replaceChildren();
     if(f.status === 'OFF'){st.textContent = 'off'; box.append(mk('p', 'none', 'feed not configured (PX_FEED_URL)')); return}
     if(f.status !== 'OK'){st.textContent = 'error'; box.append(mk('p', 'none', 'feed unavailable' + (typeof f.code === 'string' ? ' (' + f.code.slice(0, 20) + ')' : ''))); return}
+    CALL.stage = f.stage === true;
     st.textContent = f.items.length ? 'newest ' + FD_AGE(f.items[0].age_s) + ' ago' : 'none';
     if(!f.items.length){box.append(mk('p', 'none', 'no structured callouts in the window')); return}
     calloutWatch(f.items);
@@ -1354,7 +1390,7 @@ setInterval(() => {if(document.visibilityState === 'visible') feedFetch()}, FD_P
 const MN = {open: LS.get('px.minis', true) !== false, tfs: ['15m', '1h'], unit: {'5m': [2, 5, 300000], '15m': [2, 15, 900000], '1h': [3, 1, 3600000]},
   bars: {}, seq: {}, at: {}, cv: {}, box: {}, px: {}};
 const MN_SHOW = 60, MN_FETCH = 250, MN_MIN_MS = 30000, MN_PER = [8, 13, 21, 34, 55, 89];
-const MN_COL = [EMA_COL[0], '#7fb08a', EMA_COL[1], EMA_COL[2], '#c9a227', '#93a0b4'];   // 8/21/34 as on the main chart; 13/55/89 muted
+const MN_COL = [EMA_COL[0], '#7fb08a', EMA_COL[1], EMA_COL[2], '#D6A73A', '#8EA3C4'];   // 8/21/34 as on the main chart; 13/55/89 muted
 const MN_DASH = [[], [], [], [], [4, 3], [4, 3]];
 function mnEma(closes, p){   // same recurrence as the main chart's EMA indicator (seeded with the first close)
   const out = []; let prev = null;
@@ -1575,7 +1611,7 @@ function toolbar(){
     else if(b.id === 'lock'){locked = !locked; b.classList.toggle('on', locked); chart.getOverlays().filter(o => !NONUSER.includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, lock: locked}))}
     else if(b.id === 'hide'){hidden = !hidden; b.classList.toggle('on', hidden); chart.getOverlays().filter(o => !NONUSER.includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, visible: !hidden}))}
     else if(b.id === 'clear'){chart.removeOverlay(); LS.set('px.ov.' + cur.ticker, []); drawDesk(true); drawReact(true); drawRespect(true)}
-    else if(b.id === 'shot'){const a = document.createElement('a'); a.href = chart.getConvertPictureUrl(true, 'png', '#0c1018'); a.download = `${cur.name || 'chart'}-${Date.now()}.png`; a.click()}
+    else if(b.id === 'shot'){const a = document.createElement('a'); a.href = chart.getConvertPictureUrl(true, 'png', '#0A0E17'); a.download = `${cur.name || 'chart'}-${Date.now()}.png`; a.click()}
   };
 }
 const magLabel = () => {$('mag').textContent = ['Mag', 'Mag~', 'Mag!'][magnet]; $('mag').classList.toggle('on', magnet > 0)};

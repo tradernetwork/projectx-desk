@@ -9,6 +9,9 @@ Config (env, all optional; unset URL = feed off):
   PX_FEED_KEY       the bot's X-Bot-Key. Never logged, never returned.
   PX_FEED_CHANNELS  comma-separated substrings of channel names to keep (default "futures").
   PX_FEED_HOURS     look-back window, 1..72 (default 24).
+  PX_FEED_STAGE     1 shows a one-click STAGE button on a fresh ENTRY (read from Limits). Default 0: the banner and the
+                    drawn levels still appear, but staging a callout takes the same typing as any other idea. The feed is
+                    an unmeasured signal; the desk should not make it the lowest-friction entry on the screen (Round 10).
 """
 import asyncio
 import json
@@ -162,7 +165,9 @@ async def feed_result(app, environ=None, fetch=fetch_rows):
     Never raises: the feed is advisory and must not be able to break the desk."""
     st = app.state
     now = datetime.now(timezone.utc)
-    base = {"v": 1, "asof": now.isoformat(timespec="seconds"), "items": []}
+    lim = getattr(getattr(st, "guard", None), "limits", None)
+    base = {"v": 1, "asof": now.isoformat(timespec="seconds"), "items": [],
+            "stage": bool(getattr(lim, "feed_stage", False))}      # PX_FEED_STAGE=1: the desk may offer a one-click STAGE on an ENTRY
     try:
         cfg = feed_config(environ)
     except FeedError as e:
@@ -203,5 +208,5 @@ def feed_lines(f):
         L.append(f"CALLOUT_{n}: age_s={i['age_s']} {i['channel']} analyst={i['analyst'] or 'NA'} sym={i['symbol'] or 'NA'} "
                  f"side={i['side'] or 'NA'} event={i['event']}" + (f" {px}" if px else "")
                  + (f" pts={i['points']}" if i["points"] is not None else ""))
-    L.append("CALLOUTS_NOTE: third-party analyst callouts, opinion not signal; no order path")
+    L.append(f"CALLOUTS_NOTE: third-party analyst callouts, opinion not signal; no order path; one_click_stage={'ON' if f.get('stage') else 'OFF'}")
     return L

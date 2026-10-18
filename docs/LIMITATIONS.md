@@ -38,10 +38,13 @@ without `PX_OPERATOR_TOKEN` (32+ characters) and `PX_ALLOWED_HOSTS`. The token i
 anything beyond a network you fully control (see [DEPLOY.md](DEPLOY.md)). There is no rate limit on login attempts beyond the
 token's length. If you front a loopback-bound desk with a reverse proxy, set the token too: the refusal only triggers on the bind.
 
-**P&L is realised-only, and the floor is yours to maintain.** Daily P&L excludes unrealised P&L. With `PX_MLL_FLOOR` set, drawdown room is the
-live balance minus the floor, so it follows the account, but the desk does not compute Topstep's end-of-day trailing floor, its lock, your
-high-water mark or a consistency rule: you update the floor. Without it, `PX_DRAWDOWN_BUFFER` is a number you type. A large open loser is not
-counted until it closes, except through its stop risk. Treat the budget as an upper bound that you keep updated by hand.
+**The floor is yours to maintain, and the open P&L is the desk's mark.** With `PX_MLL_FLOOR` set, drawdown room is the live balance minus
+the floor, so it follows the account, but the desk does not compute Topstep's end-of-day trailing floor, its lock, your high-water mark or a
+consistency rule: you update the floor. Without it, `PX_DRAWDOWN_BUFFER` is a number you type. Since Round 10 the room is also net of the
+unrealised loss on every open position, marked at the last trade of a quote no older than a fixed 30 s (`max_hub_age_s` in `limits.py`, not an environment variable) (or of the stop risk our own
+tickets commit, whichever is worse); a position the desk cannot value makes the room UNKNOWN and opens refuse (`open_pnl_known`). That mark
+is not the firm's: it assumes the gateway's `balance` excludes open P&L (true of the mock, unverified on a real account) and it lags a fast
+market by a quote. Treat the budget as an upper bound that you keep updated by hand.
 
 **A stop is sent after the first fill event, not with the entry** (in `position` bracket mode). If the user hub is down at
 fill time, no stop is sent and no watchdog runs. In `oco` mode the bracket is atomic. The ticket says
@@ -84,14 +87,15 @@ America/Chicago.
 `projectx_desk/gex_futures.py`; without a key the digest says `GEX: status=NO_KEY` and nothing is drawn. The levels are a translation of index and
 ETF option positioning, not a measurement of the futures book, and they never feed sizing, stops or targets (Round 6).
 
-**Thresholds are hypotheses.** The ADX and ATR scalers, the behavioral-rail defaults and the level-reaction verdict margin
-are starting points, not findings.
+**Thresholds are hypotheses.** The ADX and ATR scalers (off by default since Round 10: the ATR cut prices volatility twice), the
+behavioral-rail defaults and the level-reaction verdict margin are starting points, not findings. The cost line's slippage default
+(`PX_SLIPPAGE_TICKS=2`) is an assumption too; your fills decide the real number.
 
 **The behavioral rails count closed orders, not round trips.** Cooldown, lockout and the size lock read today's fills that
 carry a realised P&L, grouped by order id (`closed_trades()`): one order filled in pieces counts once. Two separate closing orders
 for one position count as two, and a scratch (zero P&L) neither extends nor breaks a streak. Setting `PX_COOLDOWN_AFTER_LOSS_S` or `PX_MAX_CONSEC_LOSSES` to `0` turns that
-rail off on purpose; a blank, garbled or negative value falls back to the default. `PX_SIZE_SCALERS=0` and
-`PX_SIZE_AFTER_LOSS_LOCK=0` also switch their rails off.
+rail off on purpose; a blank, garbled or negative value falls back to the default. `PX_SIZE_AFTER_LOSS_LOCK=0` switches that rail off;
+`PX_SIZE_SCALERS=1` switches the ADX/ATR cuts on.
 
 **Quote age and drift.** The 2 second quote age applies to every open. The price-drift check (8 ticks since staging) applies to
 market entries only; limit opens (simulated accounts only) skip it.
@@ -101,7 +105,11 @@ safe direction, and it means an expired token will halt the desk until a human c
 
 **Level reactions are a measurement with thresholds, not a finding.** "Held" means price moved at least 0.75 ATR away within 6
 bars before closing 0.25 ATR through the level. The comparison is the same test on copies of that line shifted 0.5 to 1.5 ATR
-away, which are not independent samples, and the verdict needs a 15 point gap and enough tests before it says anything positive.
+away, which are not independent samples. Since Round 10 a positive verdict needs 30 resolved tests, a 15 point gap over the calibrated
+placebo, a one-sided binomial p-value, and that p-value surviving a Benjamini-Hochberg cut (q = 0.10) over every candidate on every
+timeframe in the scan. The placebo is calibrated on three block-bootstrap surrogates, not a 1000-draw null distribution: the p-value is
+exact against the calibrated rate, not against the surrogates. The old `LEVEL:` lines still use the raw placebo and the effect-size
+gate alone.
 
 **Stream mode is covered by tests on the data endpoints and the page's data, not on the rendered DOM.** The removal is real in
 the code (`applySlots` swaps the figures out of the page) but no browser test pins it.
@@ -115,10 +123,13 @@ POST routes do not, for the reason given above.
   for tight or self-referential levels (EMA 8 reads about 19 points low on random walks). `projectx_desk/respect.py` recalibrates; the old lines
   do not yet. Level-reaction events are also capped at 12 and pending events in the last 6 bars are never counted.
 - The respect scan is descriptive history on 25 hand-picked candidate levels. It is not backtested for trade outcomes, and a
-  level that was respected is not evidence that it will be.
+  level that was respected is not evidence that it will be. The candidate set mixes lines with a mechanism (prior-day high/low, VWAP:
+  resting orders and benchmark flow sit there) with lines that have none (an EMA 34 on a 5m chart); the scan treats them alike.
+- The analyst callout feed is an unmeasured signal. The one-click STAGE on a fresh ENTRY is off unless `PX_FEED_STAGE=1`, and when
+  used it is audited (`stage_source=callout`), but no backtest of the callouts exists and the desk stores no history to build one from.
 
 - `PX_NO_NEW_AFTER` only blocks new entries. Set `PX_FLAT_BY` to get the auto-flatten (Topstep requires flat by 3:10 PM CT); it is off until you set it, and it does not know holiday or early-close schedules.
-- Drawdown room is the live balance minus `PX_MLL_FLOOR` if you set it, otherwise the number you type. The desk does not compute Topstep's end-of-day trailing floor or its lock; you update the floor. Unrealised loss counts only through each open trade's stop. The daily loss limit is your own number, not read from Topstep.
+- Drawdown room is the live balance minus `PX_MLL_FLOOR` if you set it, otherwise the number you type. The desk does not compute Topstep's end-of-day trailing floor or its lock; you update the floor. Unrealised loss counts through the desk's own mark of each open position (Round 10), which lags the firm's by a quote. The daily loss limit is your own number, not read from Topstep.
 - Topstep objectives (profit target, 55% and 40% consistency, payout rules, the scaling plan) and conduct rules (news, hedging across accounts, prohibited strategies) are not enforced. See [TOPSTEP_RULES.md](TOPSTEP_RULES.md).
 - `last_risk` (the size-after-loss lock) is replaced at commit time by a subsequent order even if the broker then rejects it.
 - External trades (placed outside the desk) have no known risk cap.

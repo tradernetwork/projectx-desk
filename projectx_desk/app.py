@@ -335,17 +335,25 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         b = await body(request)
         g = request.app.state.guard
         try:
+            if b.get("source") == "callout" and not g.limits.feed_stage:
+                raise HTTPException(403, "callout staging is off (PX_FEED_STAGE=1 enables)")
+            qty = b.get("qty")                      # manual BUY/SELL: the trader's own contracts; the risk is derived, every check still runs
+            if qty is not None and (isinstance(qty, bool) or not isinstance(qty, int)):
+                raise HTTPException(400, "qty must be a whole number")
             rd = b.get("risk_dollars")
             scale = None
-            if rd is None and b.get("risk_pct") is not None:
+            if qty is None and rd is None and b.get("risk_pct") is not None:
                 rd, scale = await px_digest.scaled_risk(request.app, b.get("contract"), float(b["risk_pct"]))
             sp = b.get("stop_price")
             if sp is None and b.get("stop_ticks") is not None:
                 sp = await g.stop_from_ticks(b.get("contract"), (b.get("side") or "").lower(), b["stop_ticks"])
             p = await g.preview(contract_id=b.get("contract"), side=b.get("side"), stop_price=sp, risk_dollars=rd,
-                                order_type=b.get("order_type", "market"), entry=b.get("entry"), origin="ui")
+                                order_type=b.get("order_type", "market"), entry=b.get("entry"), origin="ui", qty=qty)
         except (TypeError, ValueError, GuardError) as e:
             raise HTTPException(400, str(e)[:80])
+        if p.ok and p.ticket is not None and b.get("source") == "callout":
+            # the idea came from the analyst feed: say so in the audit, so callout-origin tickets can be measured apart (Round 10)
+            g._audit("stage_source", ticket=p.ticket.hash8, origin="ui", code="callout", sha8=p.ticket.hash8)
         return {"ok": p.ok, "placeable": p.placeable, "reasons": p.reasons,
                 "verdict": [{"check": n, "ok": ok, "detail": d} for n, ok, d in p.verdict],
                 "sizing": p.sizing, "ticket": ticket_view(p.ticket, g) if p.ticket else None,

@@ -37,7 +37,10 @@ its default.
 | `PX_MAX_ORDERS_DAY` | orders per trading day (default 10). The day rolls at 17:00 Central. |
 | `PX_ALLOW_LIVE`, `PX_ACCOUNT_KIND` | a live account needs `PX_ACCOUNT_KIND=live`, `PX_ALLOW_LIVE=1`, `PX_BRACKET_MODE=oco` and market entries. Never run. Do not enable. |
 | `PX_RISK_BASE` | `drawdown` (default): 1R is `risk_pct` of the live drawdown room (balance minus `PX_MLL_FLOOR`), capped by the daily and drawdown room. `remaining` restores the old base, `risk_pct` of the smaller of the two rooms. |
-| `PX_SIZE_SCALERS` | `0` switches off the ADX/ATR risk cuts (default on). |
+| `PX_SIZE_SCALERS` | `1` switches on the ADX/ATR risk cuts (default off since Round 10: the ATR cut prices volatility twice). |
+| `PX_COST_RT_USD` | your fees per contract per round turn (commission plus exchange and clearing, both sides). Unset: the cost line prints NA. |
+| `PX_SLIPPAGE_TICKS` | assumed slippage per round turn for the cost line (default 2: one tick in, one out; `0` allowed). Display only. |
+| `PX_FEED_STAGE` | `1` shows the one-click STAGE button on a fresh analyst ENTRY (default off). The banner and drawn levels show either way. |
 | `PX_LIVE_DATA` | `1` asks for the live data subscription on bars; unverified. |
 | `PX_MCP_TOKEN` | enables the MCP server when strong (32+ characters, no placeholder words). |
 | `PX_TRADING` | `0` (default): the desk can read, size, stage and flatten, but `place` is refused. `1`: placing is allowed, subject to every other check. |

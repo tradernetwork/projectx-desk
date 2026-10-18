@@ -363,3 +363,27 @@ What it got right, what it had stale, and what changed:
   mini-charts use the same up/down pair. Two golds exist: the brand kit's `#D4A62A` and the card's `#D6A73A`; the desk is a chart, so
   it uses the card column. Green and magenta stay for outcomes (held/failed, stop lines, badges): a colour that means "price went up"
   must not also mean "good". BUY is gold, SELL is steel.
+
+## Round 12: the 0DTE scalper teardown, checked against the desk (2026-10-18)
+
+Source: the combined blueprint of a public SPY 0DTE scalping desk (a teardown of a third party's dashboard plus the author's article;
+screenshot values and the author's performance claims are unverified, 3 of a planned 10 forward sessions). It is an options desk on a
+poll-only broker; this desk trades futures on a streaming hub, so only the safety and cost lessons transfer. Checked item by item:
+
+- **Already here:** the stale-quote gate that fails closed on a missing timestamp (`quote`, re-checked at the commit point); never
+  replay a write, ambiguity becomes `UNKNOWN`, persist, halt, reconcile; ACK is not a fill; boot with trading off (`PX_TRADING=0`);
+  the cost line and break-even win rate (`SIZE_COST`, `KPI_COST`, `PX_COST_RT_USD`, `PX_SLIPPAGE_TICKS`); a sample size `n` beside
+  every KPI; a stop that only ever tightens.
+- **Added: the exclusive process lock** (`projectx_desk/lock.py`). The blueprint's rule "two engines on one account is a bad day" had no
+  counterpart here: two desks on one checkout would each run a watchdog and stop owner and could place the same trade twice. Taken in
+  `main()` only, kernel-released on exit or crash, an unopenable lock file refuses to start (never guess). It is per checkout, not per
+  account (see LIMITATIONS).
+- **Not added, and why:** the execution-quality log (quote age, submit-to-ACK latency, signed slippage) would touch the `place` path and
+  its audit allowlist; it is recorded as a known gap, not rushed into a release. The regime gate, delta-band scout, mean ladder and
+  bracket tree are options-specific and do not apply to a one-contract futures desk. The "trail read the future" and float-spread
+  harness bugs apply to a backtester this desk does not have; if one is built, keep prices as integer ticks and fill a stop only on a
+  later observation than the one that set it.
+- **A claim to distrust, from the same source:** a 94% win rate at a 3-tick target against a 25-tick stop needs 88.9% just to break
+  even; the live panel in the same screenshots ran at 75% and a negative expectancy. The desk's own cost and break-even lines exist to
+  show that arithmetic before a trade, not after.
+

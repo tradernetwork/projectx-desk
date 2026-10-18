@@ -95,6 +95,7 @@ PX_STATE_PATH=/var/lib/projectx-desk/day_state.json
 PX_INTENT_PATH=/var/lib/projectx-desk/intents.json
 PX_AUDIT_PATH=/var/lib/projectx-desk/audit.jsonl
 PX_HALT_FILE=/var/lib/projectx-desk/HALT
+PX_LOCK_FILE=/var/lib/projectx-desk/desk.lock
 PROJECTX_USERNAME=your-platform-login-name
 PROJECTX_API_KEY=...
 PX_ACCOUNT_ID=...

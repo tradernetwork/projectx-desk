@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from projectx_desk import digest as px_digest
 from projectx_desk import feed as px_feed
+from projectx_desk import lock as px_lock
 from projectx_desk import mcp as px_mcp
 from projectx_desk import net as px_net
 from projectx_desk.guard import Guard, GuardError
@@ -566,6 +567,7 @@ def main():
     if not px_net.is_loopback(host):
         print(f"WARNING: bound to {host}. The operator login is HTTP Basic; without TLS in front it sends the token in the clear. "
               "Use Tailscale or a TLS reverse proxy (docs/DEPLOY.md).", flush=True)
+    _lock = px_lock.acquire()           # noqa: F841 - held for the life of the process
     uvicorn.run(create_app(), host=host, port=_port(), log_level="info")
 
 

@@ -137,6 +137,8 @@ POST routes do not, for the reason given above.
   number of minutes before the close (their 2024 and 2025 articles said 30, a later one 15), so the lead time has changed. Set
   `PX_EARLY_CLOSES="2026-11-27=12:00,2026-12-24=12:00"` (CT, `YYYY-MM-DD=HH:MM`, copied from Topstep's calendar) and on those dates the desk
   flattens at that time and refuses opens from two minutes before it. Garbled entries are ignored, never guessed.
+- **One desk per checkout, not per account.** `data/desk.lock` stops a second desk starting from the same checkout (and the same `PX_LOCK_FILE`). Two machines, two checkouts or a changed lock path on one account are not detected; each would run its own watchdog and halt file.
+- **No execution-quality log yet.** The audit records `place` and `ack` but not quote age at the decision, submit-to-ACK latency or signed slippage against the previewed entry, so the desk cannot measure its own slippage; `PX_SLIPPAGE_TICKS` stays an input you type, not a number it learned.
 - A missing day-state file resets the order count.
 - `/state.json` and `/contracts` still forward some raw gateway fields (quote timestamps, contract id fallback names) that should be type-validated.
 - A position held at restart that was placed by hand is reported (`EXTERNAL_UNPROTECTED`) but not protected.

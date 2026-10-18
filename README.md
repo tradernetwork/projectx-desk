@@ -89,6 +89,7 @@ arithmetic, not the result.
 | **It gets smaller, never bigger** | Nothing scales risk up. Optional cuts for a choppy market (ADX under 20) or a very volatile one (ATR in the top fifth of its recent range) exist but are **off by default**: the stop is already sized by ATR, so the ATR cut priced volatility twice ([why](docs/SIZING.md)). `PX_SIZE_SCALERS=1` turns them on. |
 | **It shows what friction costs** | Set `PX_COST_RT_USD` (your fees per contract per round turn) and the size box shows the cost of the trade as a share of 1R and the win rate 1:1 needs after costs. On micros that number is the one that decides. |
 | **Guardrails** | Cooldown after a loss, lockout after 3 losses in a row, and after a loss your risk can't exceed what that trade risked. Defaults are settings. |
+| **One desk at a time** | A second desk started from the same checkout refuses to run (an exclusive lock on `data/desk.lock`), so two copies cannot place the same trade twice. Two machines on one account are on you. |
 | **A stop is required** | Sent right after the fill and watched for 5 seconds; if it is not acknowledged, the desk flattens and halts. If the live feed misses the fill, no stop is sent, so read the limits. |
 | **Manage the trade** | Live open R, plus one-click stop moves (breakeven, ATR trail, EMA 21 trail). Stops only move toward price, never wider. |
 | **Stats with the fine print** | Win rate sits next to the win rate you need to break even, with the trade count and a SMALL SAMPLE flag under 30 trades. |

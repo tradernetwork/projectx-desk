@@ -38,6 +38,7 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 | `projectx_desk/gex.py` | GEX levels from the TraderDaddy API converted to futures price space: display and digest only, never sizing. `PX_GEX_KEY`, `PX_GEX_URL`, `PX_GEX_MAX_AGE_S` |
 | `projectx_desk/ticks.py` | tick bars (N trade prints, `PX_TICK_BARS`) built from the live tape with buy/sell volume; no history, in memory |
 | `projectx_desk/feed.py` | analyst futures callouts from TraderDiscord-v2 `GET /analyst-callouts` (`PX_FEED_URL`, `PX_FEED_KEY`, `PX_FEED_CHANNELS`, `PX_FEED_HOURS`; unset URL = off). Third-party text is untrusted: only allowlisted names/enums/numbers leave the module, never message text. Opinion, not signal; no path to the guard. State key and digest lines are `callouts`/`CALLOUTS` (`feed` is the market-data health block) |
+| `projectx_desk/lock.py` | exclusive process lock on `data/desk.lock` (`PX_LOCK_FILE`), taken in `main()` only: a second desk on the same checkout refuses to start. Kernel-released, so a crash leaves no stale lock |
 | `projectx_desk/tradeday.py` | the one definition of the trading day (17:00 CT roll) |
 | `projectx_desk/sizing.py`, `projectx_desk/gex_futures.py` | pure sizing math; GEX levels converted to futures price space |
 | `projectx_desk/dev_gateway.py` | a mock ProjectX gateway (REST + SignalR) for offline development and end-to-end tests |
@@ -52,6 +53,8 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 - **Kill switches default OFF** (`PX_TRADING=0`, `PX_MCP_PLACE=0`). A zero or blank money or quantity limit refuses opens, as does
   a blank account id, `PX_NO_NEW_AFTER` or `PX_BRACKET_MODE` (never guess: a wrong guess still creates a rejected order). The two
   behavioral rails are the exception: `0` turns them off, blank or garbled falls back to the default.
+- **One desk per checkout.** `lock.acquire()` runs in `app.main()` before uvicorn; an unopenable lock file refuses to start. Do not move it into
+  `create_app()` (tests and tools build apps freely) and do not add a bypass flag. It does not cover two machines on one account: that is yours to avoid.
 - **Never replay a write.** Any ambiguous outcome is UNKNOWN: persist, trip the halt file, reconcile by `customTag`.
   Only a human clears a halt (there is deliberately no MCP tool).
 - **One protection owner per net position.** The `contract_flat` check refuses a second entry while the contract has a position,
@@ -104,6 +107,7 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 
 ## Gotchas
 
+- The guard pin rejects ANY `.write` attribute access outside `guard.py` (it cannot tell a file from `PXClient`). Not even `os.write`. Write files with `print(..., file=f)`, `pathlib.Path.write_text` or `json.dump`, never a bare `.write(`, in new modules.
 - Smooth synthetic bars always give ADX of about 30, so tests inject ADX/ATR-percentile values.
 - The mock gateway gives every instrument the same tiny ATR, so sizes look identical across NQ and MNQ there.
 - The headline contract count can be capped by `PX_MAX_QTY_ORDER`; read `risk_allows`/`cap` in the WHY lines.

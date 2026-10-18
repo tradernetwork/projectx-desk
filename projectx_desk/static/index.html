@@ -47,44 +47,43 @@
   <!-- 1b. KPI RIBBON: every stat carries its sample size -->
   <section class="kpis" id="kpis" role="region" aria-label="Session KPIs">
     <div class="kpi" id="kpi-pnl">
-      <div class="k-h"><span class="k-t">Live P&amp;L</span><span class="k-tag">day, net</span></div>
+      <div class="k-h"><span class="k-t" title="Trading day, net">Live P&amp;L</span></div>
       <div class="k-v"><span data-slot="sens" data-tpl="t-kpi-pnl"></span><span data-slot="stream" data-tpl="t-kpi-hidden"></span></div>
-      <div class="k-s">from n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b> closed trades</div>
+      <div class="k-s">n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b> closed trades</div>
     </div>
     <div class="kpi wide" id="kpi-wr">
       <div class="k-h"><span class="k-t">Win rate vs break-even</span></div>
       <div class="k-v"><span class="k-num"><b data-ai="kpi.win_rate" data-fmt="num1" class="na">NA</b><small>%</small></span>
         <span class="k-vs">need <b data-ai="kpi.breakeven_win_rate" data-fmt="num1" class="na">NA</b>%</span>
         <span id="wr-verdict" class="verdict">NA</span></div>
-      <div class="k-s k-pay" id="wr-pay">payoff <b data-ai="kpi.payoff" data-fmt="num2" class="na">NA</b>, <span id="wr-need">needs <b data-ai="kpi.breakeven_win_rate" data-fmt="num1" class="na">NA</b>% wins to break even</span><span id="wr-need-na" hidden>break-even NA</span></div>
-      <div class="wr" id="wr-gauge" aria-hidden="true"><i class="wr-fill" id="wr-fill"></i><i class="wr-be" id="wr-be"></i></div>
-      <div class="k-s"><b data-ai="kpi.wins" data-fmt="int" class="na">NA</b>W / <b data-ai="kpi.losses" data-fmt="int" class="na">NA</b>L, n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b><span class="ss" hidden>SMALL SAMPLE</span></div>
+      <div class="k-s" id="wr-pay">n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b>, payoff <b data-ai="kpi.payoff" data-fmt="num2" class="na">NA</b><span class="ss" hidden>small sample</span><span class="sr"><span id="wr-need">needs <b data-ai="kpi.breakeven_win_rate" data-fmt="num1" class="na">NA</b>% wins to break even</span><span id="wr-need-na" hidden>break-even NA</span>, <b data-ai="kpi.wins" data-fmt="int" class="na">NA</b> wins, <b data-ai="kpi.losses" data-fmt="int" class="na">NA</b> losses</span></div>
+      <div class="wr" id="wr-gauge" aria-hidden="true" hidden><i class="wr-fill" id="wr-fill"></i><i class="wr-be" id="wr-be"></i></div>
     </div>
     <div class="kpi" id="kpi-exp">
-      <div class="k-h"><span class="k-t">Expectancy</span><span class="k-tag">per trade</span></div>
+      <div class="k-h"><span class="k-t" title="Average per trade">Expectancy</span></div>
       <div class="k-v"><span data-slot="sens" data-tpl="t-kpi-exp"></span><span data-slot="stream" data-tpl="t-kpi-hidden"></span></div>
-      <div class="k-s">n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b><span class="ss" hidden>SMALL SAMPLE</span></div>
+      <div class="k-s">n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b><span class="ss" hidden>small sample</span></div>
     </div>
     <div class="kpi" id="kpi-pf">
-      <div class="k-h"><span class="k-t">Profit factor</span><span class="k-tag">gross W / L</span></div>
-      <div class="k-v"><span class="k-num"><b data-ai="kpi.profit_factor" data-fmt="num2" class="na">NA</b></span><span class="k-vs"><span data-slot="sens" data-tpl="t-kpi-gross"></span><span data-slot="stream" data-tpl="t-kpi-gross-hidden"></span></span></div>
-      <div class="k-s">n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b><span class="ss" hidden>SMALL SAMPLE</span></div>
+      <div class="k-h"><span class="k-t" title="Gross wins / gross losses">Profit factor</span></div>
+      <div class="k-v"><span class="k-num"><b data-ai="kpi.profit_factor" data-fmt="num2" class="na">NA</b></span></div>
+      <div class="k-s">n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b><span class="ss" hidden>small sample</span> <span class="k-gross"><span data-slot="sens" data-tpl="t-kpi-gross"></span><span data-slot="stream" data-tpl="t-kpi-gross-hidden"></span></span></div>
     </div>
     <div class="kpi" id="kpi-trades">
-      <div class="k-h"><span class="k-t">Trades</span><span class="k-tag">closed today</span></div>
+      <div class="k-h"><span class="k-t" title="Closed today">Trades</span></div>
       <div class="k-v"><span class="k-num"><b data-ai="kpi.n" data-fmt="int" class="na">NA</b></span><span class="k-vs"><b data-ai="kpi.wins" data-fmt="int" class="na">NA</b>W <b data-ai="kpi.losses" data-fmt="int" class="na">NA</b>L</span></div>
-      <div class="wl" id="wl-bar" aria-hidden="true"><i class="w" id="wl-w"></i><i class="l" id="wl-l"></i></div>
-      <div class="streak" id="streak" role="group" aria-label="Losses in a row" hidden><div class="k-s s-l"><span class="s-t">LOSSES IN A ROW</span><span class="s-n"><b data-ai="behavior.consecutive_losses" data-fmt="int" class="na">NA</b> / <span id="streak-max">3</span></span></div><div class="pips" id="bar-streak" aria-hidden="true"></div></div>
+      <div class="wl" id="wl-bar" aria-hidden="true" hidden><i class="w" id="wl-w"></i><i class="l" id="wl-l"></i></div>
+      <div class="streak" id="streak" role="group" aria-label="Losses in a row" hidden><div class="k-s s-l"><span class="s-t">Losses in a row</span><span class="s-n"><b data-ai="behavior.consecutive_losses" data-fmt="int" class="na">NA</b> / <span id="streak-max">3</span></span></div><div class="pips" id="bar-streak" aria-hidden="true" hidden></div></div>
     </div>
     <div class="kpi" id="kpi-orders">
       <div class="k-h"><span class="k-t">Orders today</span></div>
       <div class="k-v"><span class="k-num"><b data-ai="risk.orders_today" data-fmt="int" class="na">NA</b><small> / <span data-ai="risk.orders_max" data-fmt="int" class="na">NA</span></small></span></div>
-      <div class="pips" id="bar-orders" aria-hidden="true"></div>
+      <div class="pips" id="bar-orders" aria-hidden="true" hidden></div>
     </div>
     <div class="kpi" id="kpi-open">
       <div class="k-h"><span class="k-t">Open contracts</span></div>
       <div class="k-v"><span class="k-num"><b data-ai="risk.open_contracts" data-fmt="int" class="na">NA</b><small> / <span data-ai="risk.max_contracts" data-fmt="int" class="na">NA</span></small></span></div>
-      <div class="pips" id="bar-open" aria-hidden="true"></div>
+      <div class="pips" id="bar-open" aria-hidden="true" hidden></div>
     </div>
   </section>
 
@@ -92,7 +91,7 @@
   <div class="col col-left">
     <!-- 2. SIZE BOX -->
     <section id="size" class="panel hero" role="region" aria-label="Size box">
-      <div class="phead"><h2>Size</h2><span class="dim sub">rounded down, never up</span><span id="size-bind" class="badge push" title="binding source">NA</span></div>
+      <div class="phead"><h2 title="Rounded down, never up">Size</h2><span id="size-bind" class="badge push" title="binding source">NA</span></div>
       <div id="size-answer" class="answer" aria-live="off">
         <div class="big"><span class="num na" data-ai="size.contracts">NA</span><span class="unit na" data-ai="contract.root">NA</span><span class="chips seg sideseg" id="side" role="group" aria-labelledby="lbl-side"><span class="sr" id="lbl-side">Side</span><button id="side-long" data-v="long" aria-pressed="true">LONG</button><button id="side-short" data-v="short" aria-pressed="false">SHORT</button></span></div>
         <div id="size-alert" class="banner bad refused alert" role="alert" hidden>
@@ -100,9 +99,9 @@
           <div id="size-refused" class="aln rf-line" hidden></div>
         </div>
         <div id="size-chips" class="chipline">
+          <span id="chip-lock" class="chip warn" title="after a loss, risk may not exceed what the losing trade risked" hidden><span class="t">Size locked after a loss</span></span>
           <span id="chip-scale" class="chip warn" title="risk scaler: the budget was cut before sizing" hidden><span id="cs-adx" hidden>ADX <b data-ai="size.adx" data-fmt="int" class="na">NA</b> <span id="cs-adx-note"></span></span><span id="cs-atr" hidden>ATR p<b data-ai="size.atr_pctile" data-fmt="int" class="na">NA</b> <span id="cs-atr-note"></span></span><span class="x">x<b data-ai="size.scale.multiplier" data-fmt="num2" class="na">NA</b></span></span>
-          <span id="chip-lock" class="chip warn" title="after a loss, risk may not exceed what the losing trade risked" hidden><span class="t">SIZE LOCKED AFTER LOSS</span></span>
-          <span id="chip-cap" class="chip info" title="risk alone would allow more contracts than the per-order cap" hidden><span class="t">RISK ALLOWS <b data-ai="size.contracts_by_risk" data-fmt="int" class="na">NA</b>, CAP <b data-ai="size.cap" data-fmt="int" class="na">NA</b></span></span>
+          <span id="chip-cap" class="chip info" title="risk alone would allow more contracts than the per-order cap" hidden><span class="t">Risk allows <b data-ai="size.contracts_by_risk" data-fmt="int" class="na">NA</b>, cap <b data-ai="size.cap" data-fmt="int" class="na">NA</b></span></span>
         </div>
         <ul id="size-why" class="why" aria-label="Why this size" hidden></ul>
         <div id="size-plan" class="plan" aria-label="Stop, target and what is left if the stop fills" hidden></div>
@@ -118,7 +117,7 @@
         so <span data-ai="size.contracts" class="na">NA</span> <span data-ai="contract.root" class="na">NA</span>, binds <span data-ai="size.binding" class="na">NA</span>
       </p>
       <div class="ctls">
-        <span class="lbl" id="lbl-risk" title="Risk % of loss room">Risk %</span>
+        <span class="lbl" id="lbl-risk" title="Risk % of loss room">Risk</span>
         <span class="chips" id="risk-pct" role="group" aria-labelledby="lbl-risk">
           <span class="seg"><button id="risk-pct-1" data-v="0.02" aria-pressed="false">2</button><button id="risk-pct-2" data-v="0.03" aria-pressed="false">3</button><button id="risk-pct-3" data-v="0.05" aria-pressed="true">5</button><button id="risk-pct-5" data-v="0.06" aria-pressed="false">6</button></span>
           <span class="step"><button id="risk-dec" aria-label="Decrease risk percent by half a point">-</button><output id="risk-val" class="val">5%</output><button id="risk-inc" aria-label="Increase risk percent by half a point">+</button></span>
@@ -141,12 +140,12 @@
       <div class="phead"><h2>Ticket</h2><span id="tk-state" class="badge">NONE</span>
         <span class="push meta">TTL <b id="tk-ttl" data-ai="ticket.ttl_s">NA</b><span class="msep" aria-hidden="true"></span>#<b id="tk-hash" data-ai="ticket.id8">NA</b></span></div>
       <div id="rail" class="rail" role="group" aria-label="Behavior rail" hidden>
-        <span id="rail-cool" class="rail-main"><span class="rail-t">COOLDOWN AFTER A LOSS</span><b id="rail-clock" class="rail-clock" aria-hidden="true" data-ai="behavior.cooldown_left_s" data-fmt="mmss">NA</b><span class="rail-sub">Walk away.</span></span>
-        <span id="rail-lock" class="rail-main" hidden><span class="rail-t">LOCKED FOR THE SESSION: <b data-ai="behavior.consecutive_losses" data-fmt="int" class="na">NA</b> LOSSES IN A ROW</span><span class="rail-sub">No new opens this session.</span></span>
+        <span id="rail-cool" class="rail-main"><span class="rail-t">Cooldown after a loss</span><b id="rail-clock" class="rail-clock" aria-hidden="true" data-ai="behavior.cooldown_left_s" data-fmt="mmss">NA</b><span class="rail-sub">Walk away.</span></span>
+        <span id="rail-lock" class="rail-main" hidden><span class="rail-t">Locked for the session: <b data-ai="behavior.consecutive_losses" data-fmt="int" class="na">NA</b> losses in a row</span><span class="rail-sub">No new opens this session.</span></span>
       </div>
       <button id="stage-btn" class="primary" disabled>STAGE (preview, places nothing)</button>
       <div id="manual" class="manual" role="group" aria-label="Manual order: your contracts and stop, through the same checks and ticket">
-        <span class="lbl">MANUAL</span>
+        <span class="lbl">Manual</span>
         <span class="step" title="contracts"><button id="mq-dec" aria-label="One contract fewer">-</button><output id="mq-val" class="val">1</output><button id="mq-inc" aria-label="One contract more">+</button></span>
         <span id="mq-cap" class="dim sub"></span>
         <label class="mq-stop">stop <input id="mq-stop" type="number" min="1" step="1" inputmode="numeric" aria-label="Stop distance in ticks">t</label>
@@ -179,7 +178,7 @@
       </div>
 
       <details id="tk-details" class="rbwrap" open>
-        <summary>Readback <span class="dim">(read it back before you hold)</span></summary>
+        <summary title="Read it back before you hold">Readback</summary>
         <dl id="tk-rb" class="rb">
           <dt>Protection</dt><dd id="tk-prot" data-ai="ticket.readback.protection" class="na">NA</dd>
           <dt>Account</dt><dd><span data-ai="ticket.readback.account_kind" class="na">NA</span><span data-slot="sens" data-tpl="t-tk-acct"></span></dd>
@@ -213,11 +212,11 @@
     <div class="chartbar">
       <span class="ind" id="ind" role="group" aria-label="Indicators"></span>
       <button id="rsp-toggle" type="button" class="rsp-tg" aria-pressed="true" title="Draw the level each timeframe has actually been respecting (history, not a forecast)">Respect</button>
-      <span id="ema-badge" class="badge stack" title="EMA 8 / 21 / 34 stack order" hidden><span class="bl"><span class="bl-l">EMA STACK</span><span class="bl-s">EMA</span></span><b data-ai="ind.ema.state" class="na">NA</b></span>
+      <span id="ema-badge" class="badge stack" title="EMA 8 / 21 / 34 stack order" hidden><span class="bl"><span class="bl-l">EMA stack</span><span class="bl-s">EMA</span></span><b data-ai="ind.ema.state" class="na">NA</b></span>
       <label class="sr" for="tz">Timezone</label>
       <select id="tz"><option value="America/Chicago">CT</option><option value="America/New_York">ET</option><option value="UTC">UTC</option></select>
       <span id="msg" class="msg" role="status"></span>
-      <span class="legend" aria-label="Chart line legend"><span class="lg entry">ENTRY</span><span class="lg stop">STOP</span><span class="lg vwap">VWAP</span><span class="lg gex">GEX</span></span>
+      <span class="legend" aria-label="Chart line legend"><span class="lg entry">Entry</span><span class="lg stop">Stop</span><span class="lg vwap">VWAP</span><span class="lg gex">GEX</span></span>
       <span class="dot-wrap" title="tick feed"><span id="dot"></span> ticks</span>
     </div>
     <div class="chartbody"><div id="tools" role="toolbar" aria-label="Drawing tools"></div><div id="chart"></div></div>
@@ -279,7 +278,7 @@
     <section id="ticks" class="panel" role="region" aria-label="Tick charts" data-own="1">
       <div class="phead"><h2>Tick charts</h2><span id="tk-state" class="push dim sub" role="status"></span></div>
       <div id="tk-body" class="mnbody"></div>
-      <p class="lvlegend"><span>Built from the live tape since the desk started recording; no history. Grey bar = missed prints.</span></p>
+      <p class="lvlegend" title="Built from the live tape since the desk started recording. Grey bar = missed prints."><span>Live tape only, no history.</span></p>
     </section>
 
     <!-- 6c2. ANALYST FUTURES CALLOUTS: third-party opinion, not signals. Structured fields only, no message text. -->
@@ -287,7 +286,7 @@
     <section id="feed" class="panel" role="region" aria-label="Analyst futures callouts" data-own="1">
       <div class="phead"><h2>Analyst callouts</h2><span id="fd-state" class="push dim sub" role="status"></span></div>
       <div id="fd-list" class="fdlist"></div>
-      <p class="lvlegend"><span>Opinion, not a signal. Orders still go through the ticket.</span></p>
+      <p class="lvlegend" title="Orders still go through the ticket."><span>Opinion, not a signal.</span></p>
     </section>
 
     <!-- 7. BLOTTER -->

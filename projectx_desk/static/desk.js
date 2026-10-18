@@ -27,7 +27,7 @@ const streaming = () => S.stream && Date.now() >= S.revealUntil;
 
 /* ================= formatting + data-ai fill ================= */
 const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o);
-const VERDICT = {ABOVE_RANDOM: 'BETTER THAN RANDOM', NOT_DISTINGUISHABLE: 'SAME AS RANDOM', BELOW_RANDOM: 'WORSE THAN RANDOM', TOO_FEW_TESTS: 'TOO FEW TESTS'};
+const VERDICT = {ABOVE_RANDOM: 'Better than random', NOT_DISTINGUISHABLE: 'Same as random', BELOW_RANDOM: 'Worse than random', TOO_FEW_TESTS: 'Too few tests'};
 function fmt(v, kind){
   if(kind === 'verdict') return VERDICT[v] || 'NA';
   if(v == null || (typeof v === 'number' && !isFinite(v))) return 'NA';
@@ -456,8 +456,8 @@ function renderKpi(){
   let tone = '';
   if(num(wr) && num(be)){
     const d = wr - be; tone = d >= 0 ? 'pos' : 'neg';
-    v.textContent = (d >= 0 ? 'ABOVE BE +' : 'BELOW BE ') + d.toFixed(1) + 'pt';
-  }else v.textContent = num(wr) ? 'BE NA' : 'NO TRADES';
+    v.textContent = (d >= 0 ? 'Above BE +' : 'Below BE ') + d.toFixed(1) + 'pt';
+  }else v.textContent = num(wr) ? 'BE NA' : 'No trades';
   fillEl.className = 'wr-fill ' + tone; v.className = 'verdict ' + tone;
   $('wr-need').hidden = !num(be); $('wr-need-na').hidden = num(be);
   const tot = (k.wins || 0) + (k.losses || 0);
@@ -469,6 +469,9 @@ function renderKpi(){
   $('kpi-pf').dataset.tone = num(k.profit_factor) ? (k.profit_factor >= 1 ? 'pos' : 'neg') : '';
   setPips('bar-orders', r && r.orders_today, r && r.orders_max);
   setPips('bar-open', r && r.open_contracts, r && r.max_contracts);
+  // the pip meters are not drawn; the value takes the tone instead (amber from 70% of the cap, magenta at it)
+  const pt = id => $(id).classList.contains('full') ? 'neg' : $(id).classList.contains('warn') ? 'warn' : '';
+  $('kpi-orders').dataset.tone = pt('bar-orders'); $('kpi-open').dataset.tone = pt('bar-open'); $('streak').dataset.tone = pt('bar-streak');
 }
 
 function renderBlotter(){
@@ -655,16 +658,17 @@ function renderLevels(){
     if(hasRate){held.append(' (', sp('', 'rate', 'int'), '%)')}
     else held.append(num(lv.n) && lv.n === 0 ? ' (no tests yet)' : ' (NA)');
     l2.append(held);
-    if(lv.small_sample) l2.append(mk('span', 'ss', 'SMALL SAMPLE'));
     // baseline: the same rules on random control lines near price. A level only means something if it beats this.
     const rnd = mk('span', 'l2r');
     rnd.title = 'The same bounce rules applied to random lines near price. If random lines hold as often, this level shows nothing.';
-    rnd.append('random lines ');
+    rnd.append('random ');
     if(num(lv.random_rate)) rnd.append(sp('', 'random_rate', 'int'), '% (n ', sp('', 'random_n', 'int'), ')');
     else rnd.append(num(lv.random_n) && lv.random_n > 0 ? sp('', 'random_rate', 'int') : 'NA');
     const vk = Object.prototype.hasOwnProperty.call(VERDICT, lv.verdict) ? lv.verdict : null;
-    const vd = sp('vd vd-' + (vk ? vk.toLowerCase() : 'na'), 'verdict', 'verdict');
-    rnd.append(vd);
+    // ONE verdict per row: the comparison with random lines, plus 'small sample' in the same muted text (colour carries the state)
+    const vd = mk('span', 'vd vd-' + (vk ? vk.toLowerCase() : 'na'));
+    vd.append(sp('', 'verdict', 'verdict'));
+    if(lv.small_sample) vd.append(' \u00b7 small sample');
     const bits = [];
     if(num(lv.failed) && lv.failed > 0) bits.push([lv.failed, 'failed']);
     if(num(lv.neutral) && lv.neutral > 0) bits.push([lv.neutral, 'flat']);
@@ -672,14 +676,15 @@ function renderLevels(){
     const l3 = mk('span', 'l3');
     const extra = mk('span', 'lv-x');
     bits.forEach(([v, w], i) => {if(i) extra.append(', '); const b = mk('b'); b.dataset.ai = pre + (w === 'failed' ? 'failed' : w === 'flat' ? 'neutral' : 'pending'); b.dataset.fmt = 'int'; extra.append(b, ' ' + w)});
-    l3.append(extra);
+    l3.append(vd, extra);
     const lr = RESULTS.has(lv.last_result) ? lv.last_result : null;
     const last = mk('span', 'lv-last');
     if(lr){last.append('last ', mk('span', 'rs rs-' + lr.toLowerCase(), lr));
       if(num(lv.last_bars_ago)){last.append(', '); const b = mk('b'); b.dataset.ai = pre + 'last_bars_ago'; b.dataset.fmt = 'int'; last.append(b, ' bars ago')}}
     else last.append('last none');
     l3.append(last);
-    row.append(l1, l2, rnd, l3);
+    l2.append(rnd);
+    row.append(l1, l2, l3);
     list.append(row);
   }
   fill($('levels'), view);
@@ -691,7 +696,7 @@ $('lv-list').addEventListener('click', e => {
 });
 
 /* ================= manage trade: tighten-only stop buttons (human clicks, like FLATTEN; no data-ai on controls) ================= */
-const MG_LABEL = {BREAKEVEN: 'STOP TO BREAKEVEN', ATR_TRAIL: 'STOP TO ATR TRAIL', EMA21_TRAIL: 'STOP TO EMA21 TRAIL'};
+const MG_LABEL = {BREAKEVEN: 'Stop to breakeven', ATR_TRAIL: 'Stop to ATR trail', EMA21_TRAIL: 'Stop to EMA21 trail'};
 let mgBusy = false, mgMsgT = 0;
 function mgSay(t, cls){
   const m = $('mg-msg'); m.textContent = t || ''; m.className = 'mg-msg' + (cls ? ' ' + cls : '');
@@ -718,7 +723,7 @@ function renderManage(){
     const lab = MG_LABEL[x.name] + ' ' + Number(x.price).toFixed(dec);
     if(b.firstChild.textContent !== lab) b.firstChild.textContent = lab;
     const tag = b.lastChild;
-    const hint = x.recommended ? 'RECOMMENDED' : x.valid ? 'not earned yet' : 'not valid now';
+    const hint = x.recommended ? 'recommended' : x.valid ? 'not earned yet' : 'not valid now';
     if(tag.textContent !== hint) tag.textContent = hint;
     tag.className = 'mg-tag ' + (x.recommended ? 'rec' : x.valid ? 'wait' : 'off');
     b.classList.toggle('rec', !!x.recommended);
@@ -1241,7 +1246,7 @@ function renderRespect(){
     const lv = ok && t ? rspLevels(tf).slice(0, 3) : [];
     if(ok && t){
       th.append(mk('span', '', rspNum(t.bars) ? t.bars + ' bars' : ''));
-      th.append(mk('span', 'tested', rspNum(t.tested) ? 'tested ' + t.tested + ' candidates' + (rspNum(t.family) && t.family > t.tested ? ' (FDR over ' + t.family + ')' : '') : ''));
+      {const te = mk('span', 'tested', rspNum(t.tested) ? 'tested ' + t.tested : ''); if(rspNum(t.tested)) te.title = 'tested ' + t.tested + ' candidate levels' + (rspNum(t.family) && t.family > t.tested ? ' (FDR over ' + t.family + ')' : ''); th.append(te)}
     }
     box.append(th);
     if(!ok){box.append(mk('p', 'none', R.status === 'loading' ? 'loading...' : 'respect data unavailable'))}
@@ -1259,10 +1264,8 @@ function renderRespect(){
         row.append(mk('span', 'rn', rspName(l.label)),
           mk('span', '', `held ${rspNum(l.held) ? l.held : 'NA'}/${rspNum(l.tests) ? l.tests : 'NA'}`),
           mk('span', '', `hold ${hr} vs placebo ${pr}` + (rspNum(l.p_value) ? ` p=${l.p_value < 0.001 ? '<0.001' : l.p_value.toFixed(3)}` : '')),
-          mk('span', 'vd vd-' + (vk ? vk.toLowerCase() : 'na'), vk === 'RESPECTED' ? 'RESPECTED' : vk ? VERDICT[vk] : 'NA'));
-        if(l.stable === true) row.append(mk('span', 'stb y', 'STABLE'));
-        else if(l.stable === false) row.append(mk('span', 'stb n', 'NOT STABLE'));
-        if(rspNum(l.tests) && l.tests < 30) row.append(mk('span', 'ss', 'SMALL SAMPLE'));
+          mk('span', 'vd vd-' + (vk ? vk.toLowerCase() : 'na'), [vk === 'RESPECTED' ? 'Respected' : vk ? VERDICT[vk] : 'NA',   // ONE verdict: respected / same as random, then stability and sample size in the same muted text
+            l.stable === true ? 'stable' : l.stable === false ? 'not stable' : '', rspNum(l.tests) && l.tests < 30 ? 'small sample' : ''].filter(Boolean).join(' \u00b7 ')));
         box.append(row);
       }
     }

@@ -9,7 +9,8 @@ ENV PYTHONUNBUFFERED=1 \
     PX_STATE_PATH=/data/day_state.json \
     PX_INTENT_PATH=/data/intents.json \
     PX_AUDIT_PATH=/data/audit.jsonl \
-    PX_HALT_FILE=/data/HALT
+    PX_HALT_FILE=/data/HALT \
+    PX_LOCK_FILE=/data/desk.lock
 
 RUN useradd --create-home --uid 10001 px && mkdir /data && chown px:px /data
 WORKDIR /app
@@ -20,7 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 USER px
 
-# The halt file, order count and intents live here. Losing this volume clears a halt and the day's counters.
+# The halt file, order count, intents and the one-desk lock live here. Losing this volume clears a halt and the day's counters.
 VOLUME ["/data"]
 EXPOSE 8600
 

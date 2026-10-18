@@ -18,6 +18,7 @@
   --border:#1a2130; --border-sub:#161c29; --border-strong:#2a3550;
   /* accents */
   --cyan:#38bdf8; --blue:#60a5fa; --green:#22c55e; --magenta:#f43f5e; --purple:#a855f7; --amber:#f59e0b;
+  --gold:#e5b53f; --slate:#8c9bb5;   /* candles up / down (desk.js C.up / C.dn) and the BUY / SELL buttons */
   /* accent ink for small text on dark (AA at 11px) */
   --cyan-ink:#7dd3fc; --green-ink:#4ade80; --mag-ink:#fb7185; --amber-ink:#fbbf24; --purple-ink:#c084fc;
   /* tints */
@@ -67,6 +68,15 @@ button.danger{border-color:rgba(244,63,94,.4);color:var(--mag-ink);background:rg
 button.danger:hover:not(:disabled){border-color:var(--magenta);background:var(--mag-bg)}
 button.primary{width:100%;min-height:36px;border-color:var(--cyan-line);color:var(--cyan-ink);background:linear-gradient(180deg,rgba(56,189,248,.12),rgba(56,189,248,.04));font-weight:600;letter-spacing:.06em}
 button.primary:disabled{border-color:var(--border);color:var(--text-muted);background:var(--bg-sub)}
+.manual{display:flex;align-items:center;gap:6px;margin:6px 0 0;flex-wrap:wrap}
+.manual .lbl{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--text-muted);letter-spacing:.08em}
+.manual .mq-stop{display:inline-flex;align-items:center;gap:3px;font-family:var(--mono);font-size:var(--fs-xs);color:var(--text-2)}
+.manual input{width:56px;min-height:28px;padding:0 4px;text-align:right;font-family:var(--mono)}
+.manual button.mini{min-height:28px;padding:0 7px;font-family:var(--mono);font-size:var(--fs-2xs);color:var(--text-2)}
+.manual button.buy,.manual button.sell{flex:1 1 72px;min-height:34px;font-weight:700;letter-spacing:.1em;color:#0b0f1a;border-width:0}
+.manual button.buy{background:var(--gold)} .manual button.sell{background:var(--slate)}
+.manual button.buy:hover:not(:disabled),.manual button.sell:hover:not(:disabled){filter:brightness(1.1)}
+.manual button.buy:disabled,.manual button.sell:disabled{opacity:.35;color:#0b0f1a}
 button.primary.refused:disabled{opacity:1;border-color:var(--mag-line);color:var(--mag-ink);background:repeating-linear-gradient(135deg,rgba(244,63,94,.10) 0 8px,rgba(244,63,94,.03) 8px 16px)}
 :focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
 

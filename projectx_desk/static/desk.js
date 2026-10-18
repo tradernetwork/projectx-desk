@@ -126,7 +126,8 @@ function syncSizeInputs(){
   $('risk-val').textContent = (S.riskPct * 100).toFixed(S.riskPct * 100 % 1 ? 1 : 0) + '%';
   LS.set('px.riskPct3', S.riskPct); LS.set('px.stopK', S.stopK);
 }
-function inputChanged(){syncSizeInputs(); schedule(100)}
+const MQ = {qty: 1, stopTouched: false};   // manual BUY/SELL state (filled in below)
+function inputChanged(){MQ.stopTouched = false; syncSizeInputs(); schedule(100)}   // the stop chips moved: the manual stop follows the ATR stop again
 $('risk-pct').onclick = e => {const b = e.target.closest('[data-v]'); if(b){S.riskPct = +b.dataset.v; inputChanged()}};
 $('risk-dec').onclick = () => {S.riskPct = Math.max(0.005, Math.round((S.riskPct - 0.005) * 1000) / 1000); inputChanged()};
 $('risk-inc').onclick = () => {S.riskPct = Math.min(0.1, Math.round((S.riskPct + 0.005) * 1000) / 1000); inputChanged()};
@@ -518,7 +519,7 @@ function renderPlaceResult(){
 }
 function renderAll(){
   applySlots();
-  renderWhy(); renderRibbon(); renderKpi(); renderSize(); renderTicketFields(); renderTicketMeta(); renderRisk(); renderBlotter(); renderAiPanel(); renderPlaceResult();
+  renderWhy(); renderRibbon(); renderKpi(); renderSize(); renderManual(); renderTicketFields(); renderTicketMeta(); renderRisk(); renderBlotter(); renderAiPanel(); renderPlaceResult();
   fill($('size'), S.ai);
   renderPair(); renderEma(); renderLevels(); renderManage(); drawReact(false);
   syncDesk();
@@ -790,6 +791,35 @@ async function doStage(body, cid){        // ONE staging path for the STAGE butt
   renderAll(); schedule(0);
   if(S.ticket && S.ticket.ticket_id) say('p', 'Ticket staged');
 }
+/* ---- manual BUY / SELL: the trader's own contracts and stop, through the SAME preview and ticket (server derives the risk and runs every check) ---- */
+MQ.qty = Math.max(1, parseInt(LS.get('px.mq', 1), 10) || 1);
+function renderManual(){
+  const a = S.ai, z = a && a.size, ok = !!(z && z.status === 'OK');
+  const cap = ok && typeof z.cap === 'number' ? Math.max(1, z.cap) : null;
+  if(cap !== null && MQ.qty > cap) MQ.qty = cap;
+  $('mq-val').textContent = String(MQ.qty);
+  const st = $('mq-stop');
+  if(!MQ.stopTouched && ok && typeof z.stop_ticks === 'number') st.value = String(z.stop_ticks);   // mirrors the ATR stop until you type your own
+  const can = !!(a && S.contractId) && !staging && parseInt(st.value, 10) >= 1;
+  for(const id of ['buy-btn', 'sell-btn']) $(id).disabled = !can;
+  $('mq-dec').disabled = MQ.qty <= 1; $('mq-inc').disabled = cap !== null && MQ.qty >= cap;
+  $('mq-cap').textContent = cap !== null ? 'cap ' + cap : '';
+}
+$('mq-dec').onclick = () => {MQ.qty = Math.max(1, MQ.qty - 1); LS.set('px.mq', MQ.qty); renderManual()};
+$('mq-inc').onclick = () => {MQ.qty += 1; LS.set('px.mq', MQ.qty); renderManual()};
+$('mq-stop').oninput = () => {MQ.stopTouched = true; renderManual()};
+$('mq-atr').onclick = () => {MQ.stopTouched = false; renderManual()};
+async function manualStage(side){
+  const t = parseInt($('mq-stop').value, 10);
+  if(!(t >= 1)){$('msg').textContent = 'Manual order needs a stop distance in ticks.'; return}
+  const cid = await sizeContract();
+  if(!cid){$('msg').textContent = 'Pick a contract first.'; return}
+  S.side = side; syncSizeInputs(); schedule(0);          // the LONG/SHORT chip shows the side being staged
+  await doStage({contract: cid, side, stop_ticks: t, qty: MQ.qty, order_type: 'market', source: 'manual'}, cid);   // same checks, same ticket, same hold-to-place
+}
+$('buy-btn').onclick = () => manualStage('long');
+$('sell-btn').onclick = () => manualStage('short');
+
 $('stage-btn').onclick = async () => {
   const z = S.ai && S.ai.size; if(!z || z.status !== 'OK' || z.refused || z.allowed === false) return;
   const cid = await sizeContract();
@@ -871,9 +901,12 @@ window.px = {snapshot(){return S.ai == null ? null : JSON.parse(JSON.stringify(S
 /* ================= chart (KLineChart v10) ================= */
 const err = e => {$('msg').textContent = (e && e.message) || String(e)};
 let cur = {ticker: null, tick: 0.25, tickValue: null, name: '', dec: 2};
-const C = {up: '#22c55e', dn: '#f43f5e', flat: '#76839a', grid: '#111621', axis: '#1a2130', text: '#76839a', cyan: '#38bdf8', amber: '#f59e0b', purple: '#a855f7', ink: '#e6ebf2'};
+// Candles: up = gold, down = slate (the TraderMatrix palette; keep in step with --gold/--slate in desk.css). Green/magenta stay
+// for outcomes (held/failed, stop lines, badges): a colour that means "price went up" must not also mean "good".
+const C = {up: '#e5b53f', dn: '#8c9bb5', flat: '#76839a', grid: '#111621', axis: '#1a2130', text: '#76839a', cyan: '#38bdf8', amber: '#f59e0b', purple: '#a855f7', ink: '#e6ebf2',
+           green: '#22c55e', mag: '#f43f5e'};
 const EMA_COL = ['#2dd4bf', '#60a5fa', '#e879f9'];   // EMA 8 / 21 / 34; keep in step with --ema8/21/34 in desk.css
-const RC = {BOUNCE: C.up, FAIL: C.dn, NEUTRAL: '#76839a', PENDING: C.cyan};
+const RC = {BOUNCE: C.green, FAIL: C.mag, NEUTRAL: '#76839a', PENDING: C.cyan};
 const MONO = '"JetBrains Mono", ui-monospace, monospace';
 const axis = {axisLine: {color: C.axis}, tickLine: {color: C.axis}, tickText: {color: C.text, size: 10, family: MONO}};
 const chs = {line: {color: '#3b4a68', style: 'dashed', dashedValue: [3, 3]}, text: {backgroundColor: '#111722', borderColor: '#2a3550', color: C.ink, family: MONO, size: 11}};
@@ -886,7 +919,7 @@ const STYLES = {
                        last: {upColor: C.cyan, downColor: C.cyan, noChangeColor: C.cyan, line: {style: 'dashed', dashedValue: [2, 3]},
                               text: {color: '#04121c', family: MONO, weight: '600', borderRadius: 3}}},
            tooltip: {title: {...legendTxt, color: '#93a0b4'}, legend: {...legendTxt, template: [{title: 'O ', value: '{open}'}, {title: 'H ', value: '{high}'}, {title: 'L ', value: '{low}'}, {title: 'C ', value: '{close}'}]}}},
-  indicator: {bars: [{upColor: 'rgba(34,197,94,.45)', downColor: 'rgba(244,63,94,.45)', noChangeColor: 'rgba(118,131,154,.45)'}],
+  indicator: {bars: [{upColor: 'rgba(229,181,63,.5)', downColor: 'rgba(140,155,181,.5)', noChangeColor: 'rgba(118,131,154,.45)'}],
               lines: ['#60a5fa', '#c084fc', '#38bdf8', '#fb7185', '#93a0b4'].map(color => ({color, size: 1})),
               tooltip: {title: legendTxt, legend: legendTxt}},
   xAxis: axis, yAxis: axis, separator: {color: C.axis}, crosshair: {horizontal: chs, vertical: chs},
@@ -1098,15 +1131,15 @@ function deskLines(){
   if(t && t.ticket_id && !t.consumed && !t.gone && t.contract === S.contractId && t.readback){
     const e = Number(t.readback.entry_ref), s = Number(t.readback.stop_price);
     if(isFinite(e)) out.push({price: e, label: 'ENTRY ' + e, color: C.cyan, ink: '#7dd3fc', dash: false, size: 1});
-    if(isFinite(s)) out.push({price: s, label: 'STOP ' + s, color: C.dn, ink: '#fb7185', dash: false, size: 1});
+    if(isFinite(s)) out.push({price: s, label: 'STOP ' + s, color: C.mag, ink: '#fb7185', dash: false, size: 1});
   }else{
     const tr = S.ai && S.ai.trade;   // live bracket on the contract we placed it on
     if(tr && S.placed && S.placed.contract === S.contractId){
       if(num(tr.entry_ref)) out.push({price: tr.entry_ref, label: 'ENTRY ' + tr.entry_ref + ' ' + (tr.state === 'PLACED' ? ((tr.filled || 0) > 0 ? 'FILLED' : tr.acked ? 'ACCEPTED' : 'PLACED') : tr.state), color: C.cyan, ink: '#7dd3fc', dash: false, size: 1});
       const sp = S.ai.manage && num(S.ai.manage.stop) ? S.ai.manage.stop : tr.stop_price;   // manage.stop follows a moved stop
-      if(num(sp)) out.push({price: sp, label: 'STOP ' + sp + ' ' + (tr.stop_state || 'PENDING'), color: C.dn, ink: '#fb7185', dash: tr.stop_state !== 'ACKED' && tr.stop_state !== 'ATOMIC', size: 1});
+      if(num(sp)) out.push({price: sp, label: 'STOP ' + sp + ' ' + (tr.stop_state || 'PENDING'), color: C.mag, ink: '#fb7185', dash: tr.stop_state !== 'ACKED' && tr.stop_state !== 'ATOMIC', size: 1});
     }else if(S.ai && S.ai.manage && num(S.ai.manage.stop)){   // position not placed from this page: still show where its stop is
-      out.push({price: S.ai.manage.stop, label: 'STOP ' + S.ai.manage.stop, color: C.dn, ink: '#fb7185', dash: false, size: 1});
+      out.push({price: S.ai.manage.stop, label: 'STOP ' + S.ai.manage.stop, color: C.mag, ink: '#fb7185', dash: false, size: 1});
     }
   }
   return out;

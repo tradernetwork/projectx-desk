@@ -85,6 +85,7 @@ arithmetic, not the result.
 |---|---|
 | **It sizes every trade** | From your remaining daily-loss and drawdown room and a stop set by ATR. It always rounds **down**. If one contract risks more than your budget it says `REFUSED`; it never rounds up. |
 | **It tells you why** | The size box lists its reasons: your risk %, the ADX and ATR cuts, the stop math, what risk alone would allow versus your cap. |
+| **It never locks you out of a hand-sized trade** | BUY and SELL take your own contract count and stop distance (the stop follows the ATR stop until you type one). Same checks, same ticket, same hold to place. If the loss room or a cap allows fewer than you asked, it says how many, it does not quietly shrink the order. |
 | **It gets smaller, never bigger** | Nothing scales risk up. Optional cuts for a choppy market (ADX under 20) or a very volatile one (ATR in the top fifth of its recent range) exist but are **off by default**: the stop is already sized by ATR, so the ATR cut priced volatility twice ([why](docs/SIZING.md)). `PX_SIZE_SCALERS=1` turns them on. |
 | **It shows what friction costs** | Set `PX_COST_RT_USD` (your fees per contract per round turn) and the size box shows the cost of the trade as a share of 1R and the win rate 1:1 needs after costs. On micros that number is the one that decides. |
 | **Guardrails** | Cooldown after a loss, lockout after 3 losses in a row, and after a loss your risk can't exceed what that trade risked. Defaults are settings. |

@@ -75,6 +75,9 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 - **The ADX/ATR scalers default OFF** (`PX_SIZE_SCALERS=1` to enable): the ATR stop already prices volatility. The one-click STAGE on analyst
   callouts defaults OFF (`PX_FEED_STAGE=1`); when used, the ticket is audited as `stage_source=callout`. The cost line needs
   `PX_COST_RT_USD`; unknown cost prints NA, never 0.
+- **Manual BUY/SELL is the same order path.** `qty` on `/api/preview` (UI only, never MCP) makes the guard derive the risk from the trader's
+  contracts and stop and run every check unchanged; `manual_qty` refuses with the number the room and caps allow, never sizes down silently.
+  Do not add a check bypass for manual orders; the rails have their own `0` switches.
 - **Sizing is always computed** and rounds down. 1R is `risk_pct` of the live drawdown room (balance minus `PX_MLL_FLOOR`), never of the account
   balance and never above the remaining daily or drawdown room; unreadable inputs size to 0 (`PX_RISK_BASE`, `docs/DECISIONS.md` Round 4). ADX/ATR scalers and the behavioral rails only ever refuse or reduce.
 - **Stops only tighten** (`move_stop`): toward price, never wider, never into the market, simulated accounts only.

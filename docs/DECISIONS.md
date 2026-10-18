@@ -340,3 +340,22 @@ What it got right, what it had stale, and what changed:
 - **Not actionable here:** the invalidation tests for the behavioral rails and the scalers (200+ logged trades, KS tests on R after a
   loss versus after a win) need a trade log this desk does not yet have. The audit file now records enough (ticket, risk, source) to
   build one. The "mocks encode the author's assumptions" point stands and is why nothing has been pointed at a real account.
+
+## Round 11: manual BUY / SELL, and the chart palette (2026-10-18)
+
+- **The size box advises; it no longer gates.** STAGE only works when the ATR sizing says OK, so a GRANULARITY refusal (one contract
+  risks more than the scaled budget) or a missing ATR left the trader with no way to enter at all. The Ticket panel now has BUY and
+  SELL with a contract count and a stop distance in ticks (the stop mirrors the ATR stop until you type your own; ATR snaps it back).
+  It is NOT a second order path: the button posts `qty` to the same `/api/preview`, the guard derives the risk (`qty x stop ticks x
+  tick value`, exact decimal so the floor lands on `qty`) and runs every check unchanged: halt, account, quote age, stop side and
+  distance, session window, flat-by, the loss room net of open P&L, the contract caps, the behavioral rails, `contract_flat`,
+  `no_unknown`. Two checks are added: `manual_qty_cap` (above `PX_MAX_QTY_ORDER`) and `manual_qty` (the room, the after-loss cap or
+  the caps allow fewer than asked: refused with the number they allow, never silently reduced). The ticket readback says
+  `sized_by=MANUAL`, the audit writes a `manual` event, and placing is the same hold. Exits are still FLATTEN and the stop buttons.
+  MCP gets no `qty`: the AI surface sizes by risk only, the human picks a size by hand.
+- **What still stops you, and the knobs:** the cooldown and lockout (`PX_COOLDOWN_AFTER_LOSS_S=0`, `PX_MAX_CONSEC_LOSSES=0` turn them
+  off), the after-loss size cap (`PX_SIZE_AFTER_LOSS_LOCK=0`), the daily loss limit and `PX_MLL_FLOOR` (not negotiable, Topstep ends
+  the account), the per-order cap (`PX_MAX_QTY_ORDER`) and one open trade per contract. None of these were loosened.
+- **Candles are gold (up) and slate (down)**, `C.up`/`C.dn` in `desk.js` and `--gold`/`--slate` in `desk.css`, on the candle chart,
+  the volume bars, the buy/sell volume pane, the tick bars and the timeframe mini-charts. Green and magenta stay for outcomes
+  (held/failed, stop lines, badges): a colour that means "price went up" must not also mean "good". BUY is gold, SELL is slate.

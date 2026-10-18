@@ -335,15 +335,18 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         b = await body(request)
         g = request.app.state.guard
         try:
+            qty = b.get("qty")                      # manual BUY/SELL: the trader's own contracts; the risk is derived, every check still runs
+            if qty is not None and (isinstance(qty, bool) or not isinstance(qty, int)):
+                raise HTTPException(400, "qty must be a whole number")
             rd = b.get("risk_dollars")
             scale = None
-            if rd is None and b.get("risk_pct") is not None:
+            if qty is None and rd is None and b.get("risk_pct") is not None:
                 rd, scale = await px_digest.scaled_risk(request.app, b.get("contract"), float(b["risk_pct"]))
             sp = b.get("stop_price")
             if sp is None and b.get("stop_ticks") is not None:
                 sp = await g.stop_from_ticks(b.get("contract"), (b.get("side") or "").lower(), b["stop_ticks"])
             p = await g.preview(contract_id=b.get("contract"), side=b.get("side"), stop_price=sp, risk_dollars=rd,
-                                order_type=b.get("order_type", "market"), entry=b.get("entry"), origin="ui")
+                                order_type=b.get("order_type", "market"), entry=b.get("entry"), origin="ui", qty=qty)
         except (TypeError, ValueError, GuardError) as e:
             raise HTTPException(400, str(e)[:80])
         if p.ok and p.ticket is not None and b.get("source") == "callout":

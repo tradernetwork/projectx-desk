@@ -97,7 +97,7 @@ button.primary.refused:disabled{opacity:1;border-color:var(--mag-line);color:var
 .ribbon{grid-row:1} .kpis{grid-row:2} .col-left{grid-row:3} .chartwrap{grid-row:4;height:70dvh;min-height:360px} .col-right{grid-row:5} .strip{grid-row:6}
 @media (min-width:1100px){
   .desk{height:100dvh;min-height:0;overflow:hidden;
-    grid-template-columns:clamp(330px,20vw,392px) minmax(0,1fr) clamp(300px,18.5vw,370px);
+    grid-template-columns:clamp(330px,20vw,392px) minmax(0,1fr) clamp(300px,19.17vw,372px);
     grid-template-rows:auto auto minmax(0,1fr) auto}
   .ribbon{grid-column:1/-1;grid-row:1} .kpis{grid-column:1/-1;grid-row:2}
   .col-left{grid-column:1;grid-row:3} .chartwrap{grid-column:2;grid-row:3;height:auto;min-height:0} .col-right{grid-column:3;grid-row:3}

@@ -524,7 +524,7 @@ function renderAll(){
   applySlots();
   renderWhy(); renderRibbon(); renderKpi(); renderSize(); renderManual(); renderTicketFields(); renderTicketMeta(); renderRisk(); renderBlotter(); renderAiPanel(); renderPlaceResult();
   fill($('size'), S.ai);
-  renderPair(); renderEma(); renderLevels(); renderManage(); drawReact(false);
+  renderPair(); renderEma(); renderRegime(); renderLevels(); renderManage(); drawReact(false);
   syncDesk();
 }
 setInterval(() => {renderTicketMeta()}, 250);
@@ -624,9 +624,19 @@ document.addEventListener('visibilitychange', () => {if(document.visibilityState
 function renderEma(){
   const e = S.ai && S.ai.ind && S.ai.ind.ema, st = e && ['BULL', 'BEAR', 'MIXED'].includes(e.state) ? e.state : null;
   const bd = $('ema-badge');
-  bd.hidden = !indOn.EMA;
+  bd.hidden = false;
   bd.dataset.state = st || 'NA';
   fill(bd, S.ai);
+}
+
+/* ================= regime chip: advisory only, never disables a button ================= */
+function renderRegime(){
+  const c = $('regime-chip'), g = S.ai && S.ai.regime, st = g && g.state;
+  const adx = g && typeof g.adx === 'number' && isFinite(g.adx) ? Math.round(g.adx) : null;
+  if((st !== 'RANGING' && st !== 'TRENDING') || adx === null){c.hidden = true; return}
+  c.hidden = false; c.className = 'chip ' + (st === 'RANGING' ? 'warn' : 'muted');
+  c.textContent = st === 'RANGING' ? `RANGING, ADX ${adx} (sit-out zone)` : `TRENDING, ADX ${adx}`;
+  c.title = 'ADX below 20 means price is chopping. Trend setups fail more often here.';
 }
 
 /* ================= level reactions panel ================= */
@@ -1080,7 +1090,7 @@ chart.setDataLoader({
       if(stale()){callback([], false); return}
       $('msg').textContent = '';
       callback(bars, {forward: bars.length > 0, backward: false});
-      if(type === 'init') setTimeout(() => {restoreOverlays(); drawDesk(true); drawReact(true); drawRespect(true)}, 0);
+      if(type === 'init') setTimeout(() => {restoreOverlays(); drawDesk(true); drawReact(true); drawRespect(true); I.hsig = ''; indSync()}, 0);
     }catch(e){err(e); callback([], false)}
   },
   subscribeBar: async ({symbol, period, callback}) => {
@@ -1289,7 +1299,7 @@ async function respectFetch(){
     if(my !== R.seq) return;
     R.status = 'error'; R.code = e && e.code ? e.code : 'network'; R.data = null;
   }
-  renderRespect(); drawRespect(false); mnSync();
+  renderRespect(); drawRespect(false); mnSync(); indSync();
 }
 function respectLoad(newContract){   // on load/contract change; a timeframe change only re-highlights
   if(newContract){R.data = null; R.status = 'loading'; R.code = ''; R.pick = {}; R.seq++; R.sig = ''; try{chart.removeOverlay({groupId: 'respect'})}catch(e){err(e)}}
@@ -1573,7 +1583,7 @@ const tkAll = () => {for(const n of TK.sizes) tkFetch(n)};
 /* ---- drawing toolbar ---- */
 const TOOLS = [['Trend', 'segment'], ['Ray', 'rayLine'], ['H-line', 'horizontalStraightLine'], ['V-line', 'verticalStraightLine'],
   ['Chan', 'parallelStraightLine'], ['Fib', 'fibonacciLine'], ['Zone', 'zoneBand'], ['Meas', 'measure'], ['Note', 'simpleAnnotation']];
-const NONUSER = ['desk', 'react', 'respect'];   // overlay groups that are never saved as user drawings
+const NONUSER = ['desk', 'react', 'respect', 'autolvl'];   // overlay groups that are never saved as user drawings
 let magnet = LS.get('px.magnet', 0), locked = false, hidden = false;
 const MODES = ['normal', 'weak_magnet', 'strong_magnet'];
 function mkOv(o){
@@ -1613,7 +1623,7 @@ function toolbar(){
     else if(b.id === 'mag'){magnet = (magnet + 1) % 3; LS.set('px.magnet', magnet); magLabel(); chart.getOverlays().filter(o => !NONUSER.includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, mode: MODES[magnet]}))}
     else if(b.id === 'lock'){locked = !locked; b.classList.toggle('on', locked); chart.getOverlays().filter(o => !NONUSER.includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, lock: locked}))}
     else if(b.id === 'hide'){hidden = !hidden; b.classList.toggle('on', hidden); chart.getOverlays().filter(o => !NONUSER.includes(o.groupId)).forEach(o => chart.overrideOverlay({id: o.id, visible: !hidden}))}
-    else if(b.id === 'clear'){chart.removeOverlay(); LS.set('px.ov.' + cur.ticker, []); drawDesk(true); drawReact(true); drawRespect(true)}
+    else if(b.id === 'clear'){chart.removeOverlay(); LS.set('px.ov.' + cur.ticker, []); drawDesk(true); drawReact(true); drawRespect(true); I.hsig = ''; indSync()}
     else if(b.id === 'shot'){const a = document.createElement('a'); a.href = chart.getConvertPictureUrl(true, 'png', '#0A0E17'); a.download = `${cur.name || 'chart'}-${Date.now()}.png`; a.click()}
   };
 }
@@ -1625,22 +1635,127 @@ addEventListener('keydown', e => {
   if(hot && !e.ctrlKey && !e.metaKey && !e.altKey) setActive(hot);
 });
 
-/* ---- indicators ---- */
-const INDS = [['BSV', 'BUY/SELL VOL', false], ['VOL', 'VOL (candle colour)', false], ['VWAP', 'VWAP', true], ['EMA', 'EMA 8 21 34', true], ['BOLL', 'BOLL', false], ['RSI', 'RSI', false], ['MACD', 'MACD', false]];
-const indOn = {BSV: true, VOL: false, VWAP: true, EMA: true, ...LS.get('px.ind', {})};
-const MAIN = new Set(['VWAP', 'EMA', 'BOLL']);
-function applyInd(n, on){
-  if(on && n === 'EMA') chart.createIndicator({name: 'EMA', paneId: 'candle_pane', calcParams: [8, 21, 34], styles: {lines: EMA_COL.map(color => ({color, size: 1.5, style: 'solid', smooth: false}))}}, true);
-  else if(on) chart.createIndicator(MAIN.has(n) ? {name: n, paneId: 'candle_pane'} : {name: n}, MAIN.has(n));
-  else chart.removeIndicator({name: n});
+/* ---- indicators: EMA 21, VWAP and the BUY/SELL VOL pane are always on. Everything else comes from GET /api/indicators
+   (what price is respecting on the timeframe shown) or from a pin. The server picks; the page only draws the diff. ---- */
+const indOn = {BSV: true, EMA: true};   // always on; renderEma and the flow poll read these
+const ALWAYS = [['ema21', 'EMA 21', 'The 21 EMA, always on'], ['vwap', 'VWAP', 'Session VWAP, always on'], ['vol', 'Volume', 'Real buy/sell volume pane, always on']];
+const PINS = [['EMA8', 'EMA 8 (fast)'], ['SMA50', 'SMA 50'], ['EMA34', 'EMA 34'], ['BOLL', 'BOLL'], ['RSI', 'RSI'], ['MACD', 'MACD'], ['VOL', 'VOL (candle colour)']];
+const PIN = {...LS.get('px.ind.pin', {})};
+const IND_TF = {'second,15': '5m', 'minute,1': '5m', 'minute,5': '5m', 'minute,15': '15m', 'minute,30': '15m', 'hour,1': '1h', 'hour,4': '4h', 'day,1': '1d'};
+const IND_POLL_MS = 60000, IND_KEEP_MS = 600000;
+const AUTO_COL = '#d6a73a';
+const MA_COL = ['#E9EEF6', '#5FB3D9', '#B49AE0', '#7fb08a', '#D6A73A', '#8EA3C4'];
+const I = {seq: 0, busy: false, key: '', sel: null, good: 0, applied: '', hsig: '', timer: null};   // sel: last good {levels, oscillators}
+const indNum = v => typeof v === 'number' && isFinite(v);
+function indSel(){   // the auto selection to honour now: the last good one for this contract and timeframe, for up to 10 minutes
+  return I.sel && I.key === indKey() && Date.now() - I.good < IND_KEEP_MS ? I.sel : {levels: [], oscillators: []};
 }
-for(const [n, l] of INDS){
-  const lab = mk('label'), cb = mk('input'); cb.type = 'checkbox'; cb.dataset.ind = n; cb.checked = !!indOn[n];
-  lab.append(cb, document.createTextNode(' ' + l));
-  if(n === 'EMA'){lab.classList.add('ema'); for(const k of [0, 1, 2]){const sw = mk('i', 'sw'); sw.style.background = EMA_COL[k]; sw.setAttribute('aria-hidden', 'true'); lab.append(sw)}}
-  $('ind').append(lab);
+const indKey = () => (S.contractId || '') + '|' + (IND_TF[S.tf] || '5m');
+function indWanted(){
+  const sel = indSel(), ema = new Set([21]), ma = new Set(), hz = [], osc = new Set();
+  if(PIN.EMA8) ema.add(8);
+  if(PIN.EMA34) ema.add(34);
+  if(PIN.SMA50) ma.add(50);
+  let boll = !!PIN.BOLL;
+  for(const l of sel.levels){
+    if(l.draw === 'series' && (l.family === 'ema' || l.family === 'sma') && indNum(l.period) && l.period >= 2 && l.period <= 500) (l.family === 'ema' ? ema : ma).add(Math.round(l.period));
+    else if(l.draw === 'series' && l.family === 'boll') boll = true;
+    else if(l.draw === 'horizontal' && indNum(l.price)) hz.push(l);
+  }
+  for(const o of sel.oscillators) osc.add(o.id);
+  if(PIN.RSI) osc.add('rsi');
+  if(PIN.MACD) osc.add('macd');
+  return {ema: [...ema].sort((a, b) => a - b), ma: [...ma].sort((a, b) => a - b), boll, rsi: osc.has('rsi'), macd: osc.has('macd'), vol: !!PIN.VOL, hz};
 }
-$('ind').onchange = e => {const n = e.target.dataset.ind; indOn[n] = e.target.checked; LS.set('px.ind', indOn); applyInd(n, e.target.checked); renderEma()};
+function maStyles(ps){return {lines: ps.map((p, i) => ({color: p === 8 ? EMA_COL[0] : p === 21 ? EMA_COL[1] : p === 34 ? EMA_COL[2] : MA_COL[3 + (i % 3)], size: 1.5, style: 'solid', smooth: false}))}}
+function indHave(n){try{return chart.getIndicators({name: n}).length > 0}catch{return false}}
+function indSync(){   // diff the wanted set against what is drawn; only touch what changed
+  try{
+    const w = indWanted(), a = I.applied ? JSON.parse(I.applied) : {ema: [], ma: [], boll: false, rsi: false, macd: false, vol: false};
+    const sameArr = (x, y) => x.join() === y.join();
+    if(!indHave('VWAP')) chart.createIndicator({name: 'VWAP', paneId: 'candle_pane'}, true);
+    if(!indHave('BSV')) chart.createIndicator({name: 'BSV'}, false);
+    if(!sameArr(w.ema, a.ema) || !indHave('EMA')){chart.removeIndicator({name: 'EMA'}); chart.createIndicator({name: 'EMA', paneId: 'candle_pane', calcParams: w.ema, styles: maStyles(w.ema)}, true)}
+    if(!sameArr(w.ma, a.ma) || (w.ma.length > 0) !== indHave('MA')){
+      chart.removeIndicator({name: 'MA'});
+      if(w.ma.length) chart.createIndicator({name: 'MA', paneId: 'candle_pane', calcParams: w.ma, styles: {lines: w.ma.map((p, i) => ({color: MA_COL[3 + (i % 3)], size: 1.5, style: 'solid', smooth: false}))}}, true);
+    }
+    for(const [k, n, main] of [['boll', 'BOLL', true], ['rsi', 'RSI', false], ['macd', 'MACD', false], ['vol', 'VOL', false]]){
+      if(w[k] === indHave(n) && (w[k] === a[k] || indHave(n))) continue;
+      if(w[k]) chart.createIndicator(main ? {name: n, paneId: 'candle_pane'} : {name: n}, main); else chart.removeIndicator({name: n});
+    }
+    I.applied = JSON.stringify({ema: w.ema, ma: w.ma, boll: w.boll, rsi: w.rsi, macd: w.macd, vol: w.vol});
+    drawAutoLevels(w.hz);
+  }catch(e){err(e)}
+  indChips();
+}
+function drawAutoLevels(hz){   // horizontal auto levels (fib, prior, keltner) on the respectLevel overlay; a line the Respect toggle already draws is skipped
+  const tk = cur && cur.tick ? cur.tick : 0, rl = respectLines();
+  const lines = hz.filter(l => !rl.some(r => Math.abs(r.price - l.price) <= Math.max(tk * 2, 1e-9))).map(l => ({price: l.price, color: AUTO_COL, dv: [6, 4], stable: false,
+    label: `${rspName(l.label)}${indNum(l.held) && indNum(l.tests) ? ` ${l.held}/${l.tests}` : ''}`}));
+  const sig = JSON.stringify(lines) + '|' + (S.contractId || '');
+  if(sig === I.hsig) return;
+  const last = chart.getDataList().slice(-1)[0];
+  if(!last && lines.length) return;   // retry once bars exist
+  I.hsig = sig;
+  try{
+    chart.removeOverlay({groupId: 'autolvl'});
+    for(const l of lines) chart.createOverlay({name: 'respectLevel', groupId: 'autolvl', lock: true, points: [{timestamp: last.timestamp, value: l.price}], extendData: l});
+  }catch(e){err(e)}
+}
+function indChips(){   // locked "always" chips, auto chips with the reason as tooltip, and the pin box
+  const box = $('ind');
+  if(!I.pinEl) I.pinEl = pinBox();   // built once, so a click keeps focus and the box stays open
+  box.replaceChildren();
+  for(const [, l, t] of ALWAYS){const c = mk('span', 'ichip always', l); c.title = t; box.append(c)}
+  const sel = indSel();
+  for(const l of sel.levels){
+    const c = mk('span', 'ichip auto', rspName(l.label));
+    c.title = (l.reason === 'RESPECTED' || !l.reason ? 'respected' : String(l.reason).toLowerCase()) + (indNum(l.held) && indNum(l.tests) ? ` ${l.held}/${l.tests}` : '') + (l.stable === true ? ', stable' : l.stable === false ? ', not stable' : '');
+    box.append(c);
+  }
+  for(const o of sel.oscillators){
+    const c = mk('span', 'ichip auto', rspName(o.label));
+    c.title = 'active' + (indNum(o.pctile) ? ', top ' + Math.max(1, Math.round((1 - o.pctile) * 100)) + '% of recent swing' : '');
+    box.append(c);
+  }
+  box.append(I.pinEl);
+}
+function pinBox(){
+  const d = mk('details', 'pin');
+  d.append(mk('summary', '', 'Pin more'));
+  const body = mk('div', 'pinbody');
+  for(const [k, l] of PINS){
+    const lab = mk('label'), cb = mk('input'); cb.type = 'checkbox'; cb.dataset.pin = k; cb.checked = !!PIN[k];
+    lab.append(cb, document.createTextNode(' ' + l)); body.append(lab);
+  }
+  d.append(body); return d;
+}
+$('ind').onchange = e => {const k = e.target.dataset.pin; if(!k) return; PIN[k] = e.target.checked; LS.set('px.ind.pin', PIN); indSync()};
+async function indFetch(){
+  const cid = S.contractId; if(!cid || I.busy) return;
+  const key = indKey(), my = ++I.seq; I.busy = true;
+  try{
+    const r = await fetch('/api/indicators?contract=' + encodeURIComponent(cid) + '&tf=' + (IND_TF[S.tf] || '5m'), {headers: {accept: 'application/json'}});
+    let b = null; try{b = await r.json()}catch{}
+    if(my !== I.seq || key !== indKey()) return;   // superseded by a newer request, contract or timeframe
+    if(r.ok && b && b.status === 'ok' && b.contract === cid && Array.isArray(b.levels)){
+      I.sel = {
+        levels: b.levels.filter(l => l && typeof l.label === 'string' && (l.draw === 'series' || l.draw === 'horizontal')).slice(0, 3),
+        oscillators: (Array.isArray(b.oscillators) ? b.oscillators : []).filter(o => o && (o.id === 'macd' || o.id === 'rsi')).slice(0, 2)};
+      I.key = key; I.good = Date.now();
+    }   // loading, error, 404: keep the last good selection until it ages out
+  }catch(e){}
+  finally{if(my === I.seq) I.busy = false}
+  indSync();
+}
+function indLoad(){   // contract or timeframe change: drop the old selection at once, then fetch
+  I.seq++; I.busy = false;
+  if(I.key !== indKey()){I.sel = null; I.hsig = ''; try{chart.removeOverlay({groupId: 'autolvl'})}catch(e){err(e)}}
+  indSync(); indFetch();
+}
+I.timer = setInterval(() => {if(document.visibilityState === 'visible'){I.busy = false; indFetch()}}, IND_POLL_MS);
+document.addEventListener('visibilitychange', () => {if(document.visibilityState === 'visible') indFetch()});
 
 /* ---- contract + timeframe (ribbon) ---- */
 const TFS = [['second,15', '15s'], ['minute,1', '1m'], ['minute,5', '5m'], ['minute,15', '15m'], ['minute,30', '30m'], ['hour,1', '1h'], ['hour,4', '4h'], ['day,1', '1D']];   // the desk always STARTS on 5m (never restored from a saved choice); switch freely during the session
@@ -1667,7 +1782,7 @@ function load(){
   LS.set('px.contract', o.value);
   const sym = want?.ticker !== o.value, pp = chart.getPeriod(), per = pp?.type !== type || pp?.span !== +span;
   cur = {ticker: o.value, tick, tickValue: o.dataset.tv === '' ? null : +o.dataset.tv, name: o.dataset.name, dec};
-  S.contractId = o.value; FLOW.since = null; FLOW.holes = []; FLOW.m = new Map(); for(const n of TK.sizes){TK.bars[n] = []; tkMeta(n); tkDraw(n)}; syncTf(); deskSig = ''; reactSig = ''; respectLoad(sym);
+  S.contractId = o.value; FLOW.since = null; FLOW.holes = []; FLOW.m = new Map(); for(const n of TK.sizes){TK.bars[n] = []; tkMeta(n); tkDraw(n)}; syncTf(); deskSig = ''; reactSig = ''; respectLoad(sym); indLoad();
   want = {ticker: o.value, type, span: +span}; lastPx = null; $('price').textContent = 'NA'; $('price').className = 'price';
   if(sym) chart.setSymbol({ticker: o.value, pricePrecision: dec, volumePrecision: 0});
   if(per) chart.setPeriod({span: +span, type});
@@ -1679,7 +1794,7 @@ $('c').onchange = load;
 $('tz').value = LS.get('px.tz', 'America/Chicago');
 $('tz').onchange = () => {LS.set('px.tz', $('tz').value); chart.setTimezone($('tz').value)};
 toolbar(); magLabel(); syncTf(); syncSizeInputs();
-for(const [n] of INDS) if(indOn[n]) applyInd(n, true);
+indSync();
 new ResizeObserver(() => chart.resize()).observe($('chart'));
 
 applySlots(); renderAll(); renderRespect();

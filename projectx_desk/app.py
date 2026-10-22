@@ -20,6 +20,9 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Str
 from fastapi.staticfiles import StaticFiles
 
 from projectx_desk import digest as px_digest
+from projectx_desk import grades as px_grades
+from projectx_desk import indicators as px_ind
+from projectx_desk import respect as px_respect
 from projectx_desk import feed as px_feed
 from projectx_desk import lock as px_lock
 from projectx_desk import mcp as px_mcp
@@ -81,7 +84,11 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
                 except (PXError, KeyError, IndexError) as e:  # UI still loads; /state.json says why
                     app.state.boot_error = _boot_code(e)
             retry = asyncio.create_task(_boot_retry(app)) if connect and app.state.boot_error else None
+            roots = px_ind.parse_roots(os.getenv("PX_TRACK_ROOTS")) if connect else []
+            app.state.track_task = asyncio.create_task(_track_loop(app, roots)) if roots else None
             yield
+            if app.state.track_task is not None:
+                app.state.track_task.cancel()
             if retry is not None:
                 retry.cancel()
             if deadline is not None:
@@ -187,6 +194,25 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         except px_digest.RespectError as e:
             hdr = {"Retry-After": "30"} if e.code == "RATE_LIMITED" else None
             return JSONResponse({"error": e.code}, status_code=429 if e.code == "RATE_LIMITED" else 502, headers=hdr)
+
+    @app.get("/api/indicators")
+    async def indicators(request: Request, contract: str = "", tf: str = ""):
+        """Read-only: which indicators deserve the chart on this timeframe. Reuses the cached respect scan (no rescan, no
+        extra bar fetch beyond what respect_result already does). Fixed codes only; input is never echoed."""
+        if not CONTRACT_RE.match(contract or ""):
+            return JSONResponse(px_ind.status_payload("error", "BAD_CONTRACT"), status_code=400)
+        if tf not in px_respect.TIMEFRAMES:
+            return JSONResponse(px_ind.status_payload("error", "BAD_TF"), status_code=400)
+        try:
+            ev = await _indicators_eval(request.app, contract, tf)
+        except px_digest.RespectError as e:
+            code = e.code if isinstance(e.code, str) and re.match(r"^[A-Z_]{1,24}$", e.code) else "UPSTREAM_ERROR"
+            hdr = {"Retry-After": "30"} if code == "RATE_LIMITED" else None
+            return JSONResponse(px_ind.status_payload("error", code, contract, tf),
+                                status_code=429 if code == "RATE_LIMITED" else 502, headers=hdr)
+        if ev is None:
+            return px_ind.status_payload("loading", "", contract, tf)
+        return px_ind.payload(contract, tf, ev)
 
     @app.get("/api/callouts")
     async def callouts(request: Request):
@@ -528,6 +554,93 @@ async def _deadline_loop(app):
             raise
         except Exception as e:  # noqa: BLE001 - the loop must survive anything
             print(f"deadline loop: {type(e).__name__}", flush=True)
+
+
+async def _indicators_eval(app, cid, tf, res=None):
+    """indicators.evaluate for one (contract, timeframe) from the cached respect scan and the bars it already fetched.
+    None while the data is not there yet. Raises RespectError with a fixed code."""
+    res = res if res is not None else await px_digest.respect_result(app, cid)
+    d = ((res or {}).get("tfs") or {}).get(tf)
+    hit = getattr(app.state, "respect_bars", {}).get((cid, tf))
+    if not isinstance(d, dict) or not hit or d.get("note"):
+        return None
+    bars = px_respect.normalize(hit["bars"])
+    if not bars:
+        return None
+    return px_ind.evaluate(d, bars)
+
+
+TRACK_MIN_S = 60.0
+
+
+def _track_interval():
+    try:
+        return max(TRACK_MIN_S, float(os.getenv("PX_TRACK_INTERVAL_S", 300)))
+    except ValueError:
+        return 300.0
+
+
+async def _resolve_roots(app, roots, have):
+    """Front contract id per root, added to `have` (root -> id). Unknown roots are skipped with a key-name-only warning."""
+    now = datetime.now(timezone.utc)
+    for root in roots:
+        if root in have:
+            continue
+        try:
+            cs = await app.state.client.search_contracts(root, live=_live_data())
+        except PXError:
+            raise
+        cid = px_ind.front_contract(cs, root, now.year, now.month)
+        if cid is None:
+            print(f"track: no contract found for root {root}", flush=True)
+            have[root] = None            # remembered so an unknown root is not searched every cycle
+            continue
+        have[root] = cid
+
+
+async def _track_loop(app, roots):
+    """Desk-side tracking, no browser needed: keep the trade tape on for the front contract of each root, rescan the
+    respect set every PX_TRACK_INTERVAL_S (sequentially: retrieveBars has a budget), and append the grade log."""
+    grade = px_grades.GradeLog.from_env(ROOT)
+    app.state.grades = grade
+    have, taped, delay = {}, set(), 5.0
+    while app.state.boot_error:                       # hubs are not up until the boot succeeded
+        await asyncio.sleep(2.0)
+    while True:
+        try:
+            await _resolve_roots(app, roots, have)
+            for cid in [c for c in have.values() if c and c not in taped]:
+                await app.state.live._ensure_tape(cid)
+                taped.add(cid)
+            if app.state.market is not None and taped:
+                app.state.market.start()
+            break
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 - retry with backoff
+            print(f"track: boot failed ({type(e).__name__}), retrying", flush=True)
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 120.0)
+    interval = _track_interval()
+    while True:
+        for root in roots:
+            cid = have.get(root)
+            if not cid:
+                continue
+            try:
+                res = await px_digest.respect_result(app, cid)
+                for tf in px_respect.TIMEFRAMES:
+                    ev = await _indicators_eval(app, cid, tf, res)
+                    if ev is not None:
+                        grade.log_eval(cid, tf, ev)
+            except asyncio.CancelledError:
+                raise
+            except px_digest.RespectError as e:
+                print(f"track: scan failed {root} {e.code}", flush=True)
+            except Exception as e:  # noqa: BLE001 - one contract never stops the loop
+                print(f"track: scan failed {root} {type(e).__name__}", flush=True)
+            await asyncio.sleep(1.0)
+        await asyncio.sleep(interval)
 
 
 def _schedule_reseed(app):

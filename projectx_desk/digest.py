@@ -355,6 +355,9 @@ def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pc
         else:
             why.append(f"Risk: {risk_pct * 100:g}% of ${remaining:,.0f} remaining = ${chosen:,.2f}")
             why_s.append(f"Risk: {risk_pct * 100:g}% of remaining budget")
+        if scale.get("status") == "off":
+            why.append("Size: ATR stop only")
+            why_s.append("Size: ATR stop only")
         for r in scale["reasons"]:
             why.append(r)
             why_s.append(r)
@@ -423,13 +426,24 @@ def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pc
         return {"status": "ERROR"}
 
 
+def regime_view(adx_value, tf=None):
+    """Advisory trend/range regime from the 5m ADX the digest already computes. Display only: no guard check reads it.
+    Unknown ADX is UNKNOWN, never TRENDING."""
+    a = _n(adx_value) if isinstance(adx_value, (int, float)) and not isinstance(adx_value, bool) else None
+    if a is None or a != a:
+        state, a = "UNKNOWN", None
+    else:
+        state = "RANGING" if a < sizing.ADX_CHOP else "TRENDING"
+    return {"state": state, "adx": a, "threshold": float(sizing.ADX_CHOP), "tf": tf if tf in ("5m", "15m", "1h") else "5m"}
+
+
 async def scaled_risk(app, contract_id, risk_pct):
     """(risk_dollars, scale) for a stage request: the SAME number the size box showed. Only ever reduces."""
     g = app.state.guard
     chosen = g.risk_dollars_for(risk_pct)
     ind = await indicators(app, contract_id) if contract_id else {}
     scale = sizing.risk_scale(ind.get("adx"), ind.get("atr_pctile")) if g.limits.size_scalers else \
-        {"multiplier": 1.0, "reasons": ["ADX/ATR scalers off (default; PX_SIZE_SCALERS=1 enables)"], "reduced": False, "status": "off"}
+        {"multiplier": 1.0, "reasons": [], "reduced": False, "status": "off"}
     return chosen * scale["multiplier"], scale
 
 
@@ -576,7 +590,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.05, stop_k
     if q:
         ref = q.get("bestAsk" if side == "long" else "bestBid") or q.get("lastPrice")
     scale_info = sizing.risk_scale(ind.get("adx"), ind.get("atr_pctile")) if lim.size_scalers else \
-        {"multiplier": 1.0, "reasons": ["ADX/ATR scalers off (default; PX_SIZE_SCALERS=1 enables)"], "reduced": False, "status": "off"}
+        {"multiplier": 1.0, "reasons": [], "reduced": False, "status": "off"}
     root = None
     if rec:
         try:
@@ -609,6 +623,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.05, stop_k
         "session": {"vwap": ind.get("vwap"), "hi": ind.get("hi"), "lo": ind.get("lo"), "volume": ind.get("volume")},
         "ind": {"atr": ind.get("atr"), "adx": ind.get("adx"), "atr_pctile": ind.get("atr_pctile"), "tf": ind.get("tf"),
                 "ema": ind.get("ema")},
+        "regime": regime_view(ind.get("adx"), ind.get("tf")),
         "levels": _levels_vs_live(ind.get("levels", []), q),
         "size": size_idea(lim, contract_id, rec, side, _n(ref, 4), ind.get("atr"), ind.get("adx"), risk_pct, stop_k, remaining,
                           guard.risk_dollars_for(risk_pct, now), scale_info, ind.get("atr_pctile"),
@@ -706,6 +721,13 @@ def format_digest(s) -> str:
         L.append("VWAP: NA")
     L.append(f"SESSION: hi={_f(se['hi'])} lo={_f(se['lo'])} volume={_f(se['volume'])}")
     L.append(f"IND: atr_{_f(i['tf'])}={_f(i['atr'])}pt atr_pctile={_f(i.get('atr_pctile'))} adx_{_f(i['tf'])}={_f(i['adx'])}")
+    rg = s.get("regime") or {}
+    if rg.get("state") == "RANGING":
+        L.append(f"REGIME: RANGING adx_{rg['tf']}={rg['adx']:.1f} threshold={rg['threshold']:.0f} (trend setups unreliable, sit-out zone)")
+    elif rg.get("state") == "TRENDING":
+        L.append(f"REGIME: TRENDING adx_{rg['tf']}={rg['adx']:.1f} threshold={rg['threshold']:.0f}")
+    else:
+        L.append("REGIME: UNKNOWN")
     em = i.get("ema") or {}
     L.append(f"EMA: stack={_f(em.get('state'))} 8={_f(em.get('8'))} 21={_f(em.get('21'))} 34={_f(em.get('34'))}")
     for lv in s.get("levels", []) or []:

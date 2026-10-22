@@ -144,7 +144,8 @@ def test_scalers_off_means_no_cut_and_it_says_so(tmp_path):
         app.state.live = g.live
         prime(app, g, live, atr=0.8)
         z = c.get("/ai/state", params={"contract": "CON.F.US.MNQ.Z26", "risk_pct": 0.05}).json()["size"]
-        assert z["scale"]["multiplier"] == 1.0 and any("scalers off" in w for w in z["why"])
+        assert z["scale"]["multiplier"] == 1.0 and z["why"].count("Size: ATR stop only") == 1
+        assert not any("ADX" in w or "scaler" in w.lower() for w in z["why"])
         assert z["budget_usd"] == z["budget_chosen_usd"]
 
 

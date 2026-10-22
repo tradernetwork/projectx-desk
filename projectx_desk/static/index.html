@@ -36,6 +36,7 @@
     <span class="grp push actions">
       <button id="stream-toggle" class="ghost" aria-pressed="false" title="Stream mode: removes account and dollar nodes from the page">STREAM</button>
       <button id="reveal" class="ghost" hidden title="Show hidden figures for 30 seconds">Reveal 30s</button>
+      <button id="tour-btn" class="ghost" title="Guided tour of the desk">Tour</button>
       <button id="ai-toggle" class="ghost" aria-pressed="false" aria-controls="ai-panel">AI</button>
       <span class="vsep" aria-hidden="true"></span>
       <button id="halt-btn" class="danger" title="Halt: refuse all new orders">HALT</button>
@@ -91,7 +92,7 @@
   <div class="col col-left">
     <!-- 2. SIZE BOX -->
     <section id="size" class="panel hero" role="region" aria-label="Size box">
-      <div class="phead"><h2 title="Rounded down, never up">Size</h2><span id="size-bind" class="badge push" title="binding source">NA</span></div>
+      <div class="phead"><h2 title="Rounded down, never up">Size</h2><span id="regime-chip" class="chip" role="status" hidden></span><span id="size-bind" class="badge push" title="binding source">NA</span></div>
       <div id="size-answer" class="answer" aria-live="off">
         <div class="big"><span class="num na" data-ai="size.contracts">NA</span><span class="unit na" data-ai="contract.root">NA</span><span class="chips seg sideseg" id="side" role="group" aria-labelledby="lbl-side"><span class="sr" id="lbl-side">Side</span><button id="side-long" data-v="long" aria-pressed="true">LONG</button><button id="side-short" data-v="short" aria-pressed="false">SHORT</button></span></div>
         <div id="size-alert" class="banner bad refused alert" role="alert" hidden>
@@ -220,6 +221,12 @@
       <span class="dot-wrap" title="tick feed"><span id="dot"></span> ticks</span>
     </div>
     <div class="chartbody"><div id="tools" role="toolbar" aria-label="Drawing tools"></div><div id="chart"></div></div>
+    <!-- 6c3. TICK CHARTS (strip under the main chart, so all six charts are on screen): bars of N trade prints built from the live tape (ProjectX has no tick bars). Starts empty, no history. -->
+    <section id="ticks" class="panel" role="region" aria-label="Tick charts" data-own="1">
+      <div class="phead"><h2>Tick charts</h2><span id="tk-state" class="push dim sub" role="status"></span></div>
+      <div id="tk-body" class="mnbody"></div>
+      <p class="lvlegend" title="Built from the live tape since the desk started recording. Grey bar = missed prints."><span>Live tape only, no history.</span></p>
+    </section>
   </section>
 
   <!-- right column: risk, blotter, AI -->
@@ -230,12 +237,6 @@
       <div id="mn-body" class="mnbody"></div>
     </section>
 
-    <!-- 6c3. TICK CHARTS: bars of N trade prints built from the live tape (ProjectX has no tick bars). Starts empty, no history. -->
-    <section id="ticks" class="panel" role="region" aria-label="Tick charts" data-own="1">
-      <div class="phead"><h2>Tick charts</h2><span id="tk-state" class="push dim sub" role="status"></span></div>
-      <div id="tk-body" class="mnbody"></div>
-      <p class="lvlegend" title="Built from the live tape since the desk started recording. Grey bar = missed prints."><span>Live tape only, no history.</span></p>
-    </section>
 
     <!-- 6. RISK GAUGES -->
     <section id="risk" class="panel" role="region" aria-label="Risk gauges">
@@ -341,4 +342,5 @@
 <template id="t-tree-r"><span class="r1">1R = $<b id="tree-r1" class="na">NA</b></span></template>
 
 <script src="/static/desk.js"></script>
+<script src="/static/tour.js"></script>
 </body></html>

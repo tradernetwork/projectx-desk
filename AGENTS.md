@@ -32,6 +32,8 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 | `projectx_desk/net.py` | bind and exposure rules: loopback detection, host/origin allowlists, the operator login, the refusal to start unsafe |
 | `projectx_desk/app.py` | FastAPI: chart data, SSE ticks, CSRF-gated POST routes, mounts MCP |
 | `projectx_desk/levels.py` | EMA stack, ATR series, level-reaction statistics with a random-line baseline |
+| `projectx_desk/indicators.py` | which indicators the chart shows for the timeframe on screen, decided server side: EMA 21, VWAP and volume are always on; EMA/SMA/BOLL/Keltner/fib/prior levels only when RESPECTED through the three `respect.py` gates AND near price (fib within 1.5 ATR, others 3); MACD and RSI only when ACTIVE (a regime gate, not an edge claim). Pure, no I/O. Served at `/api/indicators`. `PX_TRACK_ROOTS` (default `MES,MNQ,MGC`, `0` off, max 4) pre-subscribes those tapes at boot and re-scans every `PX_TRACK_INTERVAL_S` (300, min 60) |
+| `projectx_desk/grades.py` | append-only `data/indicator_grades.jsonl` (`PX_GRADES_FILE`): one line per (contract, tf, closed bar) with the scored candidates and what was shown, for later grading. Rotates at 50 MB. Never breaks the loop |
 | `projectx_desk/respect.py` | which levels each timeframe (5m/15m/1h/4h/1d) respects: ~25 candidate levels scored against a placebo calibrated on block-bootstrap surrogates, with a no-lookahead guarantee and a half/half stability check. RESPECTED needs 30 tests, a 15-point gap, a binomial p-value AND a Benjamini-Hochberg pass over the whole scan (Round 10). Pure, no I/O |
 | `projectx_desk/flow.py` | real buy/sell volume from the trade tape (`GatewayTrade.type`: 0 buy, 1 sell), 1-minute buckets per contract. Pure. No tick history exists, so coverage starts when the desk subscribed (`since`); minutes touching a reconnect gap or a bad trade are `partial` and never drawn. Unknown side is counted apart, never guessed. Persisted to `data/flow.json` (`PX_FLOW_FILE`) with holes for any time the tape was not received. Served at `/api/flow`, drawn as the BUY/SELL VOL pane, summarised in the digest as `FLOW:` |
 | `projectx_desk/anchor.py` | pure level-anchored stop and target (respected levels only, never GEX), plus `projection` (room left if the stop fills) and `heat`. Fails closed. See Round 6 |
@@ -75,7 +77,7 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 - **A level is RESPECTED only through all three gates** in `respect.py`: effect size (`levels.MIN_TESTS`=30 tests, 15-point gap), the exact
   binomial p-value, and the FDR pass over the whole scan. Do not lower `MIN_N`, `HALF_MIN_N` or raise `FDR_Q` to make the panel look busier;
   `anchor.py` trusts that verdict with real stops.
-- **The ADX/ATR scalers default OFF** (`PX_SIZE_SCALERS=1` to enable): the ATR stop already prices volatility. The one-click STAGE on analyst
+- **Size is the ATR stop only.** ADX is an advisory regime (`regime` in the state, `REGIME:` in the digest: RANGING below 20), never a sizing input and never a guard check. **The ADX/ATR scalers default OFF** (`PX_SIZE_SCALERS=1` to enable): the ATR stop already prices volatility. The one-click STAGE on analyst
   callouts defaults OFF (`PX_FEED_STAGE=1`); when used, the ticket is audited as `stage_source=callout`. The cost line needs
   `PX_COST_RT_USD`; unknown cost prints NA, never 0.
 - **Manual BUY/SELL is the same order path.** `qty` on `/api/preview` (UI only, never MCP) makes the guard derive the risk from the trader's

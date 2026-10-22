@@ -403,3 +403,17 @@ binding, no POST, no hold, halt or flatten control changed.
 - **Kept loud on purpose:** state enums (TRADING ON, NOT ALLOWED, REFUSED, UNPROTECTED), HALT, FLATTEN, BUY and SELL.
 - `docs/img/*.png` and `demo.gif` regenerated from the offline mock desk by `scripts/screenshots.py` (Playwright takes the shots; the gif step needs Pillow, so install `requirements-screenshots.txt` into the same venv as Playwright).
 
+## Round 14: the chart picks its own indicators (2026-10-22)
+
+- **Ask:** stop making the trader toggle indicators. Always on: EMA 21, VWAP, volume. Everything else appears only when it is respected or
+  active on the timeframe being shown, for every tracked future, and every scan is logged so it can be graded later.
+- **Respected levels reuse Round 5/10 unchanged.** `indicators.py` only filters the existing verdict (all three gates) by distance to price
+  (fib 1.5 ATR, others 3 ATR) and shows at most three. No gate was loosened. On short intraday windows most scans will show nothing extra, and that is the honest answer.
+- **MACD and RSI are regime gates, not edge claims.** MACD shows when the last closed histogram is in the top 40% of the trailing 200 bars
+  (it hid for hours after big swings before); RSI when it touched 30 or 70 in the last 5 bars. They say ACTIVE, never RESPECTED. Testing them for real edge needs the grade log first.
+- **Grade log limit:** `respect_result` carries the top 3 rows per timeframe, so `candidates` in `indicator_grades.jsonl` is the top 3, not all ~25 scored. Fixing that means exposing the full list from `digest.py`.
+- **ADX moved out of sizing.** Size is the ATR stop. ADX below 20 is an advisory RANGING chip and digest line for the trader to sit out; a hard guard gate was deliberately not added.
+- **Tape tracking.** `PX_TRACK_ROOTS` (default MES, MNQ, MGC) records those tapes at boot so switching contract no longer starts from empty. The front contract resolves once at boot, so a restart picks up the roll.
+- **Tests no longer touch live files.** An autouse fixture points every `data/` path at a tmp dir. Before it, the suite appended fake `gateway_logout` halt events to the real `audit.jsonl` and failed two tests while a desk held the lock.
+- **Layout.** Tick charts moved to a strip under the main chart so the main chart, 15m, 1h and the three tick charts are all on screen; Level reactions and Respected levels are hidden (they still drive the chart). A guided Tour button (`tour.js`) was added and has not been clicked through yet.
+

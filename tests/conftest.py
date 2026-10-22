@@ -17,7 +17,8 @@ def _isolate_runtime_state(tmp_path, monkeypatch):
     for var, name in (("PX_AUDIT_PATH", "audit.jsonl"), ("PX_STATE_PATH", "day_state.json"),
                       ("PX_INTENT_PATH", "intents.json"), ("PX_HALT_FILE", "HALT"),
                       ("PX_FLOW_FILE", "flow.json"), ("PX_TICKS_FILE", "ticks.json"), ("PX_LOCK_FILE", "desk.lock"),
-                      ("PX_GRADES_FILE", "indicator_grades.jsonl")):
+                      ("PX_GRADES_FILE", "indicator_grades.jsonl"), ("PX_VAPID_FILE", "vapid.json"),
+                      ("PX_PUSH_FILE", "push_subs.json")):
         monkeypatch.setenv(var, str(d / name))
     from projectx_desk import limits
     monkeypatch.setattr(limits, "HERE", d.parent / "px_root")

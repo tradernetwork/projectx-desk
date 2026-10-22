@@ -4,7 +4,12 @@
 <title>ProjectX Desk</title>
 <meta name="theme-color" content="#07090d">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="manifest" href="/static/manifest.webmanifest" crossorigin="use-credentials">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PX Desk">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preload" href="/static/fonts/JetBrainsMono_500Medium.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/fonts/Inter_500Medium.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/desk.css">
@@ -37,6 +42,7 @@
       <button id="stream-toggle" class="ghost" aria-pressed="false" title="Stream mode: removes account and dollar nodes from the page">STREAM</button>
       <button id="reveal" class="ghost" hidden title="Show hidden figures for 30 seconds">Reveal 30s</button>
       <button id="tour-btn" class="ghost" title="Guided tour of the desk">Tour</button>
+      <button id="alerts-btn" class="ghost" aria-haspopup="dialog" aria-expanded="false" aria-controls="alerts-pop" title="Phone and desktop notifications">Alerts</button>
       <button id="ai-toggle" class="ghost" aria-pressed="false" aria-controls="ai-panel">AI</button>
       <span class="vsep" aria-hidden="true"></span>
       <button id="halt-btn" class="danger" title="Halt: refuse all new orders">HALT</button>
@@ -342,5 +348,25 @@
 <template id="t-tree-r"><span class="r1">1R = $<b id="tree-r1" class="na">NA</b></span></template>
 
 <script src="/static/desk.js"></script>
+<div id="alerts-pop" class="alerts-pop" role="dialog" aria-label="Alerts" hidden>
+  <div class="al-h"><strong>Alerts</strong><button id="al-close" class="ghost mini" aria-label="Close alerts">Close</button></div>
+  <p id="al-status" class="al-status" role="status" aria-live="polite"></p>
+  <div id="al-main" hidden>
+    <fieldset class="al-events" id="al-events"><legend class="sr">Notify me about</legend></fieldset>
+    <div class="al-quiet"><span>Quiet hours</span>
+      <label class="sr" for="al-qf">Quiet from</label><input id="al-qf" type="time">
+      <span aria-hidden="true">to</span>
+      <label class="sr" for="al-qt">Quiet until</label><input id="al-qt" type="time">
+      <button id="al-qclear" class="ghost mini">Clear</button></div>
+    <p class="al-note">Halt and stop failures still come through quiet hours. Text only: an event and a contract root, never balances or ids.</p>
+  </div>
+  <div class="al-btns">
+    <button id="al-enable" class="ghost">Enable</button>
+    <button id="al-test" class="ghost" hidden>Test</button>
+    <button id="al-disable" class="ghost" hidden>Disable</button>
+  </div>
+</div>
+
 <script src="/static/tour.js"></script>
+<script src="/static/alerts.js"></script>
 </body></html>

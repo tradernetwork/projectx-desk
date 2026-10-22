@@ -27,6 +27,8 @@ from projectx_desk import feed as px_feed
 from projectx_desk import lock as px_lock
 from projectx_desk import mcp as px_mcp
 from projectx_desk import net as px_net
+from projectx_desk import notify as px_notify
+from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
 from projectx_desk import ticks as px_ticks
 from projectx_desk.guard import Guard, GuardError
@@ -127,9 +129,14 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             if connect and rcfg:
                 live = app.state.live
                 recpoll = asyncio.create_task(px_recorder.poll_loop(app.state.recorder, rcfg, live.tape_contracts, lambda: live.ticks.sizes))
+            notifier_task = None
+            if connect and not rec:         # phone alerts: read-only watcher of the desk's own state, full desk only
+                notifier_task = asyncio.create_task(_notify_task(app))
             roots = px_ind.parse_roots(os.getenv("PX_TRACK_ROOTS")) if connect else []
             app.state.track_task = asyncio.create_task(_track_loop(app, roots)) if roots else None
             yield
+            if notifier_task is not None:
+                notifier_task.cancel()
             if app.state.track_task is not None:
                 app.state.track_task.cancel()
             if retry is not None:
@@ -518,8 +525,115 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         n = request.app.state.guard.resolve_not_found()
         return {"resolved": n, "unreconciled": request.app.state.guard.unreconciled()}
 
+    # ---- phone alerts (Web Push): full desk only. The service worker, the key, and a handful of CSRF-gated POSTs ----
+
+    @app.get("/sw.js")
+    async def service_worker():
+        """Served from the root so its scope can be `/`. no-cache: a stale worker on a trading desk is a hazard. The worker itself
+        caches nothing and intercepts no fetch."""
+        return FileResponse(HERE / "static" / "sw.js", media_type="text/javascript",
+                            headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"})
+
+    def pusher_of(a):
+        p = getattr(a.state, "pusher", None)
+        if p is None and not px_push.AVAILABLE:
+            raise HTTPException(503, "alerts unavailable: the cryptography package is missing")
+        if p is None:
+            p = a.state.pusher = px_push.Pusher.from_env(ROOT)
+        return p
+
+    def push_view(p, sid):
+        s = p.store.subs.get(sid) if isinstance(sid, str) else None
+        prefs = s["prefs"] if s else px_push.clean_prefs({})
+        return {"id": sid if s else None, "enabled": s is not None, "events": prefs["events"], "quiet": prefs["quiet"],
+                "kinds": list(px_push.EVENT_KINDS)}
+
+    @app.get("/api/push/vapid")
+    async def push_vapid(request: Request):
+        return {"key": pusher_of(request.app).vapid.public_b64}
+
+    @app.get("/api/push/state")
+    async def push_state(request: Request, id: str = Query("", max_length=16)):
+        return push_view(pusher_of(request.app), id)
+
+    @app.post("/api/push/subscribe")
+    async def push_subscribe(request: Request):
+        b = await body(request)
+        p = pusher_of(request.app)
+        sub = px_push.clean_subscription(b.get("subscription"), px_push.extra_suffixes())
+        if sub is None:
+            raise HTTPException(400, "bad subscription")
+        try:
+            sid = p.store.add(sub, b)
+        except ValueError:
+            raise HTTPException(409, "too many devices")
+        return push_view(p, sid)
+
+    @app.post("/api/push/prefs")
+    async def push_prefs(request: Request):
+        b = await body(request)
+        p = pusher_of(request.app)
+        if p.store.prefs(str(b.get("id", "")), b) is None:
+            raise HTTPException(404, "not subscribed")
+        return push_view(p, str(b["id"]))
+
+    @app.post("/api/push/unsubscribe")
+    async def push_unsubscribe(request: Request):
+        b = await body(request)
+        pusher_of(request.app).store.remove(str(b.get("id", "")))
+        return {"enabled": False}
+
+    @app.post("/api/push/test")
+    async def push_test(request: Request):
+        b = await body(request)
+        p = pusher_of(request.app)
+        sid = str(b.get("id", ""))
+        if sid not in p.store.subs:
+            raise HTTPException(404, "not subscribed")
+        now = time.monotonic()
+        if now - getattr(request.app.state, "push_test_at", -99.0) < 3.0:
+            raise HTTPException(429, "slow down")
+        request.app.state.push_test_at = now
+        res = await p.send_to(sid, {"title": px_notify.TITLE, "body": "Test notification", "tag": "test", "kind": "test"})
+        return {"result": res}
+
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     return app
+
+
+def _push_extras(app):
+    """Read-only facts the state dict does not carry: the guard's protection report, the drawdown limit, the fills, the working orders."""
+    g, live = app.state.guard, app.state.live
+    return {"protection": dict(g.protection or {}), "dd_limit": g.limits.dd_buffer,
+            "trades": list(live.trades), "orders": dict(live.orders)}
+
+
+def _push_contract(app):
+    live = app.state.live
+    for p in live.positions.values():
+        if px_notify.root_of(p.get("contractId")):
+            return p["contractId"]
+    tape = live.tape_contracts()
+    return tape[0] if tape else None
+
+
+async def _notify_task(app):
+    """Start the notifier: poll the same state dict /ai/state serves and push the differences. Never raises into the desk."""
+    try:
+        if not px_push.AVAILABLE:
+            print("alerts off: the cryptography package is not installed", flush=True)
+            return
+        amounts, grace, interval = px_notify.config()
+        if getattr(app.state, "pusher", None) is None:
+            app.state.pusher = px_push.Pusher.from_env(ROOT)
+        n = px_notify.Notifier(app.state.pusher, lambda c: px_digest.build_ai_state(app, c), lambda: _push_extras(app),
+                               lambda: _push_contract(app), amounts=amounts, grace_s=grace)
+        app.state.notifier = n
+        await px_notify.notify_loop(n, interval)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        print(f"notify disabled: {type(e).__name__}", flush=True)
 
 
 SAFE_NAME = re.compile(r"^[A-Z0-9]{2,12}$")

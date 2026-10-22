@@ -14,6 +14,10 @@ from test_px_guard_protect import Broker
 EXPECTED_POSTS = {"/api/preview", "/api/place", "/api/flatten", "/api/halt", "/api/halt/clear", "/api/reconcile", "/api/stop", "/api/intent/resolve"}
 
 
+# Phone-alert routes (Web Push): same Origin + JSON + CSRF gate, no money path. Covered in tests/test_px_push.py.
+PUSH_POSTS = {"/api/push/subscribe", "/api/push/prefs", "/api/push/unsubscribe", "/api/push/test"}
+
+
 def make_app(tmp_path, **over):
     g, live, clock, _ = build(tmp_path, **over)
     gw = Broker()
@@ -41,7 +45,7 @@ def post(c, path, token, json=None, **hdr):
 def test_the_post_surface_is_exactly_the_expected_set_and_not_reachable_by_get(tmp_path):
     app, *_ = make_app(tmp_path)
     posts = {r.path for r in app.routes if "POST" in getattr(r, "methods", set())}
-    assert posts == EXPECTED_POSTS
+    assert posts == EXPECTED_POSTS | PUSH_POSTS
     with TestClient(app) as c:
         for p in EXPECTED_POSTS:
             assert c.get(p).status_code == 405

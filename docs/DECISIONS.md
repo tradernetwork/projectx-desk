@@ -427,3 +427,14 @@ binding, no POST, no hold, halt or flatten control changed.
 - **Trust:** the recorder's answers are untrusted input like the callouts feed: https or loopback http only, no redirects, size and count caps, finite numbers only, fixed error codes.
 - **Not verified:** a real trading desk polling a real recorder end to end, and ProjectX's policy on one API key logging in from two machines. Both need a real run.
 
+## Round 16: phone alerts as a PWA with Web Push (2026-10-22)
+
+- **Ask:** notifications on the phone. Chose an installable PWA with Web Push over Telegram or ntfy: no third-party account, no chat room to leak into, content encrypted end to end to the device.
+- **No new dependency.** `cryptography` already ships transitively (fastmcp, authlib), so VAPID and RFC 8291 aes128gcm are implemented on it plus `httpx`, checked against the RFC 8291 Appendix A vector. If `cryptography` were ever missing, alerts switch off with a printed note and the desk is unaffected.
+- **Read-only by construction.** The notifier polls the same state dict the AI surface serves and a few read-only closures. It never imports or calls the guard, so the one-order-path pin is untouched. Payloads are fixed templates over validated enums, and a hostile-name fuzz test pins that no id, balance, tag or free text reaches a payload.
+- **SSRF.** A subscription endpoint is an arbitrary URL the desk will POST to, so only https hosts on a push-service allowlist are accepted (no userinfo, ports, IP literals or lookalikes), redirects are never followed, and a 404 or 410 deletes the subscription.
+- **Noise control.** Per-event keys debounce at 60 s, 20 per hour overall, a grace window after boot and a silent baseline so a restart does not replay old state. Room alerts re-arm only above 35% so they do not flap. Halt, stop failure and unprotected position are critical and ignore quiet hours. Callouts and regime flips default OFF.
+- **Where it lives.** Full desk only. The recorder keeps its zero-POST invariant, so it cannot take subscriptions and has no alerts.
+- **Service worker discipline.** It handles `push` and `notificationclick` and nothing else: no caching, no fetch interception, because a stale UI on a trading desk is worse than a slow one.
+- **Not verified:** real delivery through FCM or Apple, iOS standalone behaviour, Android install criteria, and HTTP Basic on iOS Home Screen apps. The browser run reached the permission prompt (service worker registered and activated, manifest and icons 200) but nobody could answer the prompt, so subscribe and a shown notification were only covered by mock-transport tests.
+

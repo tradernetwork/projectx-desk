@@ -182,3 +182,31 @@ recorder's volume and tick bars every 60 seconds and fills only the holes in its
 summed, nothing is interpolated, and a recorder that is down or sends garbage changes nothing. `/api/flow` and `/api/tickbars` then say
 `source: merged` and report `recorder: ok | pending | unavailable (CODE)`. Set `PX_TRACK_ROOTS=0` on the trading desk if the recorder does the tracking.
 
+## Phone alerts (installable app with Web Push)
+
+The desk is an installable app and can push notifications to your phone. Browsers only allow push on HTTPS (or `localhost`), so on a LAN
+you need a secure name in front of it. The simplest is Tailscale:
+
+1. On the machine running the desk: `tailscale serve --bg 8600`. Add the name it prints (`<machine>.<tailnet>.ts.net`) to `PX_ALLOWED_HOSTS`.
+   Keep the desk bound to loopback: the tailnet is then the gate and the operator login is not in the way.
+2. On the phone, join the same tailnet and open that `https://` name. **iPhone:** iOS 16.4 or later only delivers web push to an app added to the
+   Home Screen (Share, then Add to Home Screen), so install first and open it from the icon. **Android:** Chrome's install prompt or the menu works; push works even in a tab.
+3. Tap **Alerts** in the top bar, then **Enable** (your tap is what lets the browser ask for permission), pick events, and press **Test**.
+
+Defaults: ON for halt, flat, fill, stop hit or stop failure (and an unprotected position), loss or drawdown room under 25% (re-arms above 35%), and a feed down for more than 30 seconds.
+OFF until you turn them on: a fresh analyst ENTRY callout and the regime flipping to RANGING. Halt, stop failure and unprotected position ignore quiet hours.
+Notification text is a fixed short template (`Stop hit MES`): no account ids, balances, order tags or message text. `PX_PUSH_AMOUNTS=1` adds the net P&L of the closing fills to stop and flat texts (never a balance), which means it shows on a lock screen.
+One notification per event per 60 seconds and 20 per hour overall.
+
+| Setting | Meaning |
+|---|---|
+| `PX_VAPID_FILE`, `PX_PUSH_FILE` | the signing key and the subscriptions, both mode 0600 under `data/`. Keep them private; losing them only means re-enabling alerts on each device. |
+| `PX_VAPID_SUB` | the contact the push services see, `mailto:you@example.com`. The default is a placeholder; set a real address if Apple rejects it. |
+| `PX_PUSH_HOSTS` | extra push-service host suffixes. Subscriptions are only accepted for known push services (Google, Mozilla, Apple, Microsoft). |
+| `PX_PUSH_AMOUNTS` | `1` adds dollars to stop and flat texts. Default off. |
+| `PX_PUSH_GRACE_S`, `PX_PUSH_INTERVAL_S` | quiet period after boot (10) and how often state is checked (5, minimum 2). |
+
+Alerts are a trading-desk feature. The recorder has no POST routes by design, so it has no alerts. If you do put the desk behind `PX_OPERATOR_TOKEN`
+(off loopback), iOS Home Screen apps are known to handle HTTP Basic poorly and may re-prompt or fail to load the manifest: use the Tailscale route above instead.
+Not verified on real hardware: delivery through Google or Apple, and iOS standalone behaviour.
+

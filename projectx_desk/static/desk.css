@@ -765,3 +765,19 @@ body.alarm .kpis .kpi{border-color:var(--border)}
 .ind .pinbody label{border-radius:4px}
 .chip.muted{border-color:transparent;background:none;color:var(--text-2)}
 #regime-chip{margin-left:8px;align-self:center}
+
+/* ---- Alerts popover (Web Push) ---- */
+.alerts-pop{position:fixed;z-index:60;top:52px;right:8px;width:min(340px,calc(100vw - 16px));max-height:calc(100dvh - 64px);overflow:auto;
+  background:var(--bg-card);border:1px solid var(--border-strong);border-radius:var(--r);padding:var(--pad);box-shadow:0 12px 32px rgba(0,0,0,.55)}
+.alerts-pop[hidden]{display:none}
+.al-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.al-status{margin:0 0 8px;color:var(--text-2);font-size:var(--fs-sm);min-height:16px}
+.al-status.bad{color:var(--amber-ink)}
+.al-events{border:0;margin:0 0 8px;padding:0;display:grid;gap:4px}
+.al-events label{display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);color:var(--text);min-height:26px}
+.al-events input{min-height:0;width:16px;height:16px;padding:0;accent-color:var(--cyan)}
+.al-quiet{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:var(--fs-sm);color:var(--text-2);margin-bottom:6px}
+.al-quiet input[type=time]{min-height:28px;font-family:var(--mono)}
+.al-note{margin:0 0 8px;color:var(--text-muted);font-size:var(--fs-xs)}
+.al-btns{display:flex;gap:6px;flex-wrap:wrap}
+button.mini{min-height:24px;padding:0 8px}

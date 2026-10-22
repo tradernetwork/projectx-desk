@@ -731,3 +731,5 @@ body.alarm .kpis .kpi{border-color:var(--border)}
 /* chart bar: indicator toggles are plain until checked */
 .ind label{border-color:transparent;background:transparent}
 .ind label:has(input:checked){color:var(--text);border-color:var(--border);background:var(--bg-sub)}
+/* The level panels only drive what the chart draws; the numbers stay in the DOM and the digest, the panels are not shown. */
+#levels,#respect{display:none}

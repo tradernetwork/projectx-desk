@@ -224,6 +224,19 @@
 
   <!-- right column: risk, blotter, AI -->
   <div class="col col-right">
+    <!-- 6d. TIMEFRAME MINI CHARTS: last ~60 bars of 5m/15m/1h with EMA 8/21/34 and the respected level. Prices only. -->
+    <section id="minis" class="panel" role="region" aria-label="Timeframes" data-own="1">
+      <div class="phead"><h2>Timeframes</h2><span id="mn-state" class="dim sub" role="status"></span><button id="mn-toggle" type="button" class="push rsp-tg" aria-expanded="true" aria-controls="mn-body">Hide</button></div>
+      <div id="mn-body" class="mnbody"></div>
+    </section>
+
+    <!-- 6c3. TICK CHARTS: bars of N trade prints built from the live tape (ProjectX has no tick bars). Starts empty, no history. -->
+    <section id="ticks" class="panel" role="region" aria-label="Tick charts" data-own="1">
+      <div class="phead"><h2>Tick charts</h2><span id="tk-state" class="push dim sub" role="status"></span></div>
+      <div id="tk-body" class="mnbody"></div>
+      <p class="lvlegend" title="Built from the live tape since the desk started recording. Grey bar = missed prints."><span>Live tape only, no history.</span></p>
+    </section>
+
     <!-- 6. RISK GAUGES -->
     <section id="risk" class="panel" role="region" aria-label="Risk gauges">
       <div class="phead"><h2>Risk budget</h2><span class="push dim">binds <b id="risk-binds" data-ai="risk.binding" class="na">NA</b></span></div>
@@ -266,19 +279,6 @@
       <div class="phead"><h2>Respected levels</h2><span id="rsp-state" class="push dim sub" role="status"></span></div>
       <div id="rsp-list" class="rsplist"></div>
       <p class="lvlegend"><span>History, not a forecast.</span></p>
-    </section>
-
-    <!-- 6d. TIMEFRAME MINI CHARTS: last ~60 bars of 5m/15m/1h with EMA 8/21/34 and the respected level. Prices only. -->
-    <section id="minis" class="panel" role="region" aria-label="Timeframes" data-own="1">
-      <div class="phead"><h2>Timeframes</h2><span id="mn-state" class="dim sub" role="status"></span><button id="mn-toggle" type="button" class="push rsp-tg" aria-expanded="true" aria-controls="mn-body">Hide</button></div>
-      <div id="mn-body" class="mnbody"></div>
-    </section>
-
-    <!-- 6c3. TICK CHARTS: bars of N trade prints built from the live tape (ProjectX has no tick bars). Starts empty, no history. -->
-    <section id="ticks" class="panel" role="region" aria-label="Tick charts" data-own="1">
-      <div class="phead"><h2>Tick charts</h2><span id="tk-state" class="push dim sub" role="status"></span></div>
-      <div id="tk-body" class="mnbody"></div>
-      <p class="lvlegend" title="Built from the live tape since the desk started recording. Grey bar = missed prints."><span>Live tape only, no history.</span></p>
     </section>
 
     <!-- 6c2. ANALYST FUTURES CALLOUTS: third-party opinion, not signals. Structured fields only, no message text. -->

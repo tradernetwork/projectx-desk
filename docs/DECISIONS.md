@@ -417,3 +417,13 @@ binding, no POST, no hold, halt or flatten control changed.
 - **Tests no longer touch live files.** An autouse fixture points every `data/` path at a tmp dir. Before it, the suite appended fake `gateway_logout` halt events to the real `audit.jsonl` and failed two tests while a desk held the lock.
 - **Layout.** Tick charts moved to a strip under the main chart so the main chart, 15m, 1h and the three tick charts are all on screen; Level reactions and Respected levels are hidden (they still drive the chart). A guided Tour button (`tour.js`) was added and has not been clicked through yet.
 
+## Round 15: a recorder, so the volume stops disappearing (2026-10-22)
+
+- **Problem:** the trade tape (buy/sell volume, tick bars) only exists while a desk is running and ProjectX has no tick history. Tick bars lived in memory, so every restart wiped them, and your trading machine is not up 24/5.
+- **Why not just run the desk on a server:** Topstep's terms say orders must come from your own device and a server may read and log only. The desk's order writes come from whatever machine runs it, so a full desk on a server is the case the rule forbids. `PX_TRADING=0` is not enough: flatten, the flat-by watchdog and stop protection still run.
+- **Decision:** `PX_RECORD_ONLY=1` is a separate mode with no order path in it (no Guard, no account hub, no POST routes, no MCP, refuses to start with trading switches set), run from its own checkout. The trading desk stays on the user's device and pulls the recorder's history over a read-only `PX_RECORDER_URL`.
+- **Merge rule (honesty over completeness):** per minute, a complete local bucket wins; otherwise a complete recorder bucket; otherwise the minute stays a hole. Never summed (double counting), never interpolated, never a guessed side. Tick bars are merged only where no local bar overlaps; the two sides cut bars at different prints, so the recorder's `te` (last print time per bar) is what lets a hole be filled safely.
+- **Tick persistence:** `data/ticks.json`, atomic, every 30 s and on shutdown, last 5000 bars per (contract, size). A restart closes the forming bar short and flags it and the first bar after, so downtime is a hole.
+- **Trust:** the recorder's answers are untrusted input like the callouts feed: https or loopback http only, no redirects, size and count caps, finite numbers only, fixed error codes.
+- **Not verified:** a real trading desk polling a real recorder end to end, and ProjectX's policy on one API key logging in from two machines. Both need a real run.
+

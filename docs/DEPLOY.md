@@ -143,3 +143,42 @@ WantedBy=default.target
 
 It keeps loading `.env.projectx` from the checkout root, and a clean stop saves the tape (`data/flow.json`). Logs:
 `journalctl --user -u projectx-desk -f`. This is the same machine you trade from, so it stays inside Topstep's own-device rule.
+
+## The recorder: a log-only copy for a server
+
+Put this on a home server if you want buy/sell volume and tick bars to keep recording while your trading machine is off or restarting.
+`PX_RECORD_ONLY=1` builds a desk with **no order path at all**, which is what Topstep's "a server may read and log" wording allows:
+
+- It starts only the market-data hub, the trade-tape recording (volume, tick bars), the indicator tracker and its grade log.
+- It builds no Guard, no account connection, no watchdog and no stop protection, mounts no MCP, and registers no POST route. Every desk
+  write path returns 404. The routes are GET only: `/`, `/healthz`, `/bars`, `/api/flow`, `/api/tickbars`, `/api/tickbars/config`,
+  `/api/indicators`, `/api/respect`.
+- It refuses to start if `PX_TRADING` or `PX_MCP_PLACE` is set. It takes the one-desk lock like any desk, and the off-loopback rules
+  (`PX_OPERATOR_TOKEN`, `PX_ALLOWED_HOSTS`) apply unchanged.
+- Run it from its own checkout with its own `data/`. Never run a trading desk and a recorder from the same data directory.
+
+`/etc/projectx-recorder.env` (mode 0600, no inline comments):
+
+```
+PX_RECORD_ONLY=1
+PX_HOST=0.0.0.0
+PX_OPERATOR_TOKEN=<openssl rand -hex 32>
+PX_ALLOWED_HOSTS=recorder.lan
+PX_TRACK_ROOTS=MES,MNQ,MGC
+PX_FLOW_FILE=/var/lib/projectx-recorder/flow.json
+PX_TICKS_FILE=/var/lib/projectx-recorder/ticks.json
+PX_GRADES_FILE=/var/lib/projectx-recorder/indicator_grades.jsonl
+PX_LOCK_FILE=/var/lib/projectx-recorder/desk.lock
+PROJECTX_USERNAME=your-platform-login-name
+PROJECTX_API_KEY=...
+```
+
+The unit is the one in the section above with `EnvironmentFile=/etc/projectx-recorder.env` and `ReadWritePaths=/var/lib/projectx-recorder`.
+
+**Using the recorder from your trading desk.** Set `PX_RECORDER_URL` and `PX_RECORDER_TOKEN` (the recorder's operator token) on the trading desk.
+The URL must be https, or http to loopback, so reach a LAN recorder through an ssh tunnel
+(`ssh -N -L 8742:localhost:8600 recorder`, then `PX_RECORDER_URL=http://127.0.0.1:8742`) or `tailscale serve`. The desk fetches the
+recorder's volume and tick bars every 60 seconds and fills only the holes in its own: a complete local minute always wins, nothing is
+summed, nothing is interpolated, and a recorder that is down or sends garbage changes nothing. `/api/flow` and `/api/tickbars` then say
+`source: merged` and report `recorder: ok | pending | unavailable (CODE)`. Set `PX_TRACK_ROOTS=0` on the trading desk if the recorder does the tracking.
+

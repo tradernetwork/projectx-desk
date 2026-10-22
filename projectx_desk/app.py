@@ -27,6 +27,8 @@ from projectx_desk import feed as px_feed
 from projectx_desk import lock as px_lock
 from projectx_desk import mcp as px_mcp
 from projectx_desk import net as px_net
+from projectx_desk import recorder as px_recorder
+from projectx_desk import ticks as px_ticks
 from projectx_desk.guard import Guard, GuardError
 from projectx_desk.limits import Limits
 from projectx_desk.client import live_data, PXAuthError, PXClient, PXError, PXNotConfigured, PXRateLimited
@@ -46,9 +48,35 @@ UNIT_SECS = {1: 1, 2: 60, 3: 3600, 4: 86400, 5: 604800, 6: 2592000}
 _live_data = live_data
 
 
+def _truthy(v):
+    return str(v or "").strip().lower() in ("1", "true", "yes")
+
+
+def record_only_enabled(environ=None):
+    return _truthy((os.environ if environ is None else environ).get("PX_RECORD_ONLY"))
+
+
+def record_only_problem(environ=None):
+    """Why a recorder must not start, or None. Key names only: a recorder with trading switched on is a misconfigured one."""
+    env = os.environ if environ is None else environ
+    for k in ("PX_TRADING", "PX_MCP_PLACE"):
+        if _truthy(env.get(k)):
+            return f"PX_RECORD_ONLY=1 refuses to start: {k} is set. A recorder has no order path; unset {k} (or unset PX_RECORD_ONLY)."
+    return None
+
+
 def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, connect=True, guard=None, limits=None, mcp_token=None,
-               operator_token=None, allowed_origins=None):
-    """Build the app. Tests inject a fake client / hubs and set connect=False."""
+               operator_token=None, allowed_origins=None, record_only=None):
+    """Build the app. Tests inject a fake client / hubs and set connect=False.
+
+    record_only (default: PX_RECORD_ONLY): a log-only recorder. Only the market hub, the trade tape, the indicator tracker and
+    read-only routes exist: no user hub, no Guard, no watchdog, no MCP, no POST route of any kind."""
+    rec = record_only_enabled() if record_only is None else bool(record_only)
+    if rec:
+        why = record_only_problem()
+        if why:
+            raise SystemExit(why)
+        print("RECORD ONLY: no order path", flush=True)
     problem = px_net.bind_problem(os.getenv("PX_HOST", "127.0.0.1"), operator_token or os.getenv("PX_OPERATOR_TOKEN"),
                                   os.getenv("PX_ALLOWED_HOSTS"), px_mcp.weak_token_reason)
     if problem:       # same rule as main(), so an alternate launcher (uvicorn projectx_desk.app:...) cannot skip it
@@ -64,26 +92,41 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
     async def lifespan(app):
         c = client or PXClient()
         m = market_hub or SignalRHub(c, "market")
-        u = user_hub or SignalRHub(c, "user")
-        app.state.client, app.state.market, app.state.user = c, m, u
-        app.state.live = LiveState(m, u, flow_path=(os.getenv("PX_FLOW_FILE") or str(ROOT / "data" / "flow.json")) if connect else None)
-        app.state.csrf = secrets.token_urlsafe(32)
-        app.state.guard = guard or Guard(c, app.state.live, limits or Limits.from_env(), user_hub=u)
-        # "Multiple sessions detected": the gateway logs this session out. Stop opening; reducing paths (flatten, cancel) stay available.
-        u.on("GatewayLogout", lambda *a: app.state.guard.trip_halt("gateway_logout"))
+        u = None if rec else (user_hub or SignalRHub(c, "user"))      # a recorder never opens the user hub (account, orders, positions)
+        app.state.client, app.state.market = c, m
+        app.state.live = LiveState(m, u, flow_path=(os.getenv("PX_FLOW_FILE") or str(ROOT / "data" / "flow.json")) if connect else None,
+                                   ticks_path=(os.getenv("PX_TICKS_FILE") or str(ROOT / "data" / "ticks.json")) if connect else None)
+        app.state.recorder = None
+        if not rec:
+            app.state.user = u
+            app.state.csrf = secrets.token_urlsafe(32)
+            app.state.guard = guard or Guard(c, app.state.live, limits or Limits.from_env(), user_hub=u)
+            # "Multiple sessions detected": the gateway logs this session out. Stop opening; reducing paths (flatten, cancel) stay available.
+            u.on("GatewayLogout", lambda *a: app.state.guard.trip_halt("gateway_logout"))
+            try:
+                rcfg = px_recorder.recorder_config()
+                app.state.recorder = px_recorder.RecorderCache() if rcfg else None
+            except px_recorder.RecorderError as e:
+                rcfg, app.state.recorder = None, px_recorder.RecorderCache(f"unavailable ({e.code})")
+        else:
+            rcfg = None
         app.state.sse = 0
         app.state.boot_error = None
         app.state.bars_cache = {}
         async with AsyncExitStack() as stack:
             if holder.get("mcp_app") is not None:
                 await stack.enter_async_context(holder["mcp_app"].lifespan(app))
-            deadline = asyncio.create_task(_deadline_loop(app)) if connect else None
-            if connect:
+            deadline = asyncio.create_task(_deadline_loop(app)) if connect and not rec else None
+            if connect and not rec:
                 try:
                     await _boot(app)
                 except (PXError, KeyError, IndexError) as e:  # UI still loads; /state.json says why
                     app.state.boot_error = _boot_code(e)
             retry = asyncio.create_task(_boot_retry(app)) if connect and app.state.boot_error else None
+            recpoll = None
+            if connect and rcfg:
+                live = app.state.live
+                recpoll = asyncio.create_task(px_recorder.poll_loop(app.state.recorder, rcfg, live.tape_contracts, lambda: live.ticks.sizes))
             roots = px_ind.parse_roots(os.getenv("PX_TRACK_ROOTS")) if connect else []
             app.state.track_task = asyncio.create_task(_track_loop(app, roots)) if roots else None
             yield
@@ -91,18 +134,24 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
                 app.state.track_task.cancel()
             if retry is not None:
                 retry.cancel()
+            if recpoll is not None:
+                recpoll.cancel()
             if deadline is not None:
                 deadline.cancel()
         app.state.live.flow.save()               # a clean stop must not lose the last 30 s of tape (the file is rewritten every 30 s)
+        app.state.live.ticks.save()
         for h in (m, u):
-            await h.stop()
+            if h is not None:
+                await h.stop()
         if client is None:
             await c.aclose()
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
     tok = mcp_token if mcp_token is not None else os.getenv("PX_MCP_TOKEN")
-    if tok:
+    if tok and rec:
+        print("MCP not mounted: record-only mode has no MCP", flush=True)
+    elif tok:
         why = px_mcp.weak_token_reason(tok)
         if why:
             print(f"MCP not mounted: {why}", flush=True)
@@ -138,21 +187,6 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         if not CONTRACT_RE.match(c or ""):
             raise HTTPException(400, "bad contract")
         return c
-
-    @app.get("/")
-    async def index():
-        return FileResponse(HERE / "static" / "index.html")
-
-    @app.get("/contracts")
-    async def contracts(request: Request, q: str = Query("", max_length=20)):
-        try:
-            cs = await request.app.state.client.search_contracts(q, live=_live_data())
-        except PXRateLimited as e:
-            raise HTTPException(429, headers={"Retry-After": str(e.retry_after)})
-        except PXError as e:
-            raise HTTPException(502, str(e))
-        return [{"id": c["id"], "name": _safe_name(c.get("name"), c["id"]), "desc": "",   # the gateway's description is free text and is deliberately never forwarded
-                 "tick": c["tickSize"], "tickValue": c.get("tickValue")} for c in cs]
 
     @app.get("/bars")
     async def bars(request: Request, contract: str, unit: int = 2, n: int = 5, limit: int = 1000,
@@ -214,16 +248,16 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             return px_ind.status_payload("loading", "", contract, tf)
         return px_ind.payload(contract, tf, ev)
 
-    @app.get("/api/callouts")
-    async def callouts(request: Request):
-        """Read-only analyst futures callouts: allowlisted fields only, no message text. Cached ~20 s."""
-        return await px_feed.feed_result(request.app)
-
     @app.get("/api/flow")
     async def flow(request: Request, contract: str):
         """Real buy/sell volume per minute from the trade tape. Coverage starts at `since`; `partial` minutes are unreliable."""
         cid = contract_arg(contract)
-        return request.app.state.live.flow.snapshot(cid, int(time.time() * 1000))
+        snap = request.app.state.live.flow.snapshot(cid, int(time.time() * 1000))
+        rc = getattr(request.app.state, "recorder", None)
+        if rc is None:
+            return {**snap, "source": "local"}
+        snap, used = rc.merge_flow(cid, snap)           # recorder history fills holes only; local complete minutes always win
+        return {**snap, "source": "merged" if used else "local", "recorder": rc.status}
 
     @app.get("/api/tickbars/config")
     async def tickbars_config(request: Request):
@@ -237,7 +271,47 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         ticks = request.app.state.live.ticks
         if n not in ticks.sizes:
             return JSONResponse({"error": "bad_n"}, status_code=400)
-        return ticks.snapshot(cid, n, limit)
+        snap = ticks.snapshot(cid, n, limit)
+        rc = getattr(request.app.state, "recorder", None)
+        if rc is None:
+            return {**snap, "source": "local"}
+        full = ticks.snapshot(cid, n, px_ticks.MAX_BARS + 1)       # merge on the whole series, then cut to the asked length
+        merged, used = rc.merge_ticks(cid, n, full)
+        if used:
+            lim = max(1, min(limit, px_ticks.MAX_BARS + 1))
+            merged = {**merged, "bars": merged["bars"][-lim:], "te": merged["te"][-lim:]}
+            return {**merged, "source": "merged", "recorder": rc.status}
+        return {**snap, "source": "local", "recorder": rc.status}
+
+    if rec:
+        # Everything above is a pure read. A recorder stops here: no desk UI, no guard-backed route, no POST route, no static mount.
+        @app.get("/")
+        async def recorder_status(request: Request):
+            st = request.app.state
+            return PlainTextResponse("projectx-desk RECORDER\nrecord only: no order path\n"
+                                     f"market hub: {'up' if st.market.up else 'down'}\n"
+                                     f"tape contracts: {len(st.live.tape_contracts())}\n")
+        return app
+
+    @app.get("/")
+    async def index():
+        return FileResponse(HERE / "static" / "index.html")
+
+    @app.get("/contracts")
+    async def contracts(request: Request, q: str = Query("", max_length=20)):
+        try:
+            cs = await request.app.state.client.search_contracts(q, live=_live_data())
+        except PXRateLimited as e:
+            raise HTTPException(429, headers={"Retry-After": str(e.retry_after)})
+        except PXError as e:
+            raise HTTPException(502, str(e))
+        return [{"id": c["id"], "name": _safe_name(c.get("name"), c["id"]), "desc": "",   # the gateway's description is free text and is deliberately never forwarded
+                 "tick": c["tickSize"], "tickValue": c.get("tickValue")} for c in cs]
+
+    @app.get("/api/callouts")
+    async def callouts(request: Request):
+        """Read-only analyst futures callouts: allowlisted fields only, no message text. Cached ~20 s."""
+        return await px_feed.feed_result(request.app)
 
     @app.get("/ticks")
     async def ticks(request: Request, contract: str):
@@ -288,7 +362,8 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             "asof": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "boot_error": st.boot_error,
             "feed": {"market_up": st.market.up, "user_up": st.user.up,
-                     "market_age_s": st.market.feed_age_s(), "user_age_s": st.user.feed_age_s()},
+                     "market_age_s": st.market.feed_age_s(), "user_age_s": st.user.feed_age_s(),
+                     "recorder": st.recorder.status if st.recorder is not None else "off"},
             "seeded": {"positions": live.positions_seeded, "trades": live.trades_seeded},
             "account": {"can_trade": live.account.get("canTrade")} if stream else
                        {"can_trade": live.account.get("canTrade"), "simulated": live.account.get("simulated")},
@@ -674,7 +749,7 @@ def main():
     if loaded:
         print(f"loaded {len(loaded)} settings from .env.projectx (names only): {', '.join(sorted(loaded))}", flush=True)
     host = os.getenv("PX_HOST", "127.0.0.1")
-    problem = px_net.bind_problem(host, os.getenv("PX_OPERATOR_TOKEN"), os.getenv("PX_ALLOWED_HOSTS"), px_mcp.weak_token_reason)
+    problem = (record_only_problem() if record_only_enabled() else None) or px_net.bind_problem(host, os.getenv("PX_OPERATOR_TOKEN"), os.getenv("PX_ALLOWED_HOSTS"), px_mcp.weak_token_reason)
     if problem:
         raise SystemExit(problem)
     if not px_net.is_loopback(host):

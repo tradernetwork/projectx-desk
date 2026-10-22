@@ -40,6 +40,7 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 | `projectx_desk/gex.py` | GEX levels from the TraderDaddy API converted to futures price space: display and digest only, never sizing. `PX_GEX_KEY`, `PX_GEX_URL`, `PX_GEX_MAX_AGE_S` |
 | `projectx_desk/ticks.py` | tick bars (N trade prints, `PX_TICK_BARS`) built from the live tape with buy/sell volume; no history, in memory |
 | `projectx_desk/feed.py` | analyst futures callouts from TraderDiscord-v2 `GET /analyst-callouts` (`PX_FEED_URL`, `PX_FEED_KEY`, `PX_FEED_CHANNELS`, `PX_FEED_HOURS`; unset URL = off). Third-party text is untrusted: only allowlisted names/enums/numbers leave the module, never message text. Opinion, not signal; no path to the guard. State key and digest lines are `callouts`/`CALLOUTS` (`feed` is the market-data health block) |
+| `projectx_desk/recorder.py` | the recorder's history import for a trading desk: `PX_RECORDER_URL` (https or loopback http) + `PX_RECORDER_TOKEN`; untrusted JSON reduced to finite numbers, fixed error codes; pure merge (local complete minute wins, recorder fills holes, nothing summed or interpolated). See Round 15 |
 | `projectx_desk/lock.py` | exclusive process lock on `data/desk.lock` (`PX_LOCK_FILE`), taken in `main()` only: a second desk on the same checkout refuses to start. Kernel-released, so a crash leaves no stale lock |
 | `projectx_desk/tradeday.py` | the one definition of the trading day (17:00 CT roll) |
 | `projectx_desk/sizing.py`, `projectx_desk/gex_futures.py` | pure sizing math; GEX levels converted to futures price space |
@@ -91,6 +92,8 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 - **Nothing in the browser can tell an AI extension's click from a human's.** The 600 ms hold is anti-fat-finger, not
   security. Real controls are server-side caps, the hashed single-use ticket, the fresh-state gate, qty cap 1 and
   sim-first.
+- **`PX_RECORD_ONLY=1` is log-only by construction.** `create_app` returns before it registers any POST route, builds no Guard, user hub, account binding, watchdog or protection, and never mounts MCP; it refuses to start if `PX_TRADING` or `PX_MCP_PLACE` is set. Do not add an order, halt or flatten path to that mode, and do not make it optional per route: Topstep lets a server read and log, nothing else. Tick bars persist to `data/ticks.json` (`PX_TICKS_FILE`) and a restart is always a hole, never bridged.
+- **Branding.** Every link to tradermatrix.pro carries `?ref=MPHINANCE` (the referral convention shared with TickerTrace and Vero: a link that loses its code converts and pays nobody). The README footer keeps the network line and the referral disclosure. No ads, no analytics SDKs, and no pitch or CTA inside a trading flow (size box, ticket, PLACE, alerts); the small footer byline is the only in-app placement.
 - **Stream-safe:** never commit a screenshot, fixture or log with account IDs, balances, P&L or tokens. `data/` and
   `.env.projectx` are gitignored.
 - Loopback by default (`127.0.0.1`); foreign Host/Origin get 403; every POST needs Origin + JSON + a CSRF header. A non-loopback

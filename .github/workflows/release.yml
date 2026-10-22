@@ -1,0 +1,76 @@
+name: release
+# Push a tag like v0.1.0 (or run this by hand with a tag name) to test, build, and publish a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, for example v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+
+  image:
+    # The image is a convenience. A failure here (for example the org forbids package writes) must not block the release itself.
+    needs: test
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Build and prove it refuses to start without an operator token
+        run: |
+          docker build -t projectx-desk .
+          if docker run --rm projectx-desk; then echo "started without an operator token"; exit 1; fi
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          IMG="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          docker tag projectx-desk "$IMG:$TAG"
+          docker tag projectx-desk "$IMG:latest"
+          docker push "$IMG:$TAG"
+          docker push "$IMG:latest"
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+      - name: Source archive and checksum
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          git archive --format=zip --prefix="projectx-desk-$TAG/" -o "projectx-desk-$TAG.zip" HEAD
+          git archive --format=tar.gz --prefix="projectx-desk-$TAG/" -o "projectx-desk-$TAG.tar.gz" HEAD
+          sha256sum "projectx-desk-$TAG".zip "projectx-desk-$TAG".tar.gz > SHA256SUMS
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          gh release create "$TAG" "projectx-desk-$TAG.zip" "projectx-desk-$TAG.tar.gz" SHA256SUMS \
+            --title "ProjectX Desk $TAG" --generate-notes --prerelease

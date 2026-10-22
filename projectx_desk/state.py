@@ -27,7 +27,7 @@ from projectx_desk.ticks import TickBars
 
 
 class LiveState:
-    def __init__(self, market_hub=None, user_hub=None, flow_path=None):
+    def __init__(self, market_hub=None, user_hub=None, flow_path=None, ticks_path=None):
         self.market, self.user = market_hub, user_hub
         self.quotes = {}      # contractId -> last GatewayQuote payload (+ "_rx" monotonic time)
         self.account = {}     # last GatewayUserAccount for the selected account
@@ -39,7 +39,7 @@ class LiveState:
         self.positions_seeded = False
         self._touched = None         # ids changed by live events while a REST snapshot is in flight
         self._listeners = []         # callables(kind, payload) for position/order events (the guard's stop manager)
-        self.ticks = TickBars()   # tick bars (N prints per bar) from the same tape; sizes from PX_TICK_BARS
+        self.ticks = TickBars(path=ticks_path)   # tick bars (N prints per bar) from the same tape; sizes from PX_TICK_BARS
         self.flow = FlowStore(path=flow_path)   # real buy/sell volume per minute, built from every GatewayTrade we receive
         self._tape = []       # contracts whose trade tape stays subscribed with no browser open (oldest first)
         self._subs = {}       # contractId -> set[Queue]
@@ -57,6 +57,10 @@ class LiveState:
     # ---- market side ----------------------------------------------------------------------
 
     MAX_TAPE = 4
+
+    def tape_contracts(self):
+        """Contracts whose trade tape is being recorded (a copy)."""
+        return list(self._tape)
 
     async def _ensure_tape(self, cid):
         """Record the trade tape for `cid` (buy/sell volume, tick bars) whether or not a browser is open."""

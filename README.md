@@ -19,7 +19,7 @@ and locks you out after a losing streak. Free, MIT, runs offline on a practice m
 </p>
 
 <p align="center">
-  Built by <a href="https://github.com/mphinance">Michael</a> at <a href="https://www.tradermatrix.pro"><b>TraderMatrix</b></a>.
+  Built by <a href="https://github.com/mphinance">Michael</a> at <a href="https://www.tradermatrix.pro/?ref=MPHINANCE"><b>TraderMatrix</b></a>. <i>We track the moves. TraderMatrix helps you trade them.</i>
   Unofficial: not affiliated with ProjectX, TopstepX or Topstep.
 </p>
 
@@ -261,7 +261,7 @@ pytest -q            # run offline against the practice market, no broker and no
 
 `projectx_desk/gex_futures.py` converts dealer-gamma levels (flip, pin, walls) from SPX, SPY, QQQ, IWM and DIA into ES, NQ, RTY and YM
 price space. It refuses stale data and never picks between two flips. `projectx_desk/gex.py` is the provider: it pulls the levels from the
-[TraderMatrix / TraderDaddy](https://www.tradermatrix.pro) API (set `PX_GEX_KEY`), draws them on the chart and lists them in the AI digest.
+[TraderMatrix / TraderDaddy](https://www.tradermatrix.pro/?ref=MPHINANCE) API (set `PX_GEX_KEY`), draws them on the chart and lists them in the AI digest.
 Display only: GEX marks positioning, not targets, and never touches sizing, stops or orders. See [docs/GEX_FUTURES.md](docs/GEX_FUTURES.md).
 </details>
 
@@ -302,3 +302,7 @@ license, without warranty. You are responsible for your own trading and for your
 
 The TraderMatrix name and logos are trademarks of TraderMatrix and are not covered by the MIT license
 ([assets/brand/README.md](assets/brand/README.md)). Third-party notices: [NOTICE](NOTICE) and [LICENSES/](LICENSES/Apache-2.0.txt).
+
+---
+
+<p align="center"><sub>Part of the <a href="https://tradernetwork.io">TraderMatrix network</a> · <a href="https://www.tradermatrix.pro/?ref=MPHINANCE">tradermatrix.pro</a> · Links to TraderMatrix.Pro carry a referral code (MPHINANCE). It costs you nothing and helps fund this project. The desk itself has no ads, no trackers and no paywall.</sub></p>

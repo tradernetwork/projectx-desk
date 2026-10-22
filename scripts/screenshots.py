@@ -112,6 +112,7 @@ def main():
         "PX_NO_NEW_AFTER": "16:55", "PX_TRADING": "1", "CHART_PORT": str(DESK), "PX_NO_ENV_FILE": "1", "PX_MCP_TOKEN": "",
         "PX_STATE_PATH": str(tmp / "day.json"), "PX_INTENT_PATH": str(tmp / "intents.json"), "PX_AUDIT_PATH": str(tmp / "audit.jsonl"),
         "PX_HALT_FILE": str(tmp / "HALT"), "PX_FLOW_FILE": str(tmp / "flow.json"), "PYTHONUNBUFFERED": "1",
+        "PX_LOCK_FILE": str(tmp / "desk.lock"), "PX_GRADES_FILE": str(tmp / "grades.jsonl"), "PX_TRACK_ROOTS": "0",   # the mock never takes the real desk's lock or log
         "PX_FEED_URL": f"http://127.0.0.1:{FEED}/analyst-callouts", "PX_FEED_KEY": "demo",
         "PX_FEED_STAGE": "1",            # the one-click STAGE on a callout is opt-in (Round 10); the screenshot shows it on
         "PX_GEX_URL": f"http://127.0.0.1:{GEXP}/api/v1", "PX_GEX_KEY": "demo", "DEV_GATEWAY_PORT": str(GW),
@@ -131,7 +132,7 @@ def main():
         Shared.mes, Shared.mnq = ask(MES), ask(MNQ)
         OUT.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as pw:
-            b = pw.chromium.launch()
+            b = pw.chromium.launch(executable_path=os.environ.get("PX_CHROMIUM") or None)   # PX_CHROMIUM=/usr/bin/chromium skips the playwright browser download
             page = b.new_page(viewport={"width": 1680, "height": 1500})
             shot = lambda name, loc=None, **kw: (page.locator(loc).screenshot(path=str(OUT / name)) if loc else page.screenshot(path=str(OUT / name), **kw))
             page.goto(BASE + "/")

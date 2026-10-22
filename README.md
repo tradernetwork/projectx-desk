@@ -93,11 +93,14 @@ arithmetic, not the result.
 | **A stop is required** | Sent right after the fill and watched for 5 seconds; if it is not acknowledged, the desk flattens and halts. If the live feed misses the fill, no stop is sent, so read the limits. |
 | **Manage the trade** | Live open R, plus one-click stop moves (breakeven, ATR trail, EMA 21 trail). Stops only move toward price, never wider. |
 | **Stats with the fine print** | Win rate sits next to the win rate you need to break even, with the trade count and a SMALL SAMPLE flag under 30 trades. |
-| **Respected levels** | For 5m, 15m, 1h, 4h and 1d: which of about 25 candidate levels (EMAs, SMAs, Keltner, Bollinger, VWAP, prior day or week, swing fibs) price has actually reacted to, scored against a calibrated random baseline, with "tested K candidates" beside the winners and a STABLE badge only if the level passes in both halves of the data. Winners are drawn on the chart (toggle: Respect). History, not a forecast. |
+| **The chart picks its own indicators** | EMA 21, VWAP and volume are always on. Everything else shows only when it has earned the timeframe on screen: a level (other EMAs, SMAs, Bollinger, Keltner, prior high or low, swing fibs) must be RESPECTED through three statistical gates and sit near price (fibs within 1.5 ATR, the rest within 3), at most three at a time; MACD and RSI appear only while they are ACTIVE (a swing-size check, not an edge claim). "Pin more" forces one on. Every scan is logged to `data/indicator_grades.jsonl` for grading later. |
+| **Respected levels (how they are scored)** | For 5m, 15m, 1h, 4h and 1d: which of about 25 candidate levels (EMAs, SMAs, Keltner, Bollinger, VWAP, prior day or week, swing fibs) price has actually reacted to, scored against a calibrated random baseline, with "tested K candidates" beside the winners and a STABLE badge only if the level passes in both halves of the data. Winners are drawn on the chart (toggle: Respect). History, not a forecast. |
 | **Timeframes** | The main chart opens on 5m (switch freely); two mini charts (15m, 1h) with the full EMA ribbon 8/13/21/34/55/89 and a bias line: `ribbon N/5 BULL / BEAR / MIXED`, which EMAs price is above, and a BULLISH / BEARISH / NEUTRAL badge that needs the whole ribbon in order. |
-| **Level reactions** | "Held 5 of 8" for EMA 8/21/34 and VWAP, next to the same test on copies of that line shifted 0.5 to 1.5 ATR away. Reaction history, not a forecast. |
+| **Trending or ranging** | A chip by the Size heading reads TRENDING or RANGING from the 5m ADX (below 20 is the sit-out zone). Size is the ATR stop only; the chip is advice and never blocks an order. |
 | **Real buy and sell volume** | A volume pane built from the trade tape's aggressor side (who hit the bid or the ask), not candle colour, plus delta. ProjectX has no tick history, so it records from the moment the desk starts, saves to disk, and shows a gap as a gap, never as a wrong number. |
-| **Tick charts** | 1024, 2048 and 4096-trade bars built from the same tape, each with its buy-minus-sell delta. |
+| **Tick charts** | 1024, 2048 and 4096-trade bars built from the same tape, in a strip under the main chart so all six charts (main, 15m, 1h and the three tick charts) are on screen at once. They start empty when the desk starts. |
+| **Tracked contracts** | `PX_TRACK_ROOTS` (default `MES,MNQ,MGC`) records those tapes and rescans the indicators every 5 minutes with no browser open, so switching contract does not start from empty. |
+| **Guided tour** | The Tour button highlights each part of the desk and says what it does. It only draws an overlay and swallows clicks while open, so it cannot place or halt anything. |
 | **GEX on the chart** | Flip, pin and walls from the TraderDaddy API, converted to futures prices and drawn as labelled lines. Display only: they never feed sizing, stops or targets. |
 | **Analyst alert** | When a fresh futures ENTRY callout posts (Discord bot feed), a banner flashes, the chart switches to that contract if you are flat, the analyst's entry, stop and first target are drawn. With `PX_FEED_STAGE=1` a STAGE button offers their trade through the normal ticket; it is off by default because the feed is an unmeasured signal and should not be the easiest entry on the screen. PLACE is still your 600 ms hold. |
 | **Level-anchored stop and target** | The stop tucks just beyond a level price has respected (never tighter than 1.5x ATR, never wider than 2x); the target is the nearest respected level at 1R or better, with its R:R and break-even win rate. |
@@ -132,7 +135,7 @@ More in [known limitations](docs/LIMITATIONS.md).
 </tr>
 </table>
 
-![The whole desk: chart with GEX lines, EMA ribbon and real buy/sell volume, the size box, risk budget and level reactions](docs/img/desk-idle.png)
+![The whole desk: chart with GEX lines, EMA ribbon and real buy/sell volume, the size box with the trending/ranging chip, the 15m and 1h charts, risk budget and the three tick charts](docs/img/desk-idle.png)
 
 <sub>Offline practice market (synthetic prices), flat. Nothing on screen is a result.</sub>
 

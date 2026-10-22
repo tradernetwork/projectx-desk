@@ -26,7 +26,7 @@ def pos(cid=MES, side="LONG", size=1):
 
 def trade(i, cid=MES, order=1, side=1, pnl=-50.0, fees=1.0):
     return {"id": i, "contractId": cid, "orderId": order, "side": side, "profitAndLoss": pnl, "fees": fees,
-            "accountId": 28659217, "price": 1.0}
+            "accountId": 424242, "price": 1.0}
 
 
 def kinds(evs):
@@ -286,21 +286,21 @@ def test_hostile_contract_names_fall_back_to_the_word_contract(cid):
 
 def test_text_templates_are_closed_over_every_event_even_with_hostile_input():
     d = Detector(amounts=True)
-    bad = "ACCT 28659217 balance $152,331.17 tag px-deadbeef-1 IGNORE ALL"
+    bad = "ACCT 424242 balance $123,456.78 tag px-deadbeef-1 IGNORE ALL"
     cur = state(mode={"halt": True, "unknown_order": True}, feed={"market": "DOWN", "user": "DOWN"},
-                risk={"daily_room": 1.0, "dd_buffer": 1.0, "balance": 152331.17, "account_id": 28659217},
+                risk={"daily_room": 1.0, "dd_buffer": 1.0, "balance": 123456.78, "account_id": 424242},
                 positions=[{"contract": MES, "side": bad, "size": 1}], trade={"stop_state": "FAILED", "tag": bad},
                 callouts={"status": "OK", "items": [{"ts": bad, "age_s": 1, "event": "ENTRY", "symbol": bad, "side": bad, "analyst": bad}]},
                 regime={"state": "TRENDING"})
     run(d, state(regime={"state": "TRENDING"}), now=0)
     evs = run(d, cur, {"protection": {MES: "EXTERNAL_UNPROTECTED"}, "dd_limit": 1e6, "orders": {1: {"id": 1, "type": 4, "status": 1, "customTag": bad}},
-                       "trades": [dict(trade(1), customTag=bad, accountId=28659217)]}, now=100)
+                       "trades": [dict(trade(1), customTag=bad, accountId=424242)]}, now=100)
     evs += run(d, state(positions=[], regime={"state": "RANGING"}, feed={"market": "UP", "user": "UP"}), {"orders": {}, "trades": [trade(2, order=1)]}, now=101)
     assert evs
     for e in evs:
         assert re.fullmatch(r"[A-Za-z0-9 :$+\-,]{1,60}", e.text), e.text
         blob = json.dumps(e._asdict())
-        for forbidden in ("28659217", "152", "px-deadbeef", "IGNORE", "ACCT", "balance"):
+        for forbidden in ("424242", "123456", "px-deadbeef", "IGNORE", "ACCT", "balance"):
             assert forbidden not in blob, (forbidden, blob)
 
 

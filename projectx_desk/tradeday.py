@@ -43,3 +43,16 @@ def parse_ts(text) -> datetime:
     s = _FRAC.sub(lambda m: "." + (m.group(1) + "000000")[:6], s, count=1)
     dt = datetime.fromisoformat(s)
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+# CME equity-index and metals futures close Friday 16:00 CT and reopen Sunday 17:00 CT. Five minutes of margin each side, so
+# quiet never starts before the close prints or lasts past the reopen.
+QUIET_FROM_FRI = time(16, 5)
+QUIET_UNTIL_SUN = time(16, 55)
+
+
+def market_quiet(now=None) -> bool:
+    """True from just after the Friday close to just before the Sunday reopen (America/Chicago). Holidays are not modelled."""
+    local = _aware(now or datetime.now(timezone.utc)).astimezone(CT)
+    wd, tm = local.weekday(), local.time()           # Monday is 0
+    return (wd == 4 and tm >= QUIET_FROM_FRI) or wd == 5 or (wd == 6 and tm < QUIET_UNTIL_SUN)

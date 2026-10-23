@@ -26,6 +26,7 @@ from projectx_desk import indicators as px_ind
 from projectx_desk import respect as px_respect
 from projectx_desk import feed as px_feed
 from projectx_desk import flow as px_flow
+from projectx_desk import tradeday as px_tradeday
 from projectx_desk import lock as px_lock
 from projectx_desk import mcp as px_mcp
 from projectx_desk import net as px_net
@@ -99,6 +100,9 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         m = market_hub or SignalRHub(c, "market")
         u = None if rec else (user_hub or SignalRHub(c, "user"))      # a recorder never opens the user hub (account, orders, positions)
         app.state.client, app.state.market = c, m
+        for hub in (m, u):
+            if hub is not None:
+                hub.quiet = lambda: _quiet(app)
         app.state.live = LiveState(m, u, flow_path=(os.getenv("PX_FLOW_DB") or str(ROOT / "data" / "flow.db")) if connect else None,
                                    flow_legacy=(os.getenv("PX_FLOW_FILE") or str(ROOT / "data" / "flow.json")) if connect else None,
                                    ticks_path=(os.getenv("PX_TICKS_FILE") or str(ROOT / "data" / "ticks.json")) if connect else None)
@@ -391,6 +395,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             "v": 0,
             "asof": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "boot_error": st.boot_error,
+            "quiet": _quiet(request.app),
             "feed": {"market_up": st.market.up, "user_up": st.user.up,
                      "market_age_s": st.market.feed_age_s(), "user_age_s": st.user.feed_age_s(),
                      "recorder": st.recorder.status if st.recorder is not None else "off"},
@@ -713,6 +718,17 @@ async def _snapshot(app):
             print(f"protect failed: {type(e).__name__}", flush=True)
 
 
+def _quiet(app):
+    """Market closed (Fri 16:05 to Sun 16:55 CT) AND the desk knows it is flat: background API traffic pauses. Anything that is
+    not provably flat (unseeded positions, a position, a working order) keeps every loop running. PX_WEEKEND_QUIET=0 turns it off."""
+    if (os.getenv("PX_WEEKEND_QUIET") or "1").strip() == "0":
+        return False
+    live = getattr(app.state, "live", None)
+    if live is None or not getattr(live, "positions_seeded", False) or getattr(live, "positions", True) or getattr(live, "orders", True):
+        return False       # anything unknown counts as not flat
+    return px_tradeday.market_quiet()
+
+
 async def _boot(app):
     """Pick the account, seed from REST, then start the user hub."""
     c, live, user = app.state.client, app.state.live, app.state.user
@@ -745,6 +761,8 @@ async def _boot_retry(app):
     while app.state.boot_error:
         await asyncio.sleep(delay)
         delay = min(delay * 2, 60.0)
+        if _quiet(app):
+            continue
         try:
             await _boot(app)
             app.state.boot_error = None
@@ -833,6 +851,8 @@ async def _bias_log_loop(app):
     while True:
         now = time.time()
         await asyncio.sleep(300 - (now % 300) + 8)          # eight seconds past the boundary: the closed bar is in the history by then
+        if _quiet(app):
+            continue
         for root, cid in list((getattr(app.state, "tracked", None) or {}).items()):
             if not cid:
                 continue
@@ -874,6 +894,9 @@ async def _track_loop(app, roots):
             delay = min(delay * 2, 120.0)
     interval = _track_interval()
     while True:
+        if _quiet(app):                                   # market closed and flat: no rescan, no bars budget spent
+            await asyncio.sleep(60.0)
+            continue
         for root in roots:
             cid = have.get(root)
             if not cid:

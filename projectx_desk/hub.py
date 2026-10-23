@@ -16,6 +16,7 @@ RS = "\x1e"  # SignalR record separator
 def _hub_base():
     return os.getenv("PROJECTX_HUB_BASE", "wss://rtc.topstepx.com/hubs")   # override only for the offline mock gateway
 RECEIVE_TIMEOUT = 45  # silent half-open socket detector (server pings far more often)
+QUIET_POLL_S = 30.0          # how often a quiet hub re-checks whether it may reconnect
 
 
 def err_text(e):
@@ -33,6 +34,7 @@ class SignalRHub:
         self._listeners = []   # callables(kind) kind in {"up", "resync", "down"}
         self._ws, self._task = None, None
         self.up = False
+        self.quiet = None      # callable() -> bool: while it is true a dropped hub does not try to reconnect (market closed and flat)
         self.last_msg = 0.0    # monotonic time of the last frame, for feed-age display
 
     # ---- wiring ---------------------------------------------------------------------------
@@ -93,6 +95,9 @@ class SignalRHub:
             self._session = aiohttp.ClientSession()
         delay, ever = 1, False
         while True:
+            if self.quiet is not None and self._quiet_now():
+                await asyncio.sleep(QUIET_POLL_S)
+                continue
             t0, alive = time.monotonic(), False
             try:
                 tok = await self.client.token()
@@ -138,6 +143,12 @@ class SignalRHub:
                 delay = 1
             await asyncio.sleep(delay)
             delay = min(delay * 2, 30)
+
+    def _quiet_now(self):
+        try:
+            return bool(self.quiet())
+        except Exception:       # a broken predicate must never stop the hub from reconnecting
+            return False
 
     def _dispatch(self, f):
         if f.get("type") == 1:

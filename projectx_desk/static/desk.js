@@ -1838,19 +1838,18 @@ schedule(0);
 const BD = {busy: false};
 const BD_ROOT = /^[A-Z0-9]{1,6}$/;
 function boardDraw(b){
-  const host = $('board-rows'), rows = b && Array.isArray(b.rows) ? b.rows : [];
-  const bx = $('board'); if(!bx || !host) return;
+  const host = $('board-rows'), bx = $('board'), rows = b && Array.isArray(b.rows) ? b.rows : [];
+  if(!bx || !host) return;
   bx.hidden = !rows.length;
   const now = typeof curRoot === 'function' ? curRoot() : '';
   host.replaceChildren(...rows.filter(r => r && BD_ROOT.test(String(r.root))).map(r => {
-    const dir = BIAS_DIR.has(r.direction) ? r.direction : 'NA', gr = BIAS_GRADE.has(r.grade) ? r.grade : 'NA';
-    const w = mk('div', 'bd-row' + (r.root === now ? ' on' : ''));
+    const dir = BIAS_DIR.has(r.direction) ? r.direction : 'NA', gr = BIAS_GRADE.has(r.grade) ? r.grade : '-';
+    const w = mk('span', 'bd-row ' + (dir === 'LONG' ? 'long' : dir === 'SHORT' ? 'short' : 'flat') + (r.root === now ? ' on' : ''));
     const fl = Array.isArray(r.flags) ? r.flags.filter(f => /^[A-Z_]{2,16}$/.test(f)).join(', ') : '';
-    w.title = dir === 'NA' ? 'Not enough reads yet' : `${r.agree}/${r.reads} reads agree, score ${r.score}/5` + (fl ? ` (${fl})` : '');
-    w.append(mk('b', 'bd-r', r.root), mk('span', 'bd-d ' + (dir === 'LONG' ? 'long' : dir === 'SHORT' ? 'short' : 'flat'), dir === 'NEUTRAL' ? 'NEUTRAL' : dir), mk('span', 'bd-g', gr));
+    w.title = dir === 'NA' ? `${r.root}: not enough reads yet` : `${r.root} ${dir} ${gr}: ${r.agree}/${r.reads} reads agree, score ${r.score}/5` + (fl ? ` (${fl})` : '');
+    w.append(mk('span', 'bd-r', r.root), mk('b', 'bd-g', gr));
     return w;
   }));
-  const ao = $('board-asof'); if(ao) ao.textContent = b && typeof b.asof === 'string' && /^[0-9:]{8}CT$/.test(b.asof) ? b.asof : '';
 }
 async function boardFetch(){
   if(BD.busy) return; BD.busy = true;

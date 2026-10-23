@@ -38,6 +38,7 @@
       <span class="pill" id="trading">TRADING NA</span>
       <span class="pill" id="acct-kind">ACCT NA</span>
     </span>
+    <span class="grp board" id="board" role="group" aria-label="Bias and grade per contract, green long, red short" title="Advisory bias per tracked contract: letter is the grade, green = long, red = short. Not a signal." hidden><span id="board-rows" class="board-rows"></span></span>
     <span class="grp push actions">
       <button id="stream-toggle" class="ghost" aria-pressed="false" title="Stream mode: removes account and dollar nodes from the page">STREAM</button>
       <button id="reveal" class="ghost" hidden title="Show hidden figures for 30 seconds">Reveal 30s</button>
@@ -257,11 +258,6 @@
         <div class="bar"><span class="track" id="track-dd"><i id="bar-dd"></i></span></div>
       </div>
       <div class="remain"><span class="g-t">Remaining, conservative</span><span class="g-v big"><span data-slot="sens" data-tpl="t-risk-rem"></span><span data-slot="stream" data-tpl="t-hidden"></span></span></div>
-    </section>
-
-    <section id="board" class="panel" role="region" aria-label="Bias board">
-      <div class="phead"><h2 title="Advisory trend agreement per tracked contract, not a signal">Bias board</h2><span class="push dim" id="board-asof"></span></div>
-      <div id="board-rows" class="board-rows"></div>
     </section>
 
     <!-- 6c. MANAGE TRADE: only while a position with a live stop exists. Human clicks, tighten-only. -->

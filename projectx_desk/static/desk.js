@@ -1071,14 +1071,17 @@ klinecharts.registerIndicator({
       return {buy, sell: -sell, delta: buy - sell};
     });
   }});
+let flowLast = 0;
 async function flowFetch(){
   const cid = S.contractId; if(!cid) return;
+  const full = FLOW.cid !== cid || !FLOW.m.size;      // first load (or a contract switch) takes the whole series; after that only the tail
   try{
-    const f = await j('/api/flow?contract=' + encodeURIComponent(cid));
+    const f = await j('/api/flow?contract=' + encodeURIComponent(cid) + (full ? '' : '&after=' + Math.max(0, flowLast - 180000)));
     if(cid !== S.contractId || !Array.isArray(f.minutes)) return;
     FLOW.since = typeof f.since === 'number' ? f.since : null; FLOW.cid = cid;
     FLOW.holes = Array.isArray(f.holes) ? f.holes.filter(h => Array.isArray(h) && h.length === 2 && h.every(Number.isFinite)) : [];
-    FLOW.m = new Map(f.minutes.map(r => [r[0], [r[1], r[2], r[3], r[4]]]));
+    if(full){FLOW.m = new Map(); flowLast = 0}
+    for(const r of f.minutes){FLOW.m.set(r[0], [r[1], r[2], r[3], r[4]]); if(r[0] > flowLast) flowLast = r[0]}
     if(indOn.BSV) chart.overrideIndicator({name: 'BSV', extendData: Date.now()});
   }catch(e){err(e)}
 }

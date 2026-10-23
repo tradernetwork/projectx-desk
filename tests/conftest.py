@@ -16,7 +16,7 @@ def _isolate_runtime_state(tmp_path, monkeypatch):
     d.mkdir()
     for var, name in (("PX_AUDIT_PATH", "audit.jsonl"), ("PX_STATE_PATH", "day_state.json"),
                       ("PX_INTENT_PATH", "intents.json"), ("PX_HALT_FILE", "HALT"),
-                      ("PX_FLOW_FILE", "flow.json"), ("PX_TICKS_FILE", "ticks.json"), ("PX_LOCK_FILE", "desk.lock"),
+                      ("PX_FLOW_FILE", "flow.json"), ("PX_FLOW_DB", "flow.db"), ("PX_TICKS_FILE", "ticks.json"), ("PX_LOCK_FILE", "desk.lock"),
                       ("PX_GRADES_FILE", "indicator_grades.jsonl"), ("PX_BIAS_LOG_FILE", "bias_log.jsonl"), ("PX_VAPID_FILE", "vapid.json"),
                       ("PX_PUSH_FILE", "push_subs.json")):
         monkeypatch.setenv(var, str(d / name))

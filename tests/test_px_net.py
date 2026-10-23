@@ -144,3 +144,17 @@ def test_loopback_default_still_starts_with_no_extra_settings(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     px_app.main()
     assert called and called[0]["host"] == "127.0.0.1"
+
+
+def test_open_lan_is_an_explicit_opt_in_that_still_needs_hosts_and_never_accepts_a_weak_token():
+    assert "PX_OPERATOR_TOKEN" in px_net.bind_problem("0.0.0.0", None, "desk.lan", weak_token_reason)               # default: refuses
+    assert px_net.bind_problem("0.0.0.0", None, "desk.lan", weak_token_reason, open_lan=True) is None
+    assert px_net.bind_problem("0.0.0.0", "", "desk.lan", weak_token_reason, open_lan=True) is None
+    assert "PX_ALLOWED_HOSTS" in px_net.bind_problem("0.0.0.0", None, "", weak_token_reason, open_lan=True)           # rebinding guard stays
+    assert "PX_OPERATOR_TOKEN" in px_net.bind_problem("0.0.0.0", "short", "desk.lan", weak_token_reason, open_lan=True)
+
+
+def test_open_lan_flag_reads_only_exactly_one(monkeypatch):
+    for v, want in (("1", True), (" 1 ", True), ("0", False), ("", False), ("true", False)):
+        monkeypatch.setenv("PX_OPEN_LAN", v)
+        assert px_net.open_lan_enabled() is want

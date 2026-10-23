@@ -14,6 +14,7 @@ import secrets
 import time
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
@@ -81,7 +82,8 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             raise SystemExit(why)
         print("RECORD ONLY: no order path", flush=True)
     problem = px_net.bind_problem(os.getenv("PX_HOST", "127.0.0.1"), operator_token or os.getenv("PX_OPERATOR_TOKEN"),
-                                  os.getenv("PX_ALLOWED_HOSTS"), px_mcp.weak_token_reason)
+                                  os.getenv("PX_ALLOWED_HOSTS"), px_mcp.weak_token_reason,
+                                  open_lan=px_net.open_lan_enabled())
     if problem:       # same rule as main(), so an alternate launcher (uvicorn projectx_desk.app:...) cannot skip it
         raise SystemExit(problem)
     hosts = set(allowed_hosts) if allowed_hosts else px_net.allowed_hosts(_port(), os.getenv("PX_ALLOWED_HOSTS"))
@@ -97,7 +99,8 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         m = market_hub or SignalRHub(c, "market")
         u = None if rec else (user_hub or SignalRHub(c, "user"))      # a recorder never opens the user hub (account, orders, positions)
         app.state.client, app.state.market = c, m
-        app.state.live = LiveState(m, u, flow_path=(os.getenv("PX_FLOW_FILE") or str(ROOT / "data" / "flow.json")) if connect else None,
+        app.state.live = LiveState(m, u, flow_path=(os.getenv("PX_FLOW_DB") or str(ROOT / "data" / "flow.db")) if connect else None,
+                                   flow_legacy=(os.getenv("PX_FLOW_FILE") or str(ROOT / "data" / "flow.json")) if connect else None,
                                    ticks_path=(os.getenv("PX_TICKS_FILE") or str(ROOT / "data" / "ticks.json")) if connect else None)
         app.state.recorder = None
         if not rec:
@@ -275,10 +278,11 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         return await px_digest.bias_board(request.app)
 
     @app.get("/api/flow")
-    async def flow(request: Request, contract: str):
-        """Real buy/sell volume per minute from the trade tape. Coverage starts at `since`; `partial` minutes are unreliable."""
+    async def flow(request: Request, contract: str, after: Optional[int] = None):
+        """Real buy/sell volume per minute from the trade tape. Coverage starts at `since`; `partial` minutes are unreliable.
+        `after` (ms) returns only the tail from that minute on, for a poller that already holds the rest."""
         cid = contract_arg(contract)
-        snap = request.app.state.live.flow.snapshot(cid, int(time.time() * 1000))
+        snap = request.app.state.live.flow.snapshot(cid, int(time.time() * 1000), after=after)
         rc = getattr(request.app.state, "recorder", None)
         if rc is None:
             return {**snap, "source": "local"}
@@ -921,10 +925,12 @@ def main():
     if loaded:
         print(f"loaded {len(loaded)} settings from .env.projectx (names only): {', '.join(sorted(loaded))}", flush=True)
     host = os.getenv("PX_HOST", "127.0.0.1")
-    problem = (record_only_problem() if record_only_enabled() else None) or px_net.bind_problem(host, os.getenv("PX_OPERATOR_TOKEN"), os.getenv("PX_ALLOWED_HOSTS"), px_mcp.weak_token_reason)
+    problem = (record_only_problem() if record_only_enabled() else None) or px_net.bind_problem(host, os.getenv("PX_OPERATOR_TOKEN"), os.getenv("PX_ALLOWED_HOSTS"), px_mcp.weak_token_reason, open_lan=px_net.open_lan_enabled())
     if problem:
         raise SystemExit(problem)
-    if not px_net.is_loopback(host):
+    if not px_net.is_loopback(host) and px_net.open_lan_enabled() and not os.getenv("PX_OPERATOR_TOKEN"):
+        print(f"WARNING: bound to {host} with NO login (PX_OPEN_LAN=1). Anything that can reach this port can stage and place within your caps.", flush=True)
+    elif not px_net.is_loopback(host):
         print(f"WARNING: bound to {host}. The operator login is HTTP Basic; without TLS in front it sends the token in the clear. "
               "Use Tailscale or a TLS reverse proxy (docs/DEPLOY.md).", flush=True)
     _lock = px_lock.acquire()           # noqa: F841 - held for the life of the process

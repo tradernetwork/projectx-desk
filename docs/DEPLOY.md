@@ -23,6 +23,10 @@ The login covers every route except `/mcp/` (which has its own bearer token, `PX
 nothing else). **If you put a reverse proxy in front of a loopback-bound desk, set `PX_OPERATOR_TOKEN` anyway:** the refusal only
 triggers on a non-loopback bind, and the proxy is what makes it reachable.
 
+`PX_OPEN_LAN=1` is the explicit opt-out: a non-loopback bind with `PX_OPERATOR_TOKEN` left blank is then allowed (a weak token still
+refuses, and `PX_ALLOWED_HOSTS` is still required). Only for a home network you fully control. Everything on that network can stage and
+place within your caps, and the page is cleartext HTTP. Off by default.
+
 ## The token is the whole gate
 
 Anyone with the operator token can stage and place orders within your caps. HTTP Basic sends it in the clear, so **do not expose the desk

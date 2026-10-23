@@ -30,7 +30,7 @@ from projectx_desk import ticks as px_ticks
 MIN_MS = px_flow.MIN_MS
 TS_MIN, TS_MAX = px_flow.TS_MIN, px_flow.TS_MAX
 MAX_CONTRACTS = 8
-MAX_FLOW_ROWS = 2 * px_flow.MAX_MINUTES          # buckets plus partial minutes that have no bucket
+MAX_FLOW_ROWS = 2 * px_flow.SERVE_MINUTES          # buckets plus partial minutes that have no bucket
 MAX_HOLES = px_flow.MAX_HOLES + 1                # the stored holes plus the one derived open hole
 MAX_FLOW_BODY = 2_000_000
 MAX_TICK_BODY = 4_000_000

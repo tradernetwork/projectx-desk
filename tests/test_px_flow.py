@@ -1,4 +1,8 @@
-from projectx_desk.flow import MAX_MINUTES, MIN_MS, FlowStore
+import json
+import sqlite3
+import time
+
+from projectx_desk.flow import MAX_MINUTES, MIN_MS, SERVE_MINUTES, FlowStore, summary
 
 M = 29_866_666 * MIN_MS      # a minute-aligned base in 2026 (timestamps outside 2000-2100 are rejected)
 
@@ -74,7 +78,7 @@ def test_partial_quote_updates_merge_instead_of_wiping():
 
 
 def test_restart_keeps_buckets_and_turns_downtime_into_a_hole(tmp_path):
-    f = str(tmp_path / "flow.json")
+    f = str(tmp_path / "flow.db")
     a = FlowStore(path=f, save_every_s=0)
     for i in range(3):
         a.add("C", M + i * MIN_MS + 10, 2, 0)
@@ -87,14 +91,6 @@ def test_restart_keeps_buckets_and_turns_downtime_into_a_hole(tmp_path):
     rows = {r[0]: r for r in s["minutes"]}
     assert rows[M + 10 * MIN_MS][4] == 1 and rows[M + 2 * MIN_MS][4] == 1
     assert rows[M + MIN_MS][4] == 0                         # untouched minutes stay trustworthy
-
-
-def test_corrupt_file_starts_clean_and_save_failure_is_silent(tmp_path):
-    bad = tmp_path / "flow.json"
-    bad.write_text("{not json")
-    assert FlowStore(path=str(bad)).snapshot("C")["minutes"] == []
-    FlowStore(path=str(tmp_path / "nodir" / "x" / "flow.json")).add("C", M, 1, 0)   # creates the dir, never raises
-    FlowStore(path="/proc/nope/flow.json", save_every_s=0).add("C", M, 1, 0)         # unwritable: swallowed
 
 
 def test_summary_window_with_a_hole_is_incomplete():
@@ -117,26 +113,6 @@ def test_hostile_timestamps_are_rejected_and_flag_a_gap():
     s = f.snapshot("C")
     assert s["since"] == M + MIN_MS and all(r[0] >= M for r in s["minutes"])
     assert any(r[4] for r in s["minutes"])                    # the unplaceable trades left a partial flag, not silence
-
-
-def test_loading_a_hostile_file_never_breaks_the_store(tmp_path):
-    import json
-    p = tmp_path / "flow.json"
-    shapes = [
-        {"c": {"C": {"since": "x", "m": {}, "last_ts": 1}}},                                   # string since
-        {"c": {"C": {"since": M + MIN_MS, "last_ts": "y", "m": {str(M): [1, 2, 3]}}}},          # string last_ts
-        {"c": {"C": {"since": M, "last_ts": M, "m": {str(M): [10**30, 1, 1]}}}},                # absurd volume
-        {"c": {f"K{i}": {"since": M, "last_ts": M, "m": {str(M): [1, 1, 0]}} for i in range(50)}},   # contract flood
-        {"c": {"C": {"since": M, "last_ts": M, "m": {str(M + i * MIN_MS): [1, 1, 0] for i in range(50_000)}}}},
-        [1, 2, 3], "string", None,
-    ]
-    for raw in shapes:
-        p.write_text(json.dumps(raw))
-        s = FlowStore(path=str(p))
-        assert len(s._c) <= 8 and all(len(c["m"]) <= MAX_MINUTES for c in s._c.values())
-        from projectx_desk.flow import summary
-        summary(s, "C", M)                                    # must not raise for any loaded state
-        s.snapshot("C")
 
 
 def test_partial_set_stays_bounded_under_invalid_volume_trades():
@@ -183,7 +159,7 @@ def test_open_hole_closes_into_a_normal_hole_when_a_trade_arrives():
 
 
 def test_restart_loaded_store_shows_open_hole_until_first_trade(tmp_path):
-    path = str(tmp_path / "flow.json")
+    path = str(tmp_path / "flow.db")
     a = FlowStore(path=path, save_every_s=0)
     _busy(a, 3)
     a.save()
@@ -233,12 +209,6 @@ def test_a_bad_print_leaves_a_partial_minute_that_makes_its_window_incomplete():
     assert 2 not in [r[2] for r in f.snapshot("C")["minutes"] if r[0] == M + 12 * MIN_MS and r[4] == 0]
 
 
-def test_loading_deeply_nested_json_does_not_crash_the_constructor(tmp_path):
-    p = tmp_path / "flow.json"
-    p.write_bytes(b"[" * 100_000)
-    assert FlowStore(path=str(p)).snapshot("C")["minutes"] == []
-
-
 def test_a_reconnect_that_resumes_within_15_seconds_does_not_blank_the_bar():
     from projectx_desk.flow import SHORT_GAP_MS, summary
     f = FlowStore()
@@ -260,3 +230,116 @@ def test_a_longer_outage_is_still_flagged_and_an_ongoing_blip_shows_no_open_hole
     assert f.snapshot("C", M + 4 * MIN_MS + 1_000 + 20_000)["holes"] != []           # 20 s in: now it is an open hole
     f.add("C", M + 4 * MIN_MS + 1_000 + 20_000, 5, 1)                                # resumes after 20 s: that minute is partial
     assert {r[0]: r[4] for r in f.snapshot("C", M + 6 * MIN_MS)["minutes"]}[M + 4 * MIN_MS] == 1
+
+
+# ---- SQLite persistence ---------------------------------------------------------------------------------------
+
+def test_unreadable_database_is_moved_aside_and_an_unwritable_path_never_raises(tmp_path):
+    bad = tmp_path / "flow.db"
+    bad.write_text("{not a database")
+    s = FlowStore(path=str(bad))
+    assert s.snapshot("C")["minutes"] == []
+    s.add("C", M, 1, 0)
+    s.save()
+    assert list(tmp_path.glob("flow.db.corrupt-*")), "the unreadable file is kept, not deleted"
+    assert FlowStore(path=str(bad)).snapshot("C")["minutes"][0][0] == M
+    FlowStore(path=str(tmp_path / "nodir" / "x" / "flow.db")).add("C", M, 1, 0)       # creates the dir, never raises
+    FlowStore(path="/proc/nope/flow.db", save_every_s=0).add("C", M, 1, 0)             # unwritable: memory only, swallowed
+
+
+def test_history_beyond_the_in_memory_window_survives_and_is_served(tmp_path):
+    path = str(tmp_path / "flow.db")
+    a = FlowStore(path=path, save_every_s=1e9)
+    n = MAX_MINUTES + 500
+    for i in range(n):
+        a.add("C", M + i * MIN_MS + 5, 3, 0)
+    a.save()
+    assert len(a._c["C"]["m"]) == MAX_MINUTES                         # memory stays bounded
+    snap = a.snapshot("C")
+    assert len(snap["minutes"]) == n and snap["since"] == M + 0 * MIN_MS + MIN_MS      # nothing was dropped, coverage did not shrink
+    assert [r[0] for r in snap["minutes"]] == [M + i * MIN_MS for i in range(n)]
+    b = FlowStore(path=path)                                           # restart: the tail loads, the rest is read on demand
+    assert len(b._c["C"]["m"]) == MAX_MINUTES
+    assert len(b.snapshot("C")["minutes"]) == n
+
+
+def test_snapshot_after_returns_only_the_tail_and_never_more_than_serve_minutes(tmp_path):
+    a = FlowStore(path=str(tmp_path / "flow.db"), save_every_s=1e9)
+    for i in range(20):
+        a.add("C", M + i * MIN_MS + 5, 1, 0)
+    tail = a.snapshot("C", after=M + 15 * MIN_MS)["minutes"]
+    assert [r[0] for r in tail] == [M + i * MIN_MS for i in range(15, 20)]
+    for bad in (-1, True, "x", 1.5):
+        assert len(a.snapshot("C", after=bad)["minutes"]) == 20          # a nonsense bound is ignored, not trusted
+    assert SERVE_MINUTES >= MAX_MINUTES
+
+
+def test_unsaved_minute_evicted_from_memory_is_still_written(tmp_path):
+    path = str(tmp_path / "flow.db")
+    a = FlowStore(path=path, save_every_s=1e9)
+    for i in range(MAX_MINUTES + 3):
+        a.add("C", M + i * MIN_MS + 5, 2, 0)                          # nothing flushed yet: the first minutes are evicted dirty
+    a.save()
+    con = sqlite3.connect(path)
+    got = con.execute("SELECT buy FROM minutes WHERE cid='C' AND t=?", (M,)).fetchone()
+    assert got == (2,)
+
+
+def test_holes_and_partials_persist_and_load_with_the_tail(tmp_path):
+    path = str(tmp_path / "flow.db")
+    a = FlowStore(path=path, save_every_s=1e9)
+    a.add("C", M + 5, 1, 0)
+    a.mark_gap("C")
+    a.add("C", M + 10 * MIN_MS + 5, 1, 1)                              # resumes after a real outage: hole [M, M+10m]
+    a.save()
+    b = FlowStore(path=path)
+    assert [M, M + 10 * MIN_MS] in b.snapshot("C")["holes"]
+    rows = {r[0]: r for r in b.snapshot("C")["minutes"]}
+    assert rows[M][4] == 1 and rows[M + 10 * MIN_MS][4] == 1
+
+
+def test_retention_prunes_old_minutes_and_zero_keeps_everything(tmp_path):
+    now = int(time.time() * 1000) // MIN_MS * MIN_MS
+    old = now - 100 * 86_400_000
+    for keep, want_old in ((90, False), (0, True)):
+        path = str(tmp_path / f"flow{keep}.db")
+        a = FlowStore(path=path, save_every_s=1e9, keep_days=keep)
+        a.add("C", old + 5, 1, 0)
+        a.add("C", now + 5, 1, 0)
+        a.save()
+        b = FlowStore(path=path, keep_days=keep)
+        ts = [r[0] for r in b.snapshot("C", after=None)["minutes"]]
+        assert (old in ts) is want_old and now in ts
+
+
+def test_legacy_flow_json_is_imported_once_then_renamed(tmp_path):
+    legacy = tmp_path / "flow.json"
+    legacy.write_text(json.dumps({"v": 1, "c": {"C": {"since": M, "last_ts": M + 2 * MIN_MS, "partial": [M + 2 * MIN_MS],
+                                                       "holes": [[M + MIN_MS, M + 2 * MIN_MS]],
+                                                       "m": {str(M): [4, 5, 0], str(M + MIN_MS): [1, 1, 0]}}}}))
+    db = str(tmp_path / "flow.db")
+    a = FlowStore(path=db, legacy_json=str(legacy))
+    assert [r[:4] for r in a.snapshot("C")["minutes"] if r[0] in (M, M + MIN_MS)] == [[M, 4, 5, 0], [M + MIN_MS, 1, 1, 0]]
+    assert not legacy.exists() and (tmp_path / "flow.json.migrated").exists()
+    b = FlowStore(path=db, legacy_json=str(legacy))                    # a second start finds the data in the database
+    assert len(b.snapshot("C")["minutes"]) >= 2
+
+
+def test_hostile_rows_in_the_database_never_break_the_store(tmp_path):
+    path = str(tmp_path / "flow.db")
+    FlowStore(path=path).save()
+    con = sqlite3.connect(path)
+    con.executemany("INSERT INTO meta VALUES (?,?,?)", [("A", "x", 1), ("B", M, "y"), ("C", M, M), ("D", M, M)] + [(f"K{i}", M, M) for i in range(50)])
+    con.executemany("INSERT INTO minutes VALUES (?,?,?,?,?,?)", [
+        ("C", M, 2**62, 1, 1, 0),                  # absurd volume
+        ("C", M + MIN_MS, "z", 1, 1, 0),          # text in an integer column
+        ("C", M + 2 * MIN_MS, 1, 1, 0, 0),        # the one good row
+        ("D", 5, 1, 1, 1, 0),                      # timestamp outside 2000-2100
+    ])
+    con.execute("INSERT INTO holes VALUES ('C', 'q', 7)")
+    con.commit()
+    con.close()
+    s = FlowStore(path=path)
+    assert len(s._c) <= 8
+    assert [r[0] for r in s.snapshot("C")["minutes"]] == [M + 2 * MIN_MS]
+    summary(s, "C", M)                              # must not raise for any loaded state

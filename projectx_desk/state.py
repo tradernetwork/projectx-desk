@@ -27,7 +27,7 @@ from projectx_desk.ticks import TickBars
 
 
 class LiveState:
-    def __init__(self, market_hub=None, user_hub=None, flow_path=None, ticks_path=None):
+    def __init__(self, market_hub=None, user_hub=None, flow_path=None, ticks_path=None, flow_legacy=None):
         self.market, self.user = market_hub, user_hub
         self.quotes = {}      # contractId -> last GatewayQuote payload (+ "_rx" monotonic time)
         self.account = {}     # last GatewayUserAccount for the selected account
@@ -40,7 +40,7 @@ class LiveState:
         self._touched = None         # ids changed by live events while a REST snapshot is in flight
         self._listeners = []         # callables(kind, payload) for position/order events (the guard's stop manager)
         self.ticks = TickBars(path=ticks_path)   # tick bars (N prints per bar) from the same tape; sizes from PX_TICK_BARS
-        self.flow = FlowStore(path=flow_path)   # real buy/sell volume per minute, built from every GatewayTrade we receive
+        self.flow = FlowStore(path=flow_path, legacy_json=flow_legacy)   # real buy/sell volume per minute, built from every GatewayTrade we receive
         self._tape = []       # contracts whose trade tape stays subscribed with no browser open (oldest first)
         self._subs = {}       # contractId -> set[Queue]
         self._pinned = set()  # contracts whose quotes stay subscribed so the guard/MCP work with no browser open

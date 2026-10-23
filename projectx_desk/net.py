@@ -10,6 +10,7 @@ Basic auth over plain HTTP sends the token in the clear, so put TLS in front of 
 reverse proxy such as Caddy). See docs/DEPLOY.md.
 """
 import base64
+import os
 import hmac
 import ipaddress
 from typing import Optional
@@ -55,13 +56,21 @@ def allowed_origins(hosts: set, extra_raw: Optional[str] = None) -> set:
     return out | set(_split(extra_raw))
 
 
-def bind_problem(host: str, operator_token: Optional[str], extra_hosts_raw: Optional[str], weak_reason=None) -> Optional[str]:
+def open_lan_enabled() -> bool:
+    """PX_OPEN_LAN=1: the operator chose a non-loopback bind with NO login. Off by default; the Host allowlist is still required."""
+    return os.getenv("PX_OPEN_LAN", "").strip() == "1"
+
+
+def bind_problem(host: str, operator_token: Optional[str], extra_hosts_raw: Optional[str], weak_reason=None,
+                 open_lan: bool = False) -> Optional[str]:
     """Why the desk must not start on this bind, or None. Never quotes the token."""
     if is_loopback(host):
         return None
     if not _split(extra_hosts_raw):
         return (f"refusing to bind {host}: set PX_ALLOWED_HOSTS to the name(s) you will use to reach the desk "
                 f"(for example desk.lan,10.0.0.5). Without it a DNS-rebinding page could talk to the desk.")
+    if open_lan and not operator_token:
+        return None     # explicit opt-in: reachable by anything on the network, no login (a weak token set anyway still refuses)
     why = weak_reason(operator_token) if weak_reason else (None if operator_token else "no token set")
     if why:
         return (f"refusing to bind {host}: PX_OPERATOR_TOKEN is not usable ({why}). The desk can place orders; anything that can "

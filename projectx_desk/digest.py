@@ -12,6 +12,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from projectx_desk import anchor as px_anchor
+from projectx_desk import bias as px_bias
 from projectx_desk import feed as px_feed
 from projectx_desk import gex as px_gex
 from projectx_desk import flow as px_flow
@@ -437,6 +438,24 @@ def regime_view(adx_value, tf=None):
     return {"state": state, "adx": a, "threshold": float(sizing.ADX_CHOP), "tf": tf if tf in ("5m", "15m", "1h") else "5m"}
 
 
+def htf_stacks(app, cid):
+    """EMA stack state per higher timeframe, from the closed bars the respect scan already cached. Missing or short = NA."""
+    out = {}
+    cache = getattr(app.state, "respect_bars", None) or {}
+    for tf in ("15m", "1h"):
+        hit = cache.get((cid, tf))
+        closes = [b["close"] for b in (hit or {}).get("bars", [])]
+        out[tf] = ema_stack(closes)["state"] if len(closes) >= 40 else "NA"
+    return out
+
+
+def bias_state(app, cid, ind, last, flow):
+    em = ind.get("ema") or {}
+    stacks = {"5m": em.get("state")} | (htf_stacks(app, cid) if cid else {})
+    return px_bias.bias_view(last, ind.get("vwap"), em.get("21"), ind.get("atr"), ind.get("atr_pctile"), ind.get("adx"),
+                             stacks, flow, adx_chop=float(sizing.ADX_CHOP))
+
+
 async def scaled_risk(app, contract_id, risk_pct):
     """(risk_dollars, scale) for a stage request: the SAME number the size box showed. Only ever reduces."""
     g = app.state.guard
@@ -624,6 +643,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.05, stop_k
         "ind": {"atr": ind.get("atr"), "adx": ind.get("adx"), "atr_pctile": ind.get("atr_pctile"), "tf": ind.get("tf"),
                 "ema": ind.get("ema")},
         "regime": regime_view(ind.get("adx"), ind.get("tf")),
+        "bias": bias_state(app, contract_id, ind, _n(q.get("lastPrice")) if q else None, flow),
         "levels": _levels_vs_live(ind.get("levels", []), q),
         "size": size_idea(lim, contract_id, rec, side, _n(ref, 4), ind.get("atr"), ind.get("adx"), risk_pct, stop_k, remaining,
                           guard.risk_dollars_for(risk_pct, now), scale_info, ind.get("atr_pctile"),
@@ -728,6 +748,15 @@ def format_digest(s) -> str:
         L.append(f"REGIME: TRENDING adx_{rg['tf']}={rg['adx']:.1f} threshold={rg['threshold']:.0f}")
     else:
         L.append("REGIME: UNKNOWN")
+    bs = s.get("bias") or {}
+    if bs.get("direction") in ("LONG", "SHORT", "NEUTRAL"):
+        v = bs.get("votes") or {}
+        L.append(f"BIAS: {bs['direction']} grade={bs['grade']} score={_f(bs.get('score'))}/5 agree={bs['agree']}/{bs['reads']} "
+                 + " ".join(f"{k}={'+' if x > 0 else '-' if x < 0 else '0'}" for k, x in v.items())
+                 + (" flags=" + ",".join(bs["flags"]) if bs.get("flags") else ""))
+        L.append("BIAS_NOTE: advisory read of trend agreement, not a signal or an edge claim; never sizes or gates an order")
+    else:
+        L.append("BIAS: NA (fewer than 3 reads available)")
     em = i.get("ema") or {}
     L.append(f"EMA: stack={_f(em.get('state'))} 8={_f(em.get('8'))} 21={_f(em.get('21'))} 34={_f(em.get('34'))}")
     for lv in s.get("levels", []) or []:

@@ -524,7 +524,7 @@ function renderAll(){
   applySlots();
   renderWhy(); renderRibbon(); renderKpi(); renderSize(); renderManual(); renderTicketFields(); renderTicketMeta(); renderRisk(); renderBlotter(); renderAiPanel(); renderPlaceResult();
   fill($('size'), S.ai);
-  renderPair(); renderEma(); renderRegime(); renderLevels(); renderManage(); drawReact(false);
+  renderPair(); renderEma(); renderRegime(); renderBias(); renderLevels(); renderManage(); drawReact(false);
   syncDesk();
 }
 setInterval(() => {renderTicketMeta()}, 250);
@@ -637,6 +637,19 @@ function renderRegime(){
   c.hidden = false; c.className = 'chip ' + (st === 'RANGING' ? 'warn' : 'muted');
   c.textContent = st === 'RANGING' ? `RANGING, ADX ${adx} (sit-out zone)` : `TRENDING, ADX ${adx}`;
   c.title = 'ADX below 20 means price is chopping. Trend setups fail more often here.';
+}
+
+/* ================= bias chip: advisory read of trend agreement, never gates or sizes anything ================= */
+const BIAS_DIR = new Set(['LONG', 'SHORT', 'NEUTRAL']), BIAS_GRADE = new Set(['A+', 'A', 'B', 'C', 'D', 'F']);
+function renderBias(){
+  const c = $('bias-chip'), b = S.ai && S.ai.bias;
+  if(!b || !BIAS_DIR.has(b.direction) || !BIAS_GRADE.has(b.grade)){c.hidden = true; return}
+  c.hidden = false;
+  c.className = 'chip bias ' + (b.direction === 'LONG' ? 'long' : b.direction === 'SHORT' ? 'short' : 'flat');
+  const n = v => typeof v === 'number' && isFinite(v) ? v : null;
+  c.textContent = b.direction === 'NEUTRAL' ? 'BIAS NEUTRAL' : `BIAS ${b.direction} ${b.grade}`;
+  c.title = `Advisory only: ${n(b.agree)}/${n(b.reads)} reads agree, score ${n(b.score)}/5` + (Array.isArray(b.flags) && b.flags.length ? ` (${b.flags.filter(f => /^[A-Z_]{2,16}$/.test(f)).join(', ')})` : '') +
+    '. 5m/15m/1h EMA stacks, VWAP side, tape delta. Not a signal.';
 }
 
 /* ================= level reactions panel ================= */

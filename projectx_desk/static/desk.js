@@ -1917,31 +1917,38 @@ const ORB_MIN = 15, OPEN_M = 8 * 60 + 30;
 const CT_FMT = new Intl.DateTimeFormat('en-US', {timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
 function ctParts(ms){const o = {}; for(const p of CT_FMT.formatToParts(ms)) o[p.type] = p.value; return {d: `${o.year}-${o.month}-${o.day}`, m: +o.hour * 60 + +o.minute}}
 klinecharts.registerOverlay({
-  name: 'orbBox', totalStep: 3, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
+  name: 'orbBox', totalStep: 4, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
   createPointFigures: ({coordinates: cs, bounding, overlay}) => {
     if(cs.length < 2 || !cs.every(c => isFinite(c.x) && isFinite(c.y))) return [];
-    const [a, b] = cs, top = Math.min(a.y, b.y), bot = Math.max(a.y, b.y), x0 = a.x, x1 = Math.max(b.x, a.x + 2);
-    const col = 'rgba(95,179,217,0.55)';
+    const ed = overlay.extendData || {}, [a, b] = cs;
+    const top = Math.min(a.y, b.y), bot = Math.max(a.y, b.y), x0 = a.x;
+    const xe = ed.toEdge ? bounding.width : (cs[2] ? Math.max(cs[2].x, x0 + 2) : Math.max(b.x, x0 + 2));   // today runs to the right edge; past days to their 15:00 CT close
+    const col = 'rgba(95,179,217,0.55)', x1 = Math.min(Math.max(b.x, x0 + 2), xe);
     return [
-      {type: 'rect', ignoreEvent: true, attrs: {x: x0, y: top, width: x1 - x0, height: Math.max(1, bot - top)}, styles: {style: 'fill', color: 'rgba(95,179,217,0.13)'}},
-      {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x1, y: top}, {x: bounding.width, y: top}]}, styles: {style: 'dashed', color: col, size: 1, dashedValue: [4, 4]}},
-      {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x1, y: bot}, {x: bounding.width, y: bot}]}, styles: {style: 'dashed', color: col, size: 1, dashedValue: [4, 4]}},
+      {type: 'rect', ignoreEvent: true, attrs: {x: x0, y: top, width: Math.max(2, xe - x0), height: Math.max(1, bot - top)}, styles: {style: 'fill', color: 'rgba(95,179,217,0.13)'}},
+      {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x1, y: top}, {x: xe, y: top}]}, styles: {style: 'dashed', color: col, size: 1, dashedValue: [4, 4]}},
+      {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x1, y: bot}, {x: xe, y: bot}]}, styles: {style: 'dashed', color: col, size: 1, dashedValue: [4, 4]}},
       {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x0, y: 0}, {x: x0, y: bounding.height}]}, styles: {style: 'dashed', color: 'rgba(233,238,246,0.35)', size: 1, dashedValue: [2, 4]}},
       {type: 'text', ignoreEvent: true, attrs: {x: x0 + 4, y: 4, text: 'OPEN 8:30 CT', align: 'left', baseline: 'top'},
        styles: {color: '#aab6c8', size: 10, family: MONO, weight: '600', backgroundColor: 'rgba(7,9,13,.7)', borderSize: 0, borderRadius: 2, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, style: 'fill'}},
     ];
   }});
 let orbSig = '';
+const CLOSE_M = 15 * 60;
 function orbDays(){
   const per = chart.getPeriod(), data = chart.getDataList();
   if(!per || per.type !== 'minute' || !(per.span < 60) || !data.length) return [];
-  const days = new Map();
+  const days = new Map(), lastD = ctParts(data[data.length - 1].timestamp).d;
   for(const b of data){
     const p = ctParts(b.timestamp);
-    if(p.m === OPEN_M && !days.has(p.d)) days.set(p.d, {t0: b.timestamp, t1: b.timestamp, hi: b.high, lo: b.low});
-    else if(p.m > OPEN_M && p.m < OPEN_M + ORB_MIN && days.has(p.d)){const d = days.get(p.d); d.t1 = b.timestamp; d.hi = Math.max(d.hi, b.high); d.lo = Math.min(d.lo, b.low)}
+    if(p.m === OPEN_M && !days.has(p.d)) days.set(p.d, {t0: b.timestamp, t1: b.timestamp, hi: b.high, lo: b.low, tEnd: b.timestamp, day: p.d});
+    else if(days.has(p.d) && p.m > OPEN_M){
+      const d = days.get(p.d);
+      if(p.m < OPEN_M + ORB_MIN){d.t1 = b.timestamp; d.hi = Math.max(d.hi, b.high); d.lo = Math.min(d.lo, b.low)}
+      if(p.m <= CLOSE_M) d.tEnd = b.timestamp;
+    }
   }
-  return [...days.values()].slice(-3);
+  return [...days.values()].slice(-3).map(d => ({t0: d.t0, t1: d.t1, hi: d.hi, lo: d.lo, tEnd: d.tEnd, toEdge: d.day === lastD && ctParts(data[data.length - 1].timestamp).m <= CLOSE_M}));
 }
 function drawOrb(){
   try{
@@ -1949,7 +1956,8 @@ function drawOrb(){
     if(sig === orbSig) return;
     orbSig = sig;
     chart.removeOverlay({groupId: 'orb'});
-    for(const d of days) chart.createOverlay({name: 'orbBox', groupId: 'orb', lock: true, points: [{timestamp: d.t0, value: d.hi}, {timestamp: d.t1, value: d.lo}]});
+    for(const d of days) chart.createOverlay({name: 'orbBox', groupId: 'orb', lock: true, extendData: {toEdge: d.toEdge},
+      points: [{timestamp: d.t0, value: d.hi}, {timestamp: d.t1, value: d.lo}, {timestamp: d.tEnd, value: d.lo}]});
   }catch(e){err(e)}
 }
 setInterval(() => {if(document.visibilityState === 'visible') drawOrb()}, 2000);

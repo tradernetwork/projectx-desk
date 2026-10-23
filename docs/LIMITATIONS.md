@@ -117,6 +117,18 @@ the code (`applySlots` swaps the figures out of the page) but no browser test pi
 **The digest and the desk are open to anything on loopback.** The MCP server has a bearer token; `/ai/*`, `/state.json` and the
 POST routes do not, for the reason given above.
 
+**`PX_OPEN_LAN=1` removes the login.** It is an explicit opt-out for a home network you fully control: anything that can reach the port can stage
+and place within your caps, and the page and its traffic are cleartext HTTP. `PX_ALLOWED_HOSTS` still blocks DNS-rebinding pages, and MCP still has its own bearer token.
+Do not use it on a live account you cannot afford to be wrong about.
+
+**The volume tape cannot be backfilled.** ProjectX has no tick history, so anything from before the desk was running is gone, and every
+restart is a hole (a minute or more). SQLite (`data/flow.db`) keeps what was recorded without a cap, but not what was missed.
+
+**Weekend quiet is a clock, not a calendar.** It runs Friday 16:05 CT to Sunday 16:55 CT only while the desk is provably flat. Exchange holidays
+are not modelled, and while it is quiet a dropped feed stays down (the feed dots show it) instead of retrying until the window ends.
+
+**Running on a home server is your reading of Topstep's rule, not their answer.** `docs/TOPSTEP_RULES.md` records the wording; confirm it in writing.
+
 ## Known gaps
 
 - The existing `LEVEL:` lines (EMA 8/21/34, VWAP on the current timeframe) still use the raw `projectx_desk.levels` placebo, which is biased

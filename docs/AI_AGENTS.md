@@ -28,7 +28,25 @@ Any MCP HTTP client (change the port if you set `CHART_PORT`):
   "headers": { "Authorization": "Bearer <PX_MCP_TOKEN>" } } } }
 ```
 
-Foreign Host or Origin headers get a 403, so clients must use `127.0.0.1:<port>` or `localhost:<port>`.
+Foreign Host or Origin headers get a 403, so clients must use `127.0.0.1:<port>`, `localhost:<port>`, or a name in `PX_ALLOWED_HOSTS`.
+The default port is `CHART_PORT` (8600); `./run_dev.sh` uses 8613.
+
+Hermes Agent (on the same machine as the desk):
+
+```bash
+echo 'PX_MCP_TOKEN=<the token>' >> "$(dirname "$(hermes config path)")/.env"      # the ACTIVE profile's .env
+hermes mcp add projectx --url http://127.0.0.1:8600/mcp/ --auth header            # or edit the profile's config.yaml:
+```
+```yaml
+mcp_servers:
+  projectx:
+    url: http://127.0.0.1:8600/mcp/
+    headers:
+      Authorization: "Bearer ${PX_MCP_TOKEN}"
+```
+
+`hermes config path` prints the active profile's file; a different profile has its own `config.yaml` and `.env`, and editing the root one does
+nothing. Check with `hermes mcp test projectx` (it should list 12 tools). Keep the token out of the config file and out of shell history.
 
 ## Tools
 

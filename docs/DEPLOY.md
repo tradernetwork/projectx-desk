@@ -145,8 +145,53 @@ TimeoutStopSec=20
 WantedBy=default.target
 ```
 
-It keeps loading `.env.projectx` from the checkout root, and a clean stop saves the tape (`data/flow.json`). Logs:
+It keeps loading `.env.projectx` from the checkout root, and a clean stop flushes the tape (`data/flow.db`). Logs:
 `journalctl --user -u projectx-desk -f`. This is the same machine you trade from, so it stays inside Topstep's own-device rule.
+
+## A home server you control (always-on, reachable from your LAN and tailnet)
+
+The setup the author runs. Read the Topstep note at the top first: this is a machine in your own home, which you must be comfortable
+calling "your device"; get support to confirm it in writing before you rely on it.
+
+```bash
+git clone https://github.com/tradernetwork/projectx-desk.git ~/projects/projectx-desk && cd ~/projects/projectx-desk
+python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
+cp .env.projectx.example .env.projectx && chmod 600 .env.projectx     # fill it in; never commit it
+```
+
+Keep the bind and the login decision explicit in `.env.projectx`:
+
+| You want | Set |
+|---|---|
+| Only this machine (and `tailscale serve` or a TLS proxy in front) | `PX_HOST=127.0.0.1`, `PX_OPERATOR_TOKEN` set anyway if a proxy fronts it |
+| LAN with a login | `PX_HOST=0.0.0.0`, `PX_OPERATOR_TOKEN=$(openssl rand -hex 32)`, `PX_ALLOWED_HOSTS=<lan-ip>,<hostname>` |
+| LAN with **no** login (home network you fully control, sim first) | `PX_HOST=0.0.0.0`, `PX_OPEN_LAN=1`, `PX_OPERATOR_TOKEN=` blank, `PX_ALLOWED_HOSTS=...` still required |
+
+For phones away from home use Tailscale, which gives you TLS: `tailscale serve --bg <CHART_PORT>`, add the `*.ts.net` name to
+`PX_ALLOWED_HOSTS`, and enable MagicDNS and HTTPS certificates for the tailnet in the Tailscale admin console first. A machine whose Tailscale
+runs in userspace mode reaches the tailnet only through its SOCKS proxy, so test from a device that is a normal tailnet node.
+
+A user systemd unit (`~/.config/systemd/user/projectx-desk.service`) is the one in the section above with `WorkingDirectory` and
+`ExecStart` pointing at your checkout and venv. Run `loginctl enable-linger $USER` so it starts at boot. If the analyst-callouts feed
+needs an SSH tunnel, give it its own unit and order the desk after it:
+
+```ini
+# ~/.config/systemd/user/projectx-tunnel.service
+[Service]
+ExecStart=/usr/bin/ssh -N -T -L 8300:localhost:8300 -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o BatchMode=yes <ssh-host>
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=default.target
+```
+
+with `After=projectx-tunnel.service` and `Wants=projectx-tunnel.service` in the desk unit and `PX_FEED_URL=http://127.0.0.1:8300/analyst-callouts`.
+
+Updating: stop being mid-trade, then `git pull`, `systemctl --user restart projectx-desk`. A restart is a one-minute hole in the volume tape
+and drops stop protection for those seconds, so do it flat. Only one desk may run per account: stop and disable the old one before starting
+the new one. Move `.env.projectx` and `data/` together (the halt file, day counters and order intents live in `data/`; losing them clears a halt).
+
+While the market is closed and the desk is flat it stands down its own API traffic (Friday 16:05 CT to Sunday 16:55 CT, `PX_WEEKEND_QUIET=0` to disable).
 
 ## The recorder: a log-only copy for a server
 
@@ -169,7 +214,7 @@ PX_HOST=0.0.0.0
 PX_OPERATOR_TOKEN=<openssl rand -hex 32>
 PX_ALLOWED_HOSTS=recorder.lan
 PX_TRACK_ROOTS=MES,MNQ,MGC
-PX_FLOW_FILE=/var/lib/projectx-recorder/flow.json
+PX_FLOW_DB=/var/lib/projectx-recorder/flow.db
 PX_TICKS_FILE=/var/lib/projectx-recorder/ticks.json
 PX_GRADES_FILE=/var/lib/projectx-recorder/indicator_grades.jsonl
 PX_LOCK_FILE=/var/lib/projectx-recorder/desk.lock

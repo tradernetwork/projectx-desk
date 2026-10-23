@@ -6,3 +6,4 @@ data/
 *.sqlite
 audit.jsonl
 handoff.md
+CLAUDE.local.md

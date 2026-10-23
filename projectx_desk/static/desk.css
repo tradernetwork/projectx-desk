@@ -793,3 +793,9 @@ button.mini{min-height:24px;padding:0 8px}
 .bd-g{font-weight:800;color:var(--text-2)}
 .bd-row.long .bd-g{color:var(--green)} .bd-row.short .bd-g{color:#f43f5e}
 .bd-row{cursor:pointer;background:transparent} .bd-row:hover{border-color:var(--border-strong)}
+
+.lm-menu{position:fixed;z-index:50;min-width:172px;padding:4px;border:1px solid var(--border-strong);border-radius:var(--r);background:var(--bg-card);box-shadow:0 6px 24px rgba(0,0,0,.5)}
+.lm-h{padding:4px 8px 6px;font:600 var(--fs-xs)/1.2 var(--mono);color:var(--text-2)}
+.lm-opt{display:block;width:100%;text-align:left;padding:7px 10px;margin:2px 0;font:700 var(--fs-sm)/1 var(--mono);border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg-sub);cursor:pointer}
+.lm-opt.long{color:var(--green)} .lm-opt.short{color:#f43f5e} .lm-opt:disabled{opacity:.35;cursor:not-allowed}
+.lm-opt:not(:disabled):hover{border-color:var(--border-strong)}

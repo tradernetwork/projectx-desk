@@ -1597,7 +1597,7 @@ const tkAll = () => {for(const n of TK.sizes) tkFetch(n)};
 /* ---- drawing toolbar ---- */
 const TOOLS = [['Trend', 'segment'], ['Ray', 'rayLine'], ['H-line', 'horizontalStraightLine'], ['V-line', 'verticalStraightLine'],
   ['Chan', 'parallelStraightLine'], ['Fib', 'fibonacciLine'], ['Zone', 'zoneBand'], ['Meas', 'measure'], ['Note', 'simpleAnnotation']];
-const NONUSER = ['desk', 'react', 'respect', 'autolvl'];   // overlay groups that are never saved as user drawings
+const NONUSER = ['desk', 'react', 'respect', 'autolvl', 'orb'];   // overlay groups that are never saved as user drawings
 let magnet = LS.get('px.magnet', 0), locked = false, hidden = false;
 const MODES = ['normal', 'weak_magnet', 'strong_magnet'];
 function snapOv(e){   // a drawn or dragged price lands on a real tick, not 7666.37
@@ -1865,3 +1865,91 @@ $('board-rows').addEventListener('click', async e => {   // switch the chart to 
   const sel = $('c'); if(b.dataset.cid && [...sel.options].some(o => o.value === b.dataset.cid)){sel.value = b.dataset.cid; load()}
   boardFetch();
 });
+
+/* ================= right-click on the chart: stage a LIMIT entry at that price (same preview, ticket and 600 ms hold as BUY/SELL) ================= */
+const LM = {el: null}, LM_MAX_TICKS = 20;   // mirrors the guard's PX_MAX_ENTRY_DEV default; the server stays the authority
+function lmClose(){if(LM.el){LM.el.remove(); LM.el = null}}
+function lmPrice(ev){
+  const box = $('chart').getBoundingClientRect(), cs = chart.getSize('candle_pane', 'root');
+  const x = ev.clientX - box.left, y = ev.clientY - box.top;
+  if(!cs || y < 0 || y > cs.height || x < 0) return null;      // only inside the price pane
+  const p = chart.convertFromPixel([{x, y}], {paneId: 'candle_pane'});
+  const v = p && p[0] && p[0].value, tk = cur.tick;
+  if(typeof v !== 'number' || !isFinite(v) || !(tk > 0)) return null;
+  return +(Math.round(v / tk) * tk).toFixed(cur.dec ?? 2);
+}
+async function lmStage(side, px){
+  lmClose();
+  const t = parseInt($('mq-stop').value, 10), tk = cur.tick;
+  if(!(t >= 1)){$('msg').textContent = 'Limit order needs a stop distance in ticks (the Manual row).'; return}
+  const cid = await sizeContract();
+  if(!cid){$('msg').textContent = 'Pick a contract first.'; return}
+  const stop = +(side === 'long' ? px - t * tk : px + t * tk).toFixed(cur.dec ?? 2);
+  S.side = side; syncSizeInputs(); schedule(0);
+  await doStage({contract: cid, side, stop_price: stop, qty: MQ.qty, order_type: 'limit', entry: px, source: 'manual'}, cid);
+}
+$('chart').addEventListener('contextmenu', ev => {
+  if(active) return;                                           // mid-drawing: leave the right-click alone
+  const px = lmPrice(ev); if(px === null) return;
+  ev.preventDefault(); lmClose();
+  const q = S.ai && S.ai.quote || {}, bid = q.bid, ask = q.ask, t = parseInt($('mq-stop').value, 10);
+  const dec = cur.dec ?? 2;
+  const mid = typeof bid === 'number' && typeof ask === 'number' ? (bid + ask) / 2 : null, near = mid !== null && Math.abs(px - mid) <= LM_MAX_TICKS * cur.tick;
+  const m = mk('div', 'lm-menu'); m.setAttribute('role', 'menu');
+  const opt = (side, label, ok, why) => {
+    const b = mk('button', 'lm-opt ' + side, label); b.type = 'button'; b.disabled = !ok; if(!ok) b.title = why;
+    b.onclick = () => lmStage(side, px); return b;
+  };
+  const info = `${MQ.qty} x ${px.toFixed(dec)}, stop ${t >= 1 ? t : '?'}t`;
+  m.append(mk('div', 'lm-h', 'LIMIT ' + info),
+    opt('long', 'BUY LIMIT', typeof ask === 'number' && px < ask && near, near ? 'at or above the ask: that is not a resting limit' : `more than ${LM_MAX_TICKS} ticks from the market`),
+    opt('short', 'SELL LIMIT', typeof bid === 'number' && px > bid && near, near ? 'at or below the bid: that is not a resting limit' : `more than ${LM_MAX_TICKS} ticks from the market`));
+  m.style.left = Math.min(ev.clientX, innerWidth - 190) + 'px'; m.style.top = Math.min(ev.clientY, innerHeight - 110) + 'px';
+  document.body.append(m); LM.el = m;
+});
+document.addEventListener('pointerdown', e => {if(LM.el && !LM.el.contains(e.target)) lmClose()});
+document.addEventListener('keydown', e => {if(e.key === 'Escape') lmClose()});
+window.addEventListener('blur', lmClose);
+
+/* ================= cash open + opening range (ORB): a marker at 08:30 CT and the first ORB_MIN minutes shaded, with the range extended right.
+   Computed from the bars on screen, minute timeframes under 60m only. Group 'orb' is never saved as a user drawing. ================= */
+const ORB_MIN = 15, OPEN_M = 8 * 60 + 30;
+const CT_FMT = new Intl.DateTimeFormat('en-US', {timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
+function ctParts(ms){const o = {}; for(const p of CT_FMT.formatToParts(ms)) o[p.type] = p.value; return {d: `${o.year}-${o.month}-${o.day}`, m: +o.hour * 60 + +o.minute}}
+klinecharts.registerOverlay({
+  name: 'orbBox', totalStep: 3, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
+  createPointFigures: ({coordinates: cs, bounding, overlay}) => {
+    if(cs.length < 2 || !cs.every(c => isFinite(c.x) && isFinite(c.y))) return [];
+    const [a, b] = cs, top = Math.min(a.y, b.y), bot = Math.max(a.y, b.y), x0 = a.x, x1 = Math.max(b.x, a.x + 2);
+    const col = 'rgba(95,179,217,0.55)';
+    return [
+      {type: 'rect', ignoreEvent: true, attrs: {x: x0, y: top, width: x1 - x0, height: Math.max(1, bot - top)}, styles: {style: 'fill', color: 'rgba(95,179,217,0.13)'}},
+      {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x1, y: top}, {x: bounding.width, y: top}]}, styles: {style: 'dashed', color: col, size: 1, dashedValue: [4, 4]}},
+      {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x1, y: bot}, {x: bounding.width, y: bot}]}, styles: {style: 'dashed', color: col, size: 1, dashedValue: [4, 4]}},
+      {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x0, y: 0}, {x: x0, y: bounding.height}]}, styles: {style: 'dashed', color: 'rgba(233,238,246,0.35)', size: 1, dashedValue: [2, 4]}},
+      {type: 'text', ignoreEvent: true, attrs: {x: x0 + 4, y: 4, text: 'OPEN 8:30 CT', align: 'left', baseline: 'top'},
+       styles: {color: '#aab6c8', size: 10, family: MONO, weight: '600', backgroundColor: 'rgba(7,9,13,.7)', borderSize: 0, borderRadius: 2, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, style: 'fill'}},
+    ];
+  }});
+let orbSig = '';
+function orbDays(){
+  const per = chart.getPeriod(), data = chart.getDataList();
+  if(!per || per.type !== 'minute' || !(per.span < 60) || !data.length) return [];
+  const days = new Map();
+  for(const b of data){
+    const p = ctParts(b.timestamp);
+    if(p.m === OPEN_M && !days.has(p.d)) days.set(p.d, {t0: b.timestamp, t1: b.timestamp, hi: b.high, lo: b.low});
+    else if(p.m > OPEN_M && p.m < OPEN_M + ORB_MIN && days.has(p.d)){const d = days.get(p.d); d.t1 = b.timestamp; d.hi = Math.max(d.hi, b.high); d.lo = Math.min(d.lo, b.low)}
+  }
+  return [...days.values()].slice(-3);
+}
+function drawOrb(){
+  try{
+    const days = orbDays(), sig = (cur.ticker || '') + '|' + JSON.stringify(chart.getPeriod()) + '|' + JSON.stringify(days);
+    if(sig === orbSig) return;
+    orbSig = sig;
+    chart.removeOverlay({groupId: 'orb'});
+    for(const d of days) chart.createOverlay({name: 'orbBox', groupId: 'orb', lock: true, points: [{timestamp: d.t0, value: d.hi}, {timestamp: d.t1, value: d.lo}]});
+  }catch(e){err(e)}
+}
+setInterval(() => {if(document.visibilityState === 'visible') drawOrb()}, 2000);

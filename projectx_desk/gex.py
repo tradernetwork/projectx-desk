@@ -36,7 +36,9 @@ MAX_WALLS = 6
 MAX_DIST_PCT = 0.03        # drop levels further than this from the futures last
 MAX_BODY = 2_000_000
 _SYMS = frozenset(s["symbol"] for row in gex_futures.MAPPING.values() for s in row["sources"])
-_WALL_TYPES = {"resistance": "RESISTANCE", "support": "SUPPORT"}      # "pin" is carried separately
+# keyLevels typed "pin" are real strikes (a SPY 760 pin with 1.7B net put gamma was invisible when only support/resistance passed). The
+# maxGammaStrike pin is carried separately as `pin`, so a key level on that same strike is skipped, not drawn twice.
+_WALL_TYPES = {"resistance": "RESISTANCE", "support": "SUPPORT", "pin": "PIN"}
 
 
 class GexError(Exception):
@@ -137,7 +139,8 @@ def sanitize_payload(raw, symbol):
         x = _num(v, 0, 1e7)
         return x if x is not None and abs(x / spot - 1.0) <= 0.5 else None
 
-    walls, seen = [], set()
+    pin = strike(raw.get("maxGammaStrike"))
+    walls, seen = [], {pin} if pin is not None else set()
     kl = raw.get("keyLevels")
     for it in (kl if isinstance(kl, list) else [])[:200]:
         if not isinstance(it, dict):
@@ -150,7 +153,7 @@ def sanitize_payload(raw, symbol):
         walls.append({"strike": k, "type": typ, "gex": g})
     walls.sort(key=lambda w: -abs(w["gex"]))
     return {"symbol": symbol, "spot": spot, "flip": strike(raw.get("gammaFlipLevel")),
-            "pin": strike(raw.get("maxGammaStrike")), "walls": walls[:MAX_WALLS], "updated_epoch": upd}
+            "pin": pin, "walls": walls[:MAX_WALLS], "updated_epoch": upd}
 
 
 def quote_last(q):
@@ -165,7 +168,8 @@ def quote_last(q):
 
 def build_levels(clean, age_s):
     """sanitize_payload output -> the levels dict gex_futures.convert_levels expects."""
-    lv = {"symbol": clean["symbol"], "spot": clean["spot"], "walls": [{"strike": w["strike"], "type": w["type"]} for w in clean["walls"]]}
+    lv = {"symbol": clean["symbol"], "spot": clean["spot"],
+          "walls": [{"strike": w["strike"], "type": w["type"], "gex": w["gex"], "src_strike": w["strike"]} for w in clean["walls"]]}
     if clean["flip"] is not None:
         lv["flip"] = clean["flip"]
     if clean["pin"] is not None:
@@ -180,10 +184,12 @@ def shape_levels(res, last, tick):
     cand = []
     for k in ("flip", "pin"):
         if lv.get(k) is not None:
-            cand.append((k, lv[k], None))
-    for w in lv.get("walls") or []:
-        cand.append(("wall_above" if w["strike"] > last else "wall_below", w["strike"], w.get("type")))
-    for name, price, typ in cand:
+            cand.append((k, lv[k], None, None))
+    ws = lv.get("walls") or []
+    top = max((abs(w["gex"]) for w in ws if isinstance(w.get("gex"), (int, float))), default=0.0)
+    for w in ws:
+        cand.append(("wall_above" if w["strike"] > last else "wall_below", w["strike"], w.get("type"), w))
+    for name, price, typ, w in cand:
         if abs(price - last) / last > MAX_DIST_PCT:
             dropped += 1
             continue
@@ -192,6 +198,13 @@ def shape_levels(res, last, tick):
              "pts": round(d, 2), "ticks": int(round(d / tick))}
         if typ:
             e["wall_type"] = typ
+        g = w.get("gex") if w else None
+        if isinstance(g, (int, float)) and g != 0 and top > 0:
+            # net gamma sign: negative = put-dominated strike, positive = call-dominated. rel = size against the biggest wall in this payload.
+            e["kind"] = "PUT" if g < 0 else "CALL"
+            e["rel"] = round(abs(g) / top, 2)
+        if w and isinstance(w.get("src_strike"), (int, float)):
+            e["src_strike"] = w["src_strike"]
         out.append(e)
     out.sort(key=lambda e: -e["price"])
     return out, dropped
@@ -341,3 +354,17 @@ def gex_lines(g):
         L.append(f"GEX_{n}: {lv['name']} {lv['price']} {lv['pts']}pt {lv['ticks']}t {lv['side']}")
     L.append("GEX_NOTE: positioning not targets; flip is regime boundary")
     return L
+
+
+def near_lines(g):
+    """The nearest wall on each side as one line each, so a turn at a put or call wall is read as one. Digest text from validated fields only."""
+    ws = [lv for lv in (g or {}).get("levels") or [] if str(lv.get("name", "")).startswith("wall") and isinstance(lv.get("pts"), (int, float))]
+    out = []
+    for side, pick in (("above", min), ("below", max)):
+        c = [lv for lv in ws if lv.get("side") == side]
+        if not c:
+            continue
+        lv = pick(c, key=lambda x: x["pts"])
+        src = f" ({g.get('source')} {lv['src_strike']:g})" if g.get("source") and isinstance(lv.get("src_strike"), (int, float)) else ""
+        out.append(f"GEX_NEAR_{side.upper()}: {lv.get('kind', 'NA')} wall {lv['price']:g} {lv['pts']:+g}pt str={lv.get('rel', 'NA')} {lv.get('wall_type', 'NA')}{src}")
+    return out

@@ -885,7 +885,9 @@ def format_digest(s) -> str:
     L.append(f"GEX: status={_f(g.get('status'))}" + ("".join(f" {k}={_f(v)}" for k, v in g.items()
                                                           if k in ("source", "method", "basis", "approximate", "flip_split", "age_s", "code"))))
     for n, lv in enumerate(g.get("levels", []) or [], 1):
-        L.append(f"GEX_{n}: {lv.get('name')} {_f(lv.get('price'))} {_f(lv.get('pts'))}pt {_f(lv.get('ticks'))}t {lv.get('side')}")
+        L.append(f"GEX_{n}: {lv.get('name')} {_f(lv.get('price'))} {_f(lv.get('pts'))}pt {_f(lv.get('ticks'))}t {lv.get('side')}"
+                 + "".join(f" {k}={_f(lv[k])}" for k in ("kind", "wall_type", "rel", "src_strike") if lv.get(k) is not None))
+    L.extend(px_gex.near_lines(g))
     L.append("GEX_NOTE: positioning not targets; flip is regime boundary")
     L.append("POS: " + ("; ".join(f"{p['side']} {_f(p['size'])} {_f(p['contract'])} @ {_f(p['avg_price'])}" for p in s["positions"]) or "NONE"))
     L.append("ORD: " + ("; ".join(f"{o['side']} {o['type']} {_f(o['size'])} {_f(o['contract'])} stop={_f(o['stop'])} limit={_f(o['limit'])} tag={_f(o['tag'])}"

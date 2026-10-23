@@ -474,3 +474,9 @@ Two outside reviews (GPT-6 and DeepSeek V4.1 Flash) and the in-house risk lens c
 - **Hermes Agent over MCP** (`docs/AI_AGENTS.md`): read, size, stage and halt only; still no place, flatten, cancel or clear-halt tool.
 - **Not done:** the quiet window ignores exchange holidays; the speed benchmark `test_speed_five_timeframes_of_1000_bars` fails on the home server's slower CPU (a timing assertion, not a logic failure).
 
+
+## Round 19: GEX pin-typed walls, put/call kind and size (2026-10-23)
+
+- **`keyLevels` typed `pin` are walls.** The live SPY payload typed 760/761/762 `pin` (760: 1.7B net put gamma, price at 760.93) while `maxGammaStrike` was 755. Only `support`/`resistance` passed, so the desk showed no level where an MES turnaround happened. Pin-typed key levels now pass as `wall_type=PIN`; the one on the `maxGammaStrike` strike is skipped (already carried as `pin`).
+- **Walls carry `kind` (PUT if net gamma < 0, CALL if > 0), `rel` (size against the biggest wall in the payload) and `src_strike`** (the SPX/SPY strike as the trader quotes it). The digest prints them on `GEX_n` and adds `GEX_NEAR_ABOVE` / `GEX_NEAR_BELOW`; the chart label reads `GEX PUT wall_below 7603 100%`. Still display only: nothing reaches the guard, sizing, stops or bias score.
+- **Not done:** GEX for tracked tapes with no chart open, wall confluence on respected levels, wall-approach push alerts (offered, not chosen).

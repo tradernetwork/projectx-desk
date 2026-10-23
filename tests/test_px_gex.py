@@ -221,3 +221,23 @@ def test_old_payload_first_seen_uses_the_bar_close_at_its_timestamp():
     a.state.respect_bars = {(CID, "5m"): {"bars": [{"timestamp": ts_ms, "close": 7770.0}]}}
     r = run(a, {"SPX": spx(lastUpdated="2026-10-16T13:56:40.000Z"), "SPY": spy()})
     assert r["status"] == "OK"
+
+
+def test_pin_typed_key_levels_are_walls_with_kind_and_size():
+    """The live SPY payload typed 760/761/762 'pin' (maxGammaStrike was 755); they were dropped and a turn at 760 had no level."""
+    p = {"symbol": "SPY", "spotPrice": 760.93, "gammaFlipLevel": 768.43, "maxGammaStrike": 755,
+         "keyLevels": [{"strike": 755, "netGEX": -2.08e9, "type": "support"}, {"strike": 760, "netGEX": -1.71e9, "type": "pin"},
+                       {"strike": 761, "netGEX": -0.89e9, "type": "pin"}, {"strike": 767, "netGEX": 0.5e9, "type": "resistance"}],
+         "lastUpdated": "2026-10-16T13:57:00.755Z"}
+    r = run(app(7609.0), {"SPX": px_gex.GexError("UPSTREAM_ERROR"), "SPY": p})
+    walls = [l for l in r["levels"] if l["name"].startswith("wall")]
+    w760 = next(l for l in walls if l["src_strike"] == 760)
+    assert w760["wall_type"] == "PIN" and w760["kind"] == "PUT" and w760["rel"] == 1.0   # the biggest wall left once 755 is the pin
+    assert next(l for l in walls if l["src_strike"] == 761)["rel"] < 0.6
+    assert next(l for l in walls if l["src_strike"] == 767)["kind"] == "CALL"
+    assert not any(l.get("src_strike") == 755 and l["name"].startswith("wall") for l in walls)    # the max-gamma pin is not drawn twice
+    assert max(l["rel"] for l in walls) == 1.0
+    L = px_gex.near_lines(r)
+    assert any(x.startswith("GEX_NEAR_BELOW: PUT wall") and "(SPY 760)" in x for x in L)
+    assert any(x.startswith("GEX_NEAR_ABOVE: ") for x in L)
+    assert px_gex.near_lines(None) == [] and px_gex.near_lines({"levels": [{"name": "wall_below", "pts": "x"}]}) == []

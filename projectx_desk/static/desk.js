@@ -1161,7 +1161,9 @@ function deskLines(){
   if(g && Array.isArray(g.levels)) for(const lv of g.levels){
     if(typeof lv.price !== 'number') continue;
     const nm = String(lv.name || 'gex').slice(0, 24);
-    out.push({price: lv.price, label: 'GEX ' + nm + ' ' + lv.price, color: GEX_COL[nm] || C.purple, dash: true});
+    const kd = lv.kind === 'PUT' || lv.kind === 'CALL' ? lv.kind + ' ' : '';       // put-dominated or call-dominated strike
+    const sz = typeof lv.rel === 'number' ? ' ' + Math.round(lv.rel * 100) + '%' : '';   // size against the biggest wall in the payload
+    out.push({price: lv.price, label: 'GEX ' + kd + nm + ' ' + lv.price + sz, color: GEX_COL[nm] || C.purple, dash: true});
   }
   const cl = CALL.live;       // the analyst's own entry, stop and first target, while it is recent and this is its chart
   if(cl && cl.root === curRoot() && cl.age0 + (performance.now() - cl.at) / 1000 < 5400){

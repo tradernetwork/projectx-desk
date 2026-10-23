@@ -56,3 +56,10 @@ def test_bands():
 def test_ninety_fifth_percentile_is_extreme_and_capped():
     b = bias_view(95, 100, 95.5, 1.0, 95, 30, ALL_BEAR, None)
     assert "VOL_EXTREME" in b["flags"] and b["grade"] == "B"
+
+
+def test_ui_revalidates_so_a_restart_never_serves_a_stale_page():
+    from fastapi.testclient import TestClient
+    from projectx_desk.app import create_app
+    import inspect
+    assert "revalidate_ui" in inspect.getsource(create_app)

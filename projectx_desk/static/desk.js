@@ -643,6 +643,7 @@ function renderRegime(){
 const BIAS_DIR = new Set(['LONG', 'SHORT', 'NEUTRAL']), BIAS_GRADE = new Set(['A+', 'A', 'B', 'C', 'D', 'F']);
 function renderBias(){
   const c = $('bias-chip'), b = S.ai && S.ai.bias;
+  if(!c) return;
   if(!b || !BIAS_DIR.has(b.direction) || !BIAS_GRADE.has(b.grade)){c.hidden = true; return}
   c.hidden = false;
   c.className = 'chip bias ' + (b.direction === 'LONG' ? 'long' : b.direction === 'SHORT' ? 'short' : 'flat');
@@ -1599,9 +1600,17 @@ const TOOLS = [['Trend', 'segment'], ['Ray', 'rayLine'], ['H-line', 'horizontalS
 const NONUSER = ['desk', 'react', 'respect', 'autolvl'];   // overlay groups that are never saved as user drawings
 let magnet = LS.get('px.magnet', 0), locked = false, hidden = false;
 const MODES = ['normal', 'weak_magnet', 'strong_magnet'];
+function snapOv(e){   // a drawn or dragged price lands on a real tick, not 7666.37
+  try{
+    const o = e && e.overlay, tk = cur.tick;
+    if(!o || !o.id || !(tk > 0) || !Array.isArray(o.points)) return;
+    const pts = o.points.map(p => typeof p.value === 'number' ? {...p, value: +(Math.round(p.value / tk) * tk).toFixed(cur.dec ?? 2)} : p);
+    if(pts.some((p, i) => p.value !== o.points[i].value)) chart.overrideOverlay({id: o.id, points: pts});
+  }catch(err_){err(err_)}
+}
 function mkOv(o){
   const save = () => setTimeout(saveOverlays, 50);
-  const ov = {mode: MODES[magnet], onDrawEnd: () => {save(); setActive(null)}, onPressedMoveEnd: save, onRemoved: save, ...o};
+  const ov = {mode: MODES[magnet], onDrawEnd: e => {snapOv(e); save(); setActive(null)}, onPressedMoveEnd: e => {snapOv(e); save()}, onRemoved: save, ...o};
   if(ov.name === 'measure') ov.onDrawEnd = () => setActive(null);
   return chart.createOverlay(ov);
 }
@@ -1824,3 +1833,27 @@ new ResizeObserver(() => {chart.resize(); fitSoon()}).observe($('chart'));
 applySlots(); renderAll(); renderRespect();
 search();
 schedule(0);
+
+/* ================= bias board: advisory bias + grade per tracked root; display only ================= */
+const BD = {busy: false};
+const BD_ROOT = /^[A-Z0-9]{1,6}$/;
+function boardDraw(b){
+  const host = $('board-rows'), rows = b && Array.isArray(b.rows) ? b.rows : [];
+  const bx = $('board'); if(!bx || !host) return;
+  bx.hidden = !rows.length;
+  const now = typeof curRoot === 'function' ? curRoot() : '';
+  host.replaceChildren(...rows.filter(r => r && BD_ROOT.test(String(r.root))).map(r => {
+    const dir = BIAS_DIR.has(r.direction) ? r.direction : 'NA', gr = BIAS_GRADE.has(r.grade) ? r.grade : 'NA';
+    const w = mk('div', 'bd-row' + (r.root === now ? ' on' : ''));
+    const fl = Array.isArray(r.flags) ? r.flags.filter(f => /^[A-Z_]{2,16}$/.test(f)).join(', ') : '';
+    w.title = dir === 'NA' ? 'Not enough reads yet' : `${r.agree}/${r.reads} reads agree, score ${r.score}/5` + (fl ? ` (${fl})` : '');
+    w.append(mk('b', 'bd-r', r.root), mk('span', 'bd-d ' + (dir === 'LONG' ? 'long' : dir === 'SHORT' ? 'short' : 'flat'), dir === 'NEUTRAL' ? 'NEUTRAL' : dir), mk('span', 'bd-g', gr));
+    return w;
+  }));
+  const ao = $('board-asof'); if(ao) ao.textContent = b && typeof b.asof === 'string' && /^[0-9:]{8}CT$/.test(b.asof) ? b.asof : '';
+}
+async function boardFetch(){
+  if(BD.busy) return; BD.busy = true;
+  try{boardDraw(await j('/api/bias_board'))}catch(e){}finally{BD.busy = false}
+}
+boardFetch(); setInterval(() => {if(document.visibilityState === 'visible') boardFetch()}, 10000);

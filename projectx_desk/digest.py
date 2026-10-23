@@ -456,6 +456,36 @@ def bias_state(app, cid, ind, last, flow):
                              stacks, flow, adx_chop=float(sizing.ADX_CHOP))
 
 
+BOARD_TTL_S = 10.0
+BOARD_LABEL = {"MCLE": "MCL", "CLE": "CL"}     # ProjectX ids micro crude as MCLE; the trader calls it MCL
+
+
+async def bias_board(app):
+    """One advisory bias row per tracked root (PX_TRACK_ROOTS). Reuses the cached 5m indicators and the respect-scan bars the
+    tracker already fetches; a root that fails shows NA and never raises. Enums and numbers only."""
+    hit = getattr(app.state, "board_cache", None)
+    if hit and time.monotonic() - hit[0] < BOARD_TTL_S:
+        return hit[1]
+    rows = []
+    live = app.state.live
+    for root, cid in (getattr(app.state, "tracked", None) or {}).items():
+        row = {"root": BOARD_LABEL.get(root, root), "direction": "NA", "grade": "NA", "score": None, "agree": 0, "reads": 0, "flags": []}
+        if cid:
+            try:
+                ind = await indicators(app, cid)
+                q = live.quotes.get(cid)
+                flow = px_flow.summary(live.flow, cid, time.time() * 1000)
+                b = bias_state(app, cid, ind, _n(q.get("lastPrice")) if q else None, flow)
+                row |= {k: b[k] for k in ("direction", "grade", "score", "agree", "reads", "flags")}
+            except Exception:  # noqa: BLE001 - advisory
+                pass
+        rows.append(row)
+    out = {"asof": datetime.now(timezone.utc).astimezone(CT).strftime("%H:%M:%S") + "CT", "rows": rows,
+           "note": "advisory trend agreement per tracked contract, not a signal"}
+    app.state.board_cache = (time.monotonic(), out)
+    return out
+
+
 async def scaled_risk(app, contract_id, risk_pct):
     """(risk_dollars, scale) for a stage request: the SAME number the size box showed. Only ever reduces."""
     g = app.state.guard

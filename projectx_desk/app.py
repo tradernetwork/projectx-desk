@@ -169,6 +169,16 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             app.state.mcp = srv
 
     @app.middleware("http")
+    async def revalidate_ui(request: Request, call_next):
+        """The page and its scripts revalidate on every load (ETag keeps it cheap): a browser holding a new desk.js with an
+        old index.html after a restart is a stale desk, and a stale desk is dangerous."""
+        resp = await call_next(request)
+        p = request.url.path
+        if p == "/" or p.startswith("/static/"):
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+    @app.middleware("http")
     async def operator_login(request: Request, call_next):
         """With PX_OPERATOR_TOKEN set, every route except /mcp (own bearer) and /healthz needs the login."""
         if op_token and px_net.needs_operator_login(request.url.path) \
@@ -254,6 +264,11 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         if ev is None:
             return px_ind.status_payload("loading", "", contract, tf)
         return px_ind.payload(contract, tf, ev)
+
+    @app.get("/api/bias_board")
+    async def bias_board(request: Request):
+        """Read-only advisory bias and grade for every tracked root. No input, nothing echoed."""
+        return await px_digest.bias_board(request.app)
 
     @app.get("/api/flow")
     async def flow(request: Request, contract: str):
@@ -798,6 +813,7 @@ async def _track_loop(app, roots):
     while True:
         try:
             await _resolve_roots(app, roots, have)
+            app.state.tracked = have
             for cid in [c for c in have.values() if c and c not in taped]:
                 await app.state.live._ensure_tape(cid)
                 taped.add(cid)

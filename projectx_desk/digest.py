@@ -17,6 +17,7 @@ from projectx_desk import feed as px_feed
 from projectx_desk import gex as px_gex
 from projectx_desk import flow as px_flow
 from projectx_desk import sizing
+from projectx_desk.indicators import rsi_series
 from projectx_desk.levels import atr_series, bounce_stats, ema_stack, percentile_rank, placebo_rate, verdict
 from projectx_desk.client import live_data, PXAuthError, PXError, PXNotConfigured, PXRateLimited
 from projectx_desk.state import order_view, position_view, ts_ms
@@ -94,7 +95,7 @@ async def indicators(app, contract_id):
                                       for e in st_["events"][-8:]]})
         out = {"atr": _n(a), "adx": _n(adx[0]) if adx else None, "vwap": _n(pv / vol) if vol else None,
                "hi": _n(shi), "lo": _n(slo), "volume": _n(vol, 0), "tf": f"{BAR_N}m", "bars": len(bars),
-               "atr_pctile": percentile_rank(a, atrs[-100:]),
+               "atr_pctile": percentile_rank(a, atrs[-100:]), "rsi": _n(rsi_series(cl)[-1]) if cl else None,
                "ema": {"state": stack["state"], **{str(k): _n(v) for k, v in stack["values"].items()}},
                "levels": levels}
     except Exception:  # noqa: BLE001 - indicators are advisory; the guard never depends on them
@@ -452,8 +453,9 @@ def htf_stacks(app, cid):
 def bias_state(app, cid, ind, last, flow):
     em = ind.get("ema") or {}
     stacks = {"5m": em.get("state")} | (htf_stacks(app, cid) if cid else {})
+    ct = datetime.now(timezone.utc).astimezone(CT)
     return px_bias.bias_view(last, ind.get("vwap"), em.get("21"), ind.get("atr"), ind.get("atr_pctile"), ind.get("adx"),
-                             stacks, flow, adx_chop=float(sizing.ADX_CHOP))
+                             stacks, flow, rsi=ind.get("rsi"), ct_minute=ct.hour * 60 + ct.minute, adx_chop=float(sizing.ADX_CHOP))
 
 
 BOARD_TTL_S = 10.0
@@ -469,7 +471,8 @@ async def bias_board(app):
     rows = []
     live = app.state.live
     for root, cid in (getattr(app.state, "tracked", None) or {}).items():
-        row = {"root": BOARD_LABEL.get(root, root), "direction": "NA", "grade": "NA", "score": None, "agree": 0, "reads": 0, "flags": []}
+        row = {"root": BOARD_LABEL.get(root, root), "direction": "NA", "grade": "NA", "score": None, "agree": 0, "reads": 0, "flags": [],
+               "entry": None, "caution": False}
         if cid:
             row["cid"] = cid if re.match(r"^CON\.[A-Za-z0-9._]{1,40}$", cid) else None
             try:
@@ -477,10 +480,17 @@ async def bias_board(app):
                 q = live.quotes.get(cid)
                 flow = px_flow.summary(live.flow, cid, time.time() * 1000)
                 b = bias_state(app, cid, ind, _n(q.get("lastPrice")) if q else None, flow)
-                row |= {k: b[k] for k in ("direction", "grade", "score", "agree", "reads", "flags")}
+                row |= {k: b[k] for k in ("direction", "grade", "score", "agree", "reads", "flags", "entry", "caution")}
             except Exception:  # noqa: BLE001 - advisory
                 pass
         rows.append(row)
+    by = {r["root"]: r for r in rows}
+    es, nq = by.get("MES"), by.get("MNQ")
+    if es and nq and es["direction"] in ("LONG", "SHORT", "NEUTRAL") and nq["direction"] in ("LONG", "SHORT", "NEUTRAL") \
+            and es["direction"] != nq["direction"]:
+        for r in (es, nq):            # the two indexes disagree: a standard intraday tell, shown, never graded
+            r["flags"] = [*r["flags"], "INDEX_DIVERGENCE"]
+            r["caution"] = True
     out = {"asof": datetime.now(timezone.utc).astimezone(CT).strftime("%H:%M:%S") + "CT", "rows": rows,
            "note": "advisory trend agreement per tracked contract, not a signal"}
     app.state.board_cache = (time.monotonic(), out)
@@ -659,7 +669,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.05, stop_k
 
     state = {
         "v": V, "asof": now.astimezone(CT).strftime("%H:%M:%S") + "CT",
-        "mode": {"trading": bool(lim.trading), "mcp_place": bool(lim.mcp_place), "halt": guard.halted(),
+        "mode": {"max_entry_dev_ticks": int(lim.max_entry_dev_ticks), "trading": bool(lim.trading), "mcp_place": bool(lim.mcp_place), "halt": guard.halted(),
                  "unknown_order": guard.unreconciled(),
                  "account_kind": lim.account_kind.upper(), "bracket_mode": lim.bracket_mode.upper()},
         "feed": {"market": "UP" if st.market.up else "DOWN", "user": "UP" if st.user.up else "DOWN",
@@ -782,10 +792,10 @@ def format_digest(s) -> str:
     bs = s.get("bias") or {}
     if bs.get("direction") in ("LONG", "SHORT", "NEUTRAL"):
         v = bs.get("votes") or {}
-        L.append(f"BIAS: {bs['direction']} grade={bs['grade']} score={_f(bs.get('score'))}/5 agree={bs['agree']}/{bs['reads']} "
+        L.append(f"BIAS: {bs['direction']} grade={bs['grade']} score={_f(bs.get('score'))}/5 agree={bs['agree']}/{bs['reads']} entry={_f(bs.get('entry'))} "
                  + " ".join(f"{k}={'+' if x > 0 else '-' if x < 0 else '0'}" for k, x in v.items())
                  + (" flags=" + ",".join(bs["flags"]) if bs.get("flags") else ""))
-        L.append("BIAS_NOTE: advisory read of trend agreement, not a signal or an edge claim; never sizes or gates an order")
+        L.append("BIAS_NOTE: advisory trend context, NOT a signal (backtest showed no follow-through edge); entry=PULLBACK means price is near the 21 EMA, EXTENDED means chasing; never sizes or gates an order")
     else:
         L.append("BIAS: NA (fewer than 3 reads available)")
     em = i.get("ema") or {}

@@ -799,3 +799,4 @@ button.mini{min-height:24px;padding:0 8px}
 .lm-opt{display:block;width:100%;text-align:left;padding:7px 10px;margin:2px 0;font:700 var(--fs-sm)/1 var(--mono);border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg-sub);cursor:pointer}
 .lm-opt.long{color:var(--green)} .lm-opt.short{color:#f43f5e} .lm-opt:disabled{opacity:.35;cursor:not-allowed}
 .lm-opt:not(:disabled):hover{border-color:var(--border-strong)}
+.chip.bias.caution,.bd-row.caution{opacity:.6} .bd-row.caution .bd-g{text-decoration:none}

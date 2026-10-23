@@ -438,3 +438,16 @@ binding, no POST, no hold, halt or flatten control changed.
 - **Service worker discipline.** It handles `push` and `notificationclick` and nothing else: no caching, no fetch interception, because a stale UI on a trading desk is worse than a slow one.
 - **Not verified:** real delivery through FCM or Apple, iOS standalone behaviour, Android install criteria, and HTTP Basic on iOS Home Screen apps. The browser run reached the permission prompt (service worker registered and activated, manifest and icons 200) but nobody could answer the prompt, so subscribe and a shown notification were only covered by mock-transport tests.
 
+
+
+## Round 17: the BIAS grade was reviewed and rebuilt (2026-10-23, day one on sim)
+
+The user said the grades were "lying" (MES a B short while MNQ was an F). A backtest of the v1 logic on about 21 days of 5m bars (MES, MNQ, MGC, no lookahead) found
+no follow-through edge: A/A+ 49% hit and about 0.00 ATR over the next 30 minutes, B 49%, C 54%. A quant lens (day-clustered standard errors are 1.5 to 2x the naive ones;
+three EMA stacks plus VWAP are one correlated variable counted four times; 20 trade days cannot detect a 0.05 ATR edge) and a risk lens (a coloured letter reads as a signal;
+fewer reads raised the grade because the denominator shrank; ATR 90th and ADX cliffs flipped A+ to B on a wobble; chip switching and the limit menu could act on the wrong contract) agreed.
+- **Decision:** v2 is hand-set, not fitted. Fixed denominator (a missing read earns nothing), no ADX or ATR bonuses, an ENTRY LOCATION component (pullback to the 21 EMA scores,
+  chasing scores nothing), and caps instead of additive penalties. The chip says TREND, carries a "!" when a caution flag capped it, and every tooltip says NOT A SIGNAL.
+- **Not done, on purpose:** no fitted weights, no reversal "signal". Exhaustion shows as REVERSAL_RISK/STRETCHED flags that cap the letter. MES-vs-MNQ disagreement shows as INDEX_DIVERGENCE, ungraded.
+- **Validation protocol:** the read is logged every tracking cycle (`data/bias_log.jsonl`). Freeze the rules; judge at 60+ trade days with day-clustered CIs against always-long and always-short nulls.
+- **UI safeguards:** chip switching is refused while a ticket is staged or a position is open; the right-click limit menu refuses unless the size box is on the chart contract and re-checks the live quote; its distance cap is read from the guard (`mode.max_entry_dev_ticks`).

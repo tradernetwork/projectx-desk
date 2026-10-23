@@ -646,11 +646,12 @@ function renderBias(){
   if(!c) return;
   if(!b || !BIAS_DIR.has(b.direction) || !BIAS_GRADE.has(b.grade)){c.hidden = true; return}
   c.hidden = false;
-  c.className = 'chip bias ' + (b.direction === 'LONG' ? 'long' : b.direction === 'SHORT' ? 'short' : 'flat');
+  c.className = 'chip bias ' + (b.direction === 'LONG' ? 'long' : b.direction === 'SHORT' ? 'short' : 'flat') + (b.caution ? ' caution' : '');
   const n = v => typeof v === 'number' && isFinite(v) ? v : null;
-  c.textContent = b.direction === 'NEUTRAL' ? 'BIAS NEUTRAL' : `BIAS ${b.direction} ${b.grade}`;
-  c.title = `Advisory only: ${n(b.agree)}/${n(b.reads)} reads agree, score ${n(b.score)}/5` + (Array.isArray(b.flags) && b.flags.length ? ` (${b.flags.filter(f => /^[A-Z_]{2,16}$/.test(f)).join(', ')})` : '') +
-    '. 5m/15m/1h EMA stacks, VWAP side, tape delta. Not a signal.';
+  const fl = Array.isArray(b.flags) ? b.flags.filter(f => /^[A-Z_]{2,16}$/.test(f)) : [];
+  c.textContent = b.direction === 'NEUTRAL' ? 'TREND NEUTRAL' : `TREND ${b.direction} ${b.grade}${b.caution ? '!' : ''}`;
+  c.title = `NOT A SIGNAL: a 21-day backtest found no follow-through edge in this read. ${n(b.agree)}/${n(b.reads)} reads agree, score ${n(b.score)}/5` +
+    (/^[A-Z_]{2,16}$/.test(String(b.entry)) ? `, entry ${b.entry}` : '') + (fl.length ? ` (${fl.join(', ')})` : '') + '. A "!" means a caution flag capped the letter.';
 }
 
 /* ================= level reactions panel ================= */
@@ -1836,6 +1837,7 @@ schedule(0);
 
 /* ================= bias board: advisory bias + grade per tracked root; display only ================= */
 const BD = {busy: false};
+function stagedOrOpen(){const t = S.ticket, p = S.ai && S.ai.positions; return !!((t && t.ticket_id && !t.consumed && !t.gone) || (Array.isArray(p) && p.length))}
 const BD_ROOT = /^[A-Z0-9]{1,6}$/;
 function boardDraw(b){
   const host = $('board-rows'), bx = $('board'), rows = b && Array.isArray(b.rows) ? b.rows : [];
@@ -1844,12 +1846,12 @@ function boardDraw(b){
   const now = typeof curRoot === 'function' ? curRoot() : '';
   host.replaceChildren(...rows.filter(r => r && BD_ROOT.test(String(r.root))).map(r => {
     const dir = BIAS_DIR.has(r.direction) ? r.direction : 'NA', gr = BIAS_GRADE.has(r.grade) ? r.grade : '-';
-    const w = mk('button', 'bd-row ' + (dir === 'LONG' ? 'long' : dir === 'SHORT' ? 'short' : 'flat') + (r.root === now ? ' on' : ''));
+    const w = mk('button', 'bd-row ' + (dir === 'LONG' ? 'long' : dir === 'SHORT' ? 'short' : 'flat') + (r.root === now ? ' on' : '') + (r.caution ? ' caution' : ''));
     const fl = Array.isArray(r.flags) ? r.flags.filter(f => /^[A-Z_]{2,16}$/.test(f)).join(', ') : '';
-    w.title = dir === 'NA' ? `${r.root}: not enough reads yet` : `${r.root} ${dir} ${gr}: ${r.agree}/${r.reads} reads agree, score ${r.score}/5` + (fl ? ` (${fl})` : '');
+    w.title = dir === 'NA' ? `${r.root}: not enough reads yet` : `${r.root} trend ${dir} ${gr}: NOT A SIGNAL. ${r.agree}/${r.reads} reads agree, score ${r.score}/5` + (/^[A-Z_]{2,16}$/.test(String(r.entry)) ? `, entry ${r.entry}` : '') + (fl ? ` (${fl})` : '');
     w.type = 'button'; w.dataset.root = r.root; w.dataset.cid = typeof r.cid === 'string' && /^CON\.[A-Za-z0-9._]{1,40}$/.test(r.cid) ? r.cid : '';
     w.setAttribute('aria-pressed', String(r.root === now));
-    w.append(mk('span', 'bd-r', r.root), mk('b', 'bd-g', gr));
+    w.append(mk('span', 'bd-r', r.root), mk('b', 'bd-g', gr + (r.caution ? '!' : '')));
     return w;
   }));
 }
@@ -1861,13 +1863,15 @@ boardFetch(); setInterval(() => {if(document.visibilityState === 'visible') boar
 
 $('board-rows').addEventListener('click', async e => {   // switch the chart to that contract, same as picking it in the dropdown
   const b = e.target.closest('button.bd-row'); if(!b || !b.dataset.root) return;
+  if(stagedOrOpen()){$('msg').textContent = 'Finish or clear the staged ticket and open position before switching contracts.'; return}
   $('q').value = b.dataset.root; await search();
   const sel = $('c'); if(b.dataset.cid && [...sel.options].some(o => o.value === b.dataset.cid)){sel.value = b.dataset.cid; load()}
   boardFetch();
 });
 
 /* ================= right-click on the chart: stage a LIMIT entry at that price (same preview, ticket and 600 ms hold as BUY/SELL) ================= */
-const LM = {el: null}, LM_MAX_TICKS = 20;   // mirrors the guard's PX_MAX_ENTRY_DEV default; the server stays the authority
+const LM = {el: null};
+const lmMax = () => { const v = S.ai && S.ai.mode && S.ai.mode.max_entry_dev_ticks; return typeof v === 'number' && v > 0 ? v : 20 };   // the guard's own limit; the server stays the authority
 function lmClose(){if(LM.el){LM.el.remove(); LM.el = null}}
 function lmPrice(ev){
   const box = $('chart').getBoundingClientRect(), cs = chart.getSize('candle_pane', 'root');
@@ -1883,7 +1887,9 @@ async function lmStage(side, px){
   const t = parseInt($('mq-stop').value, 10), tk = cur.tick;
   if(!(t >= 1)){$('msg').textContent = 'Limit order needs a stop distance in ticks (the Manual row).'; return}
   const cid = await sizeContract();
-  if(!cid){$('msg').textContent = 'Pick a contract first.'; return}
+  if(!cid || cid !== S.contractId){$('msg').textContent = 'Size box is on a different contract than the chart. Set Size for to AUTO, then right-click again.'; return}
+  const q = S.ai && S.ai.quote || {};   // the menu is built at click time: re-check against the live quote before staging
+  if(side === 'long' ? !(typeof q.ask === 'number' && px < q.ask) : !(typeof q.bid === 'number' && px > q.bid)){$('msg').textContent = 'Price moved through that limit. Right-click again.'; return}
   const stop = +(side === 'long' ? px - t * tk : px + t * tk).toFixed(cur.dec ?? 2);
   S.side = side; syncSizeInputs(); schedule(0);
   await doStage({contract: cid, side, stop_price: stop, qty: MQ.qty, order_type: 'limit', entry: px, source: 'manual'}, cid);
@@ -1894,7 +1900,7 @@ $('chart').addEventListener('contextmenu', ev => {
   ev.preventDefault(); lmClose();
   const q = S.ai && S.ai.quote || {}, bid = q.bid, ask = q.ask, t = parseInt($('mq-stop').value, 10);
   const dec = cur.dec ?? 2;
-  const mid = typeof bid === 'number' && typeof ask === 'number' ? (bid + ask) / 2 : null, near = mid !== null && Math.abs(px - mid) <= LM_MAX_TICKS * cur.tick;
+  const mid = typeof bid === 'number' && typeof ask === 'number' ? (bid + ask) / 2 : null, near = mid !== null && Math.abs(px - mid) <= lmMax() * cur.tick;
   const m = mk('div', 'lm-menu'); m.setAttribute('role', 'menu');
   const opt = (side, label, ok, why) => {
     const b = mk('button', 'lm-opt ' + side, label); b.type = 'button'; b.disabled = !ok; if(!ok) b.title = why;
@@ -1902,8 +1908,8 @@ $('chart').addEventListener('contextmenu', ev => {
   };
   const info = `${MQ.qty} x ${px.toFixed(dec)}, stop ${t >= 1 ? t : '?'}t`;
   m.append(mk('div', 'lm-h', 'LIMIT ' + info),
-    opt('long', 'BUY LIMIT', typeof ask === 'number' && px < ask && near, near ? 'at or above the ask: that is not a resting limit' : `more than ${LM_MAX_TICKS} ticks from the market`),
-    opt('short', 'SELL LIMIT', typeof bid === 'number' && px > bid && near, near ? 'at or below the bid: that is not a resting limit' : `more than ${LM_MAX_TICKS} ticks from the market`));
+    opt('long', 'BUY LIMIT', typeof ask === 'number' && px < ask && near, near ? 'at or above the ask: that is not a resting limit' : `more than ${lmMax()} ticks from the market`),
+    opt('short', 'SELL LIMIT', typeof bid === 'number' && px > bid && near, near ? 'at or below the bid: that is not a resting limit' : `more than ${lmMax()} ticks from the market`));
   m.style.left = Math.min(ev.clientX, innerWidth - 190) + 'px'; m.style.top = Math.min(ev.clientY, innerHeight - 110) + 'px';
   document.body.append(m); LM.el = m;
 });

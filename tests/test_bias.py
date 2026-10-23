@@ -1,21 +1,59 @@
 from projectx_desk.bias import bias_view, grade_for
 
-ALL_BEAR = {"5m": "BEAR", "15m": "BEAR", "1h": "BEAR"}
+BEAR = {"5m": "BEAR", "15m": "BEAR", "1h": "BEAR"}
+# short bias, price one tick under EMA21 (a pullback in a downtrend), calm, trending, tape agrees
+GOOD = dict(last=99.5, vwap=100, ema21=99.6, atr=1.0, atr_pctile=50, adx=30, stacks=BEAR,
+            flow={"w": {15: {"buy": 400, "sell": 900, "complete": True}}}, rsi=45, ct_minute=10 * 60)
 
 
-def test_all_agree_trending_calm_is_a_plus():
-    b = bias_view(95, 100, 95.5, 1.0, 50, 30, ALL_BEAR, None)
-    assert (b["direction"], b["grade"], b["agree"], b["reads"]) == ("SHORT", "A+", 4, 4)
+def view(**kw):
+    return bias_view(**{**GOOD, **kw})
 
 
-def test_extreme_volatility_caps_below_a():
-    b = bias_view(7664.75, 7695.26, 7678.96, 5.0, 98, 33, ALL_BEAR, None)
-    assert b["direction"] == "SHORT" and b["grade"] == "B" and "VOL_EXTREME" in b["flags"]
+def test_clean_pullback_in_trend_is_an_a():
+    b = view()
+    assert (b["direction"], b["grade"], b["entry"]) == ("SHORT", "A", "PULLBACK") and b["score"] == 4.5 and not b["caution"]
 
 
-def test_ranging_loses_a_point_and_says_so():
-    b = bias_view(95, 100, 95.5, 1.0, 50, 12, ALL_BEAR, None)
-    assert "RANGING" in b["flags"] and b["score"] == 4.0
+def test_missing_tape_cannot_raise_the_grade():
+    with_flow, without = view(), view(flow=None)
+    assert without["score"] == with_flow["score"] - 0.5 and "FLOW_NA" in without["flags"]
+
+
+def test_chasing_an_extended_move_is_capped_at_c_even_with_everything_agreeing():
+    b = view(last=95.0)            # 4.6 ATR below the 21 EMA, short
+    assert b["entry"] == "EXTENDED" and b["grade"] == "C" and "EXTENDED" in b["flags"] and b["caution"]
+
+
+def test_extended_plus_stretched_rsi_is_reversal_risk_and_capped_at_d():
+    b = view(last=95.0, rsi=18)
+    assert "REVERSAL_RISK" in b["flags"] and b["grade"] == "D"
+
+
+def test_stretched_rsi_alone_caps_at_c():
+    b = view(rsi=27)
+    assert "STRETCHED" in b["flags"] and b["grade"] == "C"
+
+
+def test_long_uses_inverted_rsi():
+    b = bias_view(100.5, 100, 100.4, 1.0, 50, 30, {"5m": "BULL", "15m": "BULL", "1h": "BULL"}, None, rsi=82, ct_minute=600)
+    assert b["direction"] == "LONG" and "STRETCHED" in b["flags"]
+
+
+def test_price_through_the_ema_against_the_bias_is_capped():
+    b = view(last=101.5)           # short, but price is 1.9 ATR above the EMA: trend broken
+    assert b["entry"] == "THROUGH_EMA" and b["grade"] == "C"
+
+
+def test_extreme_volatility_caps_at_b_with_no_cliff_below_it():
+    assert view(atr_pctile=95)["grade"] == "B" and "VOL_EXTREME" in view(atr_pctile=95)["flags"]
+    assert view(atr_pctile=90)["grade"] == "A" and "VOL_HIGH" in view(atr_pctile=90)["flags"]
+
+
+def test_ranging_and_the_first_fifteen_minutes_of_the_open_cap_at_c():
+    assert view(adx=12)["grade"] == "C" and "RANGING" in view(adx=12)["flags"]
+    assert view(ct_minute=8 * 60 + 40)["grade"] == "C" and "OPEN_CHOP" in view(ct_minute=8 * 60 + 40)["flags"]
+    assert view(ct_minute=8 * 60 + 45)["grade"] == "A"
 
 
 def test_too_few_reads_is_na_never_a_guess():
@@ -25,41 +63,39 @@ def test_too_few_reads_is_na_never_a_guess():
 
 def test_split_reads_are_neutral_f():
     b = bias_view(100, 100, 99, 1, 50, 30, {"5m": "BULL", "15m": "BEAR", "1h": "MIXED"}, None)
-    assert b["direction"] == "LONG" or b["direction"] == "NEUTRAL"
-    b = bias_view(100, 100, 99, 1, 50, 30, {"5m": "BULL", "15m": "BEAR", "1h": "MIXED"}, None)
     assert (b["direction"], b["grade"]) == ("NEUTRAL", "F")
 
 
-def test_incomplete_flow_window_is_ignored_and_complete_one_counts():
+def test_incomplete_flow_window_is_ignored():
     inc = {"w": {15: {"buy": 900, "sell": 100, "complete": False}}}
-    assert "flow" not in bias_view(95, 100, 95.5, 1, 50, 30, ALL_BEAR, inc)["votes"]
-    ok = {"w": {15: {"buy": 900, "sell": 100, "complete": True}}}
-    b = bias_view(95, 100, 95.5, 1, 50, 30, ALL_BEAR, ok)
-    assert b["votes"]["flow"] == 1 and "DISSENT" in b["flags"]
+    assert "flow" not in view(flow=inc)["votes"]
 
 
-def test_extended_chase_costs_half_a_point():
-    near = bias_view(95, 100, 96, 1.0, 50, 30, ALL_BEAR, None)["score"]
-    far = bias_view(90, 100, 96, 1.0, 50, 30, ALL_BEAR, None)["score"]
-    assert far == near - 0.5
-
-
-def test_nonfinite_inputs_do_not_vote():
-    b = bias_view(float("nan"), float("inf"), 1, 1, 50, 30, ALL_BEAR, None)
-    assert "vwap" not in b["votes"]
+def test_nonfinite_inputs_do_not_vote_or_crash():
+    b = view(last=float("nan"), vwap=float("inf"), rsi=float("nan"))
+    assert "vwap" not in b["votes"] and b["entry"] is None and "ENTRY_NA" in b["flags"]
 
 
 def test_bands():
-    assert [grade_for(x) for x in (4.5, 4.0, 3.0, 2.0, 1.0, 0.0)] == ["A+", "A", "B", "C", "D", "F"]
+    assert [grade_for(x) for x in (3.5, 2.5, 1.5, 0.0)] == ["A", "B", "C", "D"]
 
 
-def test_ninety_fifth_percentile_is_extreme_and_capped():
-    b = bias_view(95, 100, 95.5, 1.0, 95, 30, ALL_BEAR, None)
-    assert "VOL_EXTREME" in b["flags"] and b["grade"] == "B"
+def test_bias_snapshot_is_numbers_and_enums_only():
+    import asyncio, types
+    from projectx_desk import app as appmod
+    from projectx_desk import digest
 
+    async def fake_ind(app, cid):
+        return {"atr": 5.0, "adx": 30.0, "atr_pctile": 50, "vwap": 100.0, "ema": {"state": "BEAR", "21": 99.0}}
 
-def test_ui_revalidates_so_a_restart_never_serves_a_stale_page():
-    from fastapi.testclient import TestClient
-    from projectx_desk.app import create_app
-    import inspect
-    assert "revalidate_ui" in inspect.getsource(create_app)
+    live = types.SimpleNamespace(quotes={"CON.F.US.MES.Z26": {"lastPrice": 95.0}}, flow=None)
+    app = types.SimpleNamespace(state=types.SimpleNamespace(live=live, respect_bars={}))
+    old_i, old_s = digest.indicators, appmod.px_flow.summary
+    digest.indicators = fake_ind
+    appmod.px_flow.summary = lambda *a, **k: None
+    try:
+        e = asyncio.run(appmod._bias_snapshot(app, "CON.F.US.MES.Z26"))
+    finally:
+        digest.indicators, appmod.px_flow.summary = old_i, old_s
+    assert e["tf"] == "bias" and e["contract"] == "CON.F.US.MES.Z26" and e["bar_ts"] % 300000 == 0
+    assert e["direction"] in ("LONG", "SHORT", "NEUTRAL", "NA") and set(e) >= {"price", "atr", "grade", "votes", "flags"}

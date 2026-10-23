@@ -24,6 +24,7 @@ from projectx_desk import grades as px_grades
 from projectx_desk import indicators as px_ind
 from projectx_desk import respect as px_respect
 from projectx_desk import feed as px_feed
+from projectx_desk import flow as px_flow
 from projectx_desk import lock as px_lock
 from projectx_desk import mcp as px_mcp
 from projectx_desk import net as px_net
@@ -802,11 +803,32 @@ async def _resolve_roots(app, roots, have):
         have[root] = cid
 
 
+async def _bias_snapshot(app, cid):
+    """One BIAS log line for later grading: the read plus the numbers needed to score it against what price did next.
+    Numbers and enums only. None when there is no usable indicator set or bias."""
+    ind = await px_digest.indicators(app, cid)
+    if not ind:
+        return None
+    live = app.state.live
+    q = live.quotes.get(cid)
+    last = px_digest._n(q.get("lastPrice")) if q else None
+    if last is None:        # no price means no VWAP/entry read and nothing to score a forward move against: skip the line
+        return None
+    b = px_digest.bias_state(app, cid, ind, last, px_flow.summary(live.flow, cid, time.time() * 1000))
+    em = ind.get("ema") or {}
+    now = int(time.time() * 1000)
+    return {"ts": now, "contract": cid, "tf": "bias", "bar_ts": now // 300000 * 300000, "price": last, "atr": ind.get("atr"),
+            "adx": ind.get("adx"), "atr_pctile": ind.get("atr_pctile"), "vwap": ind.get("vwap"), "ema21": em.get("21"),
+            "direction": b["direction"], "grade": b["grade"], "score": b["score"], "agree": b["agree"], "reads": b["reads"],
+            "votes": b["votes"], "flags": b["flags"]}
+
+
 async def _track_loop(app, roots):
     """Desk-side tracking, no browser needed: keep the trade tape on for the front contract of each root, rescan the
     respect set every PX_TRACK_INTERVAL_S (sequentially: retrieveBars has a budget), and append the grade log."""
     grade = px_grades.GradeLog.from_env(ROOT)
     app.state.grades = grade
+    biaslog = px_grades.GradeLog(os.getenv("PX_BIAS_LOG_FILE") or (pathlib.Path(ROOT) / "data" / "bias_log.jsonl"))
     have, taped, delay = {}, set(), 5.0
     while app.state.boot_error:                       # hubs are not up until the boot succeeded
         await asyncio.sleep(2.0)
@@ -838,6 +860,9 @@ async def _track_loop(app, roots):
                     ev = await _indicators_eval(app, cid, tf, res)
                     if ev is not None:
                         grade.log_eval(cid, tf, ev)
+                entry = await _bias_snapshot(app, cid)
+                if entry:
+                    biaslog.log(entry)
             except asyncio.CancelledError:
                 raise
             except px_digest.RespectError as e:

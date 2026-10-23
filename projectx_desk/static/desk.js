@@ -1844,9 +1844,11 @@ function boardDraw(b){
   const now = typeof curRoot === 'function' ? curRoot() : '';
   host.replaceChildren(...rows.filter(r => r && BD_ROOT.test(String(r.root))).map(r => {
     const dir = BIAS_DIR.has(r.direction) ? r.direction : 'NA', gr = BIAS_GRADE.has(r.grade) ? r.grade : '-';
-    const w = mk('span', 'bd-row ' + (dir === 'LONG' ? 'long' : dir === 'SHORT' ? 'short' : 'flat') + (r.root === now ? ' on' : ''));
+    const w = mk('button', 'bd-row ' + (dir === 'LONG' ? 'long' : dir === 'SHORT' ? 'short' : 'flat') + (r.root === now ? ' on' : ''));
     const fl = Array.isArray(r.flags) ? r.flags.filter(f => /^[A-Z_]{2,16}$/.test(f)).join(', ') : '';
     w.title = dir === 'NA' ? `${r.root}: not enough reads yet` : `${r.root} ${dir} ${gr}: ${r.agree}/${r.reads} reads agree, score ${r.score}/5` + (fl ? ` (${fl})` : '');
+    w.type = 'button'; w.dataset.root = r.root; w.dataset.cid = typeof r.cid === 'string' && /^CON\.[A-Za-z0-9._]{1,40}$/.test(r.cid) ? r.cid : '';
+    w.setAttribute('aria-pressed', String(r.root === now));
     w.append(mk('span', 'bd-r', r.root), mk('b', 'bd-g', gr));
     return w;
   }));
@@ -1856,3 +1858,10 @@ async function boardFetch(){
   try{boardDraw(await j('/api/bias_board'))}catch(e){}finally{BD.busy = false}
 }
 boardFetch(); setInterval(() => {if(document.visibilityState === 'visible') boardFetch()}, 10000);
+
+$('board-rows').addEventListener('click', async e => {   // switch the chart to that contract, same as picking it in the dropdown
+  const b = e.target.closest('button.bd-row'); if(!b || !b.dataset.root) return;
+  $('q').value = b.dataset.root; await search();
+  const sel = $('c'); if(b.dataset.cid && [...sel.options].some(o => o.value === b.dataset.cid)){sel.value = b.dataset.cid; load()}
+  boardFetch();
+});

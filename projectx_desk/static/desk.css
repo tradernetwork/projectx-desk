@@ -792,3 +792,4 @@ button.mini{min-height:24px;padding:0 8px}
 .bd-row.on{border-color:var(--cyan-line);background:var(--cyan-bg)}
 .bd-g{font-weight:800;color:var(--text-2)}
 .bd-row.long .bd-g{color:var(--green)} .bd-row.short .bd-g{color:#f43f5e}
+.bd-row{cursor:pointer;background:transparent} .bd-row:hover{border-color:var(--border-strong)}

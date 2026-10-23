@@ -471,6 +471,7 @@ async def bias_board(app):
     for root, cid in (getattr(app.state, "tracked", None) or {}).items():
         row = {"root": BOARD_LABEL.get(root, root), "direction": "NA", "grade": "NA", "score": None, "agree": 0, "reads": 0, "flags": []}
         if cid:
+            row["cid"] = cid if re.match(r"^CON\.[A-Za-z0-9._]{1,40}$", cid) else None
             try:
                 ind = await indicators(app, cid)
                 q = live.quotes.get(cid)

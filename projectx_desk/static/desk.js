@@ -1681,6 +1681,16 @@ function indWanted(){
   return {ema: [...ema].sort((a, b) => a - b), ma: [...ma].sort((a, b) => a - b), boll, rsi: osc.has('rsi'), macd: osc.has('macd'), vol: !!PIN.VOL, hz};
 }
 function maStyles(ps){return {lines: ps.map((p, i) => ({color: p === 8 ? EMA_COL[0] : p === 21 ? EMA_COL[1] : p === 34 ? EMA_COL[2] : MA_COL[3 + (i % 3)], size: 1.5, style: 'solid', smooth: false}))}}
+function fitPanes(){   // klinecharts gives every indicator pane 100px, which leaves price a sliver on a short window; keep price >= ~60%
+  try{
+    const ids = [...new Set(chart.getIndicators().map(i => i.paneId).filter(id => id && id !== 'candle_pane'))];
+    if(!ids.length) return;
+    const h = Math.max(40, Math.min(100, Math.floor(($('chart').clientHeight || 400) * 0.36 / ids.length)));
+    for(const id of ids) chart.setPaneOptions({id, height: h});
+  }catch(e){err(e)}
+}
+let fitT = 0;
+function fitSoon(){clearTimeout(fitT); fitT = setTimeout(fitPanes, 120)}
 function indHave(n){try{return chart.getIndicators({name: n}).length > 0}catch{return false}}
 function indSync(){   // diff the wanted set against what is drawn; only touch what changed
   try{
@@ -1697,6 +1707,7 @@ function indSync(){   // diff the wanted set against what is drawn; only touch w
       if(w[k] === indHave(n) && (w[k] === a[k] || indHave(n))) continue;
       if(w[k]) chart.createIndicator(main ? {name: n, paneId: 'candle_pane'} : {name: n}, main); else chart.removeIndicator({name: n});
     }
+    fitSoon();
     I.applied = JSON.stringify({ema: w.ema, ma: w.ma, boll: w.boll, rsi: w.rsi, macd: w.macd, vol: w.vol});
     drawAutoLevels(w.hz);
   }catch(e){err(e)}
@@ -1808,7 +1819,7 @@ $('tz').value = LS.get('px.tz', 'America/Chicago');
 $('tz').onchange = () => {LS.set('px.tz', $('tz').value); chart.setTimezone($('tz').value)};
 toolbar(); magLabel(); syncTf(); syncSizeInputs();
 indSync();
-new ResizeObserver(() => chart.resize()).observe($('chart'));
+new ResizeObserver(() => {chart.resize(); fitSoon()}).observe($('chart'));
 
 applySlots(); renderAll(); renderRespect();
 search();

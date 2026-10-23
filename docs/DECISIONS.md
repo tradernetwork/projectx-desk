@@ -451,3 +451,16 @@ fewer reads raised the grade because the denominator shrank; ATR 90th and ADX cl
 - **Not done, on purpose:** no fitted weights, no reversal "signal". Exhaustion shows as REVERSAL_RISK/STRETCHED flags that cap the letter. MES-vs-MNQ disagreement shows as INDEX_DIVERGENCE, ungraded.
 - **Validation protocol:** the read is logged every tracking cycle (`data/bias_log.jsonl`). Freeze the rules; judge at 60+ trade days with day-clustered CIs against always-long and always-short nulls.
 - **UI safeguards:** chip switching is refused while a ticket is staged or a position is open; the right-click limit menu refuses unless the size box is on the chart contract and re-checks the live quote; its distance cap is read from the guard (`mode.max_entry_dev_ticks`).
+
+
+## Round 18: after the day-one reviews (2026-10-23)
+
+Two outside reviews (GPT-6 and DeepSeek V4.1 Flash) and the in-house risk lens converged. All fixes are display or UI; none touches the order path.
+- **Contract identity.** The chart-bar chip is built from `/ai/state`, which is for the Size-for contract, so it now shows only when that is the chart's own contract. BUY, SELL and STAGE refuse (like the limit menu) when Size for is not the chart contract.
+  One `load()` guard now covers the dropdown, search and the grade chips, and refuses while a preview is in flight, a ticket is staged, an order is working or a position is open. A contract switch bumps the refresh sequence and clears `S.ai`, so a reply in flight for the old contract cannot land on the new chart.
+- **Scoring, v2.1.** The cliffs are gone from the numeric inputs: ATR percentile, RSI and ADX are graded penalties; caps remain only for qualitative states. DISSENT caps at B (an A with the 1h opposed was possible). Entry weight cut from 2.0 to 1.0, so the score is out of 3.5, and the chip prints that. A neutral read has no letter. The REVERSAL_RISK hard cap became the EXTENDED_RSI flag plus a graded penalty: a reversal call needs absorption and opposing flow, which are not measured. INDEX_DIVERGENCE now needs strictly opposite leans (a neutral is not a disagreement).
+- **Opening range.** Built only where bars tile the 15 minute range (1m, 3m, 5m, 15m), with a visible "forming" state and no box when a bar is missing; 30m and 45m show the open marker only.
+- **Bias log** is keyed to the last closed 5m bar and its close, written just after each bar closes, with the rule version, RSI and entry label.
+- **GEX pin.** Levels were converted with basis = live futures last minus the payload's stale spot, so every level shifted by however far price had moved since the snapshot and the pin stayed a constant distance from price. The basis is now frozen per payload.
+- **Restarts.** uvicorn now closes open SSE tabs after 5 s (`timeout_graceful_shutdown`), so a restart no longer waits out the 20 s stop timeout and gets SIGKILLed before `flow.save()` and `ticks.save()` run.
+- **Not done, on purpose:** a cancel for a resting limit and a loss-breach flatten latch both touch the order path and need a design pass; MCLE sizing; a spread-based MES/MNQ divergence; any backtest or validation of v2.1 (needs 60 to 120 days of logged reads, `docs/DECISIONS.md` Round 17).

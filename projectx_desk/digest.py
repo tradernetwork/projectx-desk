@@ -38,6 +38,11 @@ def _n(v, nd=2):
     return round(float(v), nd)
 
 
+def invalidate_indicators(app, contract_id):
+    """Drop the cached indicator set for one contract so the next read is fresh (the bias log reads at each bar close)."""
+    getattr(app.state, "ind_cache", {}).pop(contract_id, None)
+
+
 async def indicators(app, contract_id):
     """ATR14, ADX14, session VWAP/high/low from 5m bars. Cached; failures degrade to {} (shown as NA)."""
     if not hasattr(app.state, "ind_cache"):
@@ -96,6 +101,7 @@ async def indicators(app, contract_id):
         out = {"atr": _n(a), "adx": _n(adx[0]) if adx else None, "vwap": _n(pv / vol) if vol else None,
                "hi": _n(shi), "lo": _n(slo), "volume": _n(vol, 0), "tf": f"{BAR_N}m", "bars": len(bars),
                "atr_pctile": percentile_rank(a, atrs[-100:]), "rsi": _n(rsi_series(cl)[-1]) if cl else None,
+               "closed_ts": tms[-2] if len(tms) > 1 else None, "closed_close": _n(cl[-2]) if len(cl) > 1 else None,
                "ema": {"state": stack["state"], **{str(k): _n(v) for k, v in stack["values"].items()}},
                "levels": levels}
     except Exception:  # noqa: BLE001 - indicators are advisory; the guard never depends on them
@@ -472,7 +478,7 @@ async def bias_board(app):
     live = app.state.live
     for root, cid in (getattr(app.state, "tracked", None) or {}).items():
         row = {"root": BOARD_LABEL.get(root, root), "direction": "NA", "grade": "NA", "score": None, "agree": 0, "reads": 0, "flags": [],
-               "entry": None, "caution": False}
+               "entry": None, "caution": False, "rule": px_bias.RULE, "max": px_bias.MAX_SCORE}
         if cid:
             row["cid"] = cid if re.match(r"^CON\.[A-Za-z0-9._]{1,40}$", cid) else None
             try:
@@ -480,14 +486,13 @@ async def bias_board(app):
                 q = live.quotes.get(cid)
                 flow = px_flow.summary(live.flow, cid, time.time() * 1000)
                 b = bias_state(app, cid, ind, _n(q.get("lastPrice")) if q else None, flow)
-                row |= {k: b[k] for k in ("direction", "grade", "score", "agree", "reads", "flags", "entry", "caution")}
+                row |= {k: b[k] for k in ("direction", "grade", "score", "max", "agree", "reads", "flags", "entry", "caution", "rule")}
             except Exception:  # noqa: BLE001 - advisory
                 pass
         rows.append(row)
     by = {r["root"]: r for r in rows}
     es, nq = by.get("MES"), by.get("MNQ")
-    if es and nq and es["direction"] in ("LONG", "SHORT", "NEUTRAL") and nq["direction"] in ("LONG", "SHORT", "NEUTRAL") \
-            and es["direction"] != nq["direction"]:
+    if es and nq and {es["direction"], nq["direction"]} == {"LONG", "SHORT"}:      # strictly opposite leans; a neutral read is not a disagreement
         for r in (es, nq):            # the two indexes disagree: a standard intraday tell, shown, never graded
             r["flags"] = [*r["flags"], "INDEX_DIVERGENCE"]
             r["caution"] = True
@@ -792,7 +797,7 @@ def format_digest(s) -> str:
     bs = s.get("bias") or {}
     if bs.get("direction") in ("LONG", "SHORT", "NEUTRAL"):
         v = bs.get("votes") or {}
-        L.append(f"BIAS: {bs['direction']} grade={bs['grade']} score={_f(bs.get('score'))}/5 agree={bs['agree']}/{bs['reads']} entry={_f(bs.get('entry'))} "
+        L.append(f"BIAS: {bs['direction']} grade={bs['grade']} score={_f(bs.get('score'))}/{_f(bs.get('max'))} agree={bs['agree']}/{bs['reads']} entry={_f(bs.get('entry'))} "
                  + " ".join(f"{k}={'+' if x > 0 else '-' if x < 0 else '0'}" for k, x in v.items())
                  + (" flags=" + ",".join(bs["flags"]) if bs.get("flags") else ""))
         L.append("BIAS_NOTE: advisory trend context, NOT a signal (backtest showed no follow-through edge); entry=PULLBACK means price is near the 21 EMA, EXTENDED means chasing; never sizes or gates an order")

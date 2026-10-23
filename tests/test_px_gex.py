@@ -199,3 +199,25 @@ def test_a_failed_refresh_keeps_serving_the_last_good_levels_from_the_same_sourc
     assert again["status"] == "OK" and again["source"] == "SPX" and again["levels"]       # not blank, and not the SPY fallback
     far = asyncio.run(px_gex.gex_result(a, CID, 7782.0, ENV, fetch=limited, now=NOW + 5000))
     assert far["status"] in ("STALE", "ERROR", "UNAVAILABLE")                              # but staleness is still bounded by max age
+
+
+def test_levels_hold_still_when_price_moves_between_payloads():
+    """The conversion basis is frozen per payload: a pin must not ride along with the live futures price."""
+    a = app(last=7782.0)
+    table = {"SPX": spx(maxGammaStrike=7780), "SPY": spy()}
+    first = run(a, table)
+    a.state.live.quotes[CID] = {"lastPrice": 7799.0, "bestBid": 7798.75, "bestAsk": 7799.25}     # price runs 17 points, same payload
+    second = run(a, table)
+    assert first["status"] == second["status"] == "OK"
+    assert first["basis"] == second["basis"]
+    a_ = {(l["name"], l["price"]) for l in first["levels"]}
+    b_ = {(l["name"], l["price"]) for l in second["levels"]}
+    assert a_ and b_ <= a_                       # same payload, same prices; price running away only drops far levels
+
+
+def test_old_payload_first_seen_uses_the_bar_close_at_its_timestamp():
+    a = app(last=7782.0)
+    ts_ms = int((NOW - 200) * 1000) // 300000 * 300000
+    a.state.respect_bars = {(CID, "5m"): {"bars": [{"timestamp": ts_ms, "close": 7770.0}]}}
+    r = run(a, {"SPX": spx(lastUpdated="2026-10-16T13:56:40.000Z"), "SPY": spy()})
+    assert r["status"] == "OK"

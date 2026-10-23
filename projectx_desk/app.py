@@ -135,7 +135,10 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
                 notifier_task = asyncio.create_task(_notify_task(app))
             roots = px_ind.parse_roots(os.getenv("PX_TRACK_ROOTS")) if connect else []
             app.state.track_task = asyncio.create_task(_track_loop(app, roots)) if roots else None
+            app.state.bias_task = asyncio.create_task(_bias_log_loop(app)) if roots else None
             yield
+            if getattr(app.state, "bias_task", None) is not None:
+                app.state.bias_task.cancel()
             if notifier_task is not None:
                 notifier_task.cancel()
             if app.state.track_task is not None:
@@ -804,23 +807,41 @@ async def _resolve_roots(app, roots, have):
 
 
 async def _bias_snapshot(app, cid):
-    """One BIAS log line for later grading: the read plus the numbers needed to score it against what price did next.
-    Numbers and enums only. None when there is no usable indicator set or bias."""
+    """One BIAS log line for later grading, keyed to the last CLOSED 5m bar: the read is computed at that bar's close price and the line
+    carries the inputs and the rule version, so it can be rebuilt and scored against what price did next. Numbers and enums only.
+    The still-forming bar can touch ATR, EMA and VWAP by one print; closed_close, not the live quote, is the price of record.
+    None when there is no usable indicator set, closed bar or bias."""
     ind = await px_digest.indicators(app, cid)
-    if not ind:
+    if not ind or ind.get("closed_ts") is None or ind.get("closed_close") is None:
         return None
     live = app.state.live
-    q = live.quotes.get(cid)
-    last = px_digest._n(q.get("lastPrice")) if q else None
-    if last is None:        # no price means no VWAP/entry read and nothing to score a forward move against: skip the line
-        return None
-    b = px_digest.bias_state(app, cid, ind, last, px_flow.summary(live.flow, cid, time.time() * 1000))
     em = ind.get("ema") or {}
-    now = int(time.time() * 1000)
-    return {"ts": now, "contract": cid, "tf": "bias", "bar_ts": now // 300000 * 300000, "price": last, "atr": ind.get("atr"),
-            "adx": ind.get("adx"), "atr_pctile": ind.get("atr_pctile"), "vwap": ind.get("vwap"), "ema21": em.get("21"),
-            "direction": b["direction"], "grade": b["grade"], "score": b["score"], "agree": b["agree"], "reads": b["reads"],
-            "votes": b["votes"], "flags": b["flags"]}
+    b = px_digest.bias_state(app, cid, ind, ind["closed_close"], px_flow.summary(live.flow, cid, time.time() * 1000))
+    return {"ts": int(time.time() * 1000), "contract": cid, "tf": "bias", "bar_ts": int(ind["closed_ts"]), "price": ind["closed_close"],
+            "atr": ind.get("atr"), "adx": ind.get("adx"), "atr_pctile": ind.get("atr_pctile"), "rsi": ind.get("rsi"), "vwap": ind.get("vwap"),
+            "ema21": em.get("21"), "rule": b.get("rule"), "direction": b["direction"], "grade": b["grade"], "score": b["score"], "max": b.get("max"),
+            "agree": b["agree"], "reads": b["reads"], "entry": b.get("entry"), "votes": b["votes"], "flags": b["flags"]}
+
+
+async def _bias_log_loop(app):
+    """Append one bias line per tracked contract just after every 5 minute bar closes (the log dedupes on the closed bar's timestamp)."""
+    biaslog = px_grades.GradeLog(os.getenv("PX_BIAS_LOG_FILE") or (pathlib.Path(ROOT) / "data" / "bias_log.jsonl"))
+    while True:
+        now = time.time()
+        await asyncio.sleep(300 - (now % 300) + 8)          # eight seconds past the boundary: the closed bar is in the history by then
+        for root, cid in list((getattr(app.state, "tracked", None) or {}).items()):
+            if not cid:
+                continue
+            try:
+                px_digest.invalidate_indicators(app, cid)        # a fresh read at the boundary, not a 15 s old cache
+                entry = await _bias_snapshot(app, cid)
+                if entry:
+                    biaslog.log(entry)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # noqa: BLE001 - logging must never break the desk
+                print(f"bias log failed {root} {type(e).__name__}", flush=True)
+            await asyncio.sleep(1.0)
 
 
 async def _track_loop(app, roots):
@@ -828,7 +849,6 @@ async def _track_loop(app, roots):
     respect set every PX_TRACK_INTERVAL_S (sequentially: retrieveBars has a budget), and append the grade log."""
     grade = px_grades.GradeLog.from_env(ROOT)
     app.state.grades = grade
-    biaslog = px_grades.GradeLog(os.getenv("PX_BIAS_LOG_FILE") or (pathlib.Path(ROOT) / "data" / "bias_log.jsonl"))
     have, taped, delay = {}, set(), 5.0
     while app.state.boot_error:                       # hubs are not up until the boot succeeded
         await asyncio.sleep(2.0)
@@ -860,9 +880,6 @@ async def _track_loop(app, roots):
                     ev = await _indicators_eval(app, cid, tf, res)
                     if ev is not None:
                         grade.log_eval(cid, tf, ev)
-                entry = await _bias_snapshot(app, cid)
-                if entry:
-                    biaslog.log(entry)
             except asyncio.CancelledError:
                 raise
             except px_digest.RespectError as e:
@@ -911,7 +928,7 @@ def main():
         print(f"WARNING: bound to {host}. The operator login is HTTP Basic; without TLS in front it sends the token in the clear. "
               "Use Tailscale or a TLS reverse proxy (docs/DEPLOY.md).", flush=True)
     _lock = px_lock.acquire()           # noqa: F841 - held for the life of the process
-    uvicorn.run(create_app(), host=host, port=_port(), log_level="info")
+    uvicorn.run(create_app(), host=host, port=_port(), log_level="info", timeout_graceful_shutdown=5)   # open SSE tabs must not make a restart wait out the stop timeout and get SIGKILLed before the tape is saved
 
 
 if __name__ == "__main__":

@@ -230,6 +230,37 @@ async def _source(st, base, key, symbol, fetch):
     return clean, code
 
 
+REF_FRESH_S = 90.0      # a payload this young when first seen: the live futures last is close enough to the price when its spot was taken
+BAR_MS = 5 * 60 * 1000
+
+
+def _basis_ref(st, contract_id, sym, updated_epoch, last, age):
+    """The futures price to convert with: the price when the payload's spot was taken, frozen once per payload.
+
+    The payload's spot is a snapshot (up to PX_GEX_MAX_AGE_S old). Converting with the LIVE last made basis = live_last - old_spot, which
+    soaks up every point price has moved since the snapshot and shifts every level by it: the pin, flip and walls rode along with price
+    and sat a constant distance from it. Frozen at first sight, the levels hold still between payloads. A payload already older than
+    REF_FRESH_S when first seen takes the close of the 5m bar that contained its timestamp, when that bar is cached, else the live last."""
+    if not hasattr(st, "gex_ref"):
+        st.gex_ref = {}
+    key = (contract_id, sym, updated_epoch)
+    if key in st.gex_ref:
+        return st.gex_ref[key]
+    ref = last
+    if age > REF_FRESH_S:
+        bars = (getattr(st, "respect_bars", None) or {}).get((contract_id, "5m")) or {}
+        t_ms = updated_epoch * 1000
+        for b in reversed(bars.get("bars") or []):
+            ts = b.get("timestamp")
+            if isinstance(ts, (int, float)) and ts <= t_ms < ts + BAR_MS and isinstance(b.get("close"), (int, float)) and b["close"] > 0:
+                ref = float(b["close"])
+                break
+    if len(st.gex_ref) >= 64:
+        st.gex_ref.pop(next(iter(st.gex_ref)))
+    st.gex_ref[key] = ref
+    return ref
+
+
 async def gex_result(app, contract_id, last=None, environ=None, fetch=fetch_gex, now=None):
     """Always returns a dict: status OK | STALE | UNAVAILABLE | NO_KEY | ERROR (+ fixed `code`). Never raises.
     `last` is the futures last/mid; when None it is read from the live quote of `contract_id`."""
@@ -284,7 +315,8 @@ async def _gex_result(app, contract_id, last, environ, fetch, now):
         if age > max_age:
             stale = True
             continue
-        res = gex_futures.convert_levels(build_levels(clean, age), spec.root, last, clean["spot"], spec.tick_size, age,
+        ref = _basis_ref(st, contract_id, sym, clean["updated_epoch"], last, age)
+        res = gex_futures.convert_levels(build_levels(clean, age), spec.root, ref, clean["spot"], spec.tick_size, age,
                                          max_age_s=max_age, source_symbol=sym)
         if not res.ok:
             codes.append("CONVERT")

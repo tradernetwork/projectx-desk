@@ -640,18 +640,19 @@ function renderRegime(){
 }
 
 /* ================= bias chip: advisory read of trend agreement, never gates or sizes anything ================= */
-const BIAS_DIR = new Set(['LONG', 'SHORT', 'NEUTRAL']), BIAS_GRADE = new Set(['A+', 'A', 'B', 'C', 'D', 'F']);
+const BIAS_DIR = new Set(['LONG', 'SHORT', 'NEUTRAL']), BIAS_GRADE = new Set(['A+', 'A', 'B', 'C', 'D', 'F', '-']);
 function renderBias(){
   const c = $('bias-chip'), b = S.ai && S.ai.bias;
   if(!c) return;
-  if(!b || !BIAS_DIR.has(b.direction) || !BIAS_GRADE.has(b.grade)){c.hidden = true; return}
+  if(!b || !BIAS_DIR.has(b.direction) || !BIAS_GRADE.has(b.grade) || S.sizeCid !== S.contractId){c.hidden = true; return}   // /ai/state is for the Size-for contract: show it only on its own chart
   c.hidden = false;
   c.className = 'chip bias ' + (b.direction === 'LONG' ? 'long' : b.direction === 'SHORT' ? 'short' : 'flat') + (b.caution ? ' caution' : '');
   const n = v => typeof v === 'number' && isFinite(v) ? v : null;
   const fl = Array.isArray(b.flags) ? b.flags.filter(f => /^[A-Z_]{2,16}$/.test(f)) : [];
-  c.textContent = b.direction === 'NEUTRAL' ? 'TREND NEUTRAL' : `TREND ${b.direction} ${b.grade}${b.caution ? '!' : ''}`;
-  c.title = `NOT A SIGNAL: a 21-day backtest found no follow-through edge in this read. ${n(b.agree)}/${n(b.reads)} reads agree, score ${n(b.score)}/5` +
-    (/^[A-Z_]{2,16}$/.test(String(b.entry)) ? `, entry ${b.entry}` : '') + (fl.length ? ` (${fl.join(', ')})` : '') + '. A "!" means a caution flag capped the letter.';
+  const ent = /^[A-Z_]{2,16}$/.test(String(b.entry)) ? ' \u00b7 ' + b.entry : '';
+  c.textContent = b.direction === 'NEUTRAL' ? 'TREND NEUTRAL' : `TREND ${b.direction} ${b.grade}${b.caution ? '!' : ''}${ent}`;
+  c.title = `NOT A SIGNAL: this read has not been backtested (the first version showed no follow-through edge). ${n(b.agree)}/${n(b.reads)} reads agree, score ${n(b.score)}/${n(b.max) ?? 3.5}` +
+    (ent ? `, entry ${b.entry}` : '') + (fl.length ? ` (${fl.join(', ')})` : '') + '. A "!" means a caution flag is active. Rule ' + (typeof b.rule === 'string' ? b.rule.slice(0, 8) : '?') + '.';
 }
 
 /* ================= level reactions panel ================= */
@@ -839,11 +840,16 @@ $('mq-dec').onclick = () => {MQ.qty = Math.max(1, MQ.qty - 1); LS.set('px.mq', M
 $('mq-inc').onclick = () => {MQ.qty += 1; LS.set('px.mq', MQ.qty); renderManual()};
 $('mq-stop').oninput = () => {MQ.stopTouched = true; renderManual()};
 $('mq-atr').onclick = () => {MQ.stopTouched = false; renderManual()};
+function sizeMismatch(cid){   // BUY, SELL, STAGE and the limit menu all act on the Size-for contract: it must be the one on the chart
+  if(cid && S.contractId && cid !== S.contractId){$('msg').textContent = `Size for is ${S.sizeFor} but the chart shows ${cur.name || 'another contract'}. Set Size for to AUTO, or switch the chart.`; return true}
+  return false;
+}
 async function manualStage(side){
   const t = parseInt($('mq-stop').value, 10);
   if(!(t >= 1)){$('msg').textContent = 'Manual order needs a stop distance in ticks.'; return}
   const cid = await sizeContract();
   if(!cid){$('msg').textContent = 'Pick a contract first.'; return}
+  if(sizeMismatch(cid)) return;
   S.side = side; syncSizeInputs(); schedule(0);          // the LONG/SHORT chip shows the side being staged
   await doStage({contract: cid, side, stop_ticks: t, qty: MQ.qty, order_type: 'market', source: 'manual'}, cid);   // same checks, same ticket, same hold-to-place
 }
@@ -853,6 +859,7 @@ $('sell-btn').onclick = () => manualStage('short');
 $('stage-btn').onclick = async () => {
   const z = S.ai && S.ai.size; if(!z || z.status !== 'OK' || z.refused || z.allowed === false) return;
   const cid = await sizeContract();
+  if(sizeMismatch(cid)) return;
   if(S.aiKey !== JSON.stringify({cid, side: S.side, stopK: S.stopK, riskPct: S.riskPct})){   // the chips moved since this size was computed
     $('msg').textContent = 'Size box is updating for your new selection. Check it, then STAGE again.'; schedule(0); return;
   }
@@ -1809,8 +1816,18 @@ async function search(){
     load();
   }catch(e){err('contracts unavailable'); S.contractId = null; schedule(0)}
 }
+function restoreSelect(){   // put the dropdown back on the contract the chart is really showing
+  const sel = $('c'); if(!S.contractId) return;
+  if(![...sel.options].some(o => o.value === S.contractId)){
+    const o = mk('option', '', cur.name || S.contractId); o.value = S.contractId; o.dataset.tick = String(cur.tick); o.dataset.tv = cur.tickValue ?? ''; o.dataset.name = cur.name || ''; sel.prepend(o);
+  }
+  sel.value = S.contractId;
+}
 function load(){
   const o = $('c').selectedOptions[0]; if(!o) return;
+  if(S.contractId && o.value !== S.contractId && stagedOrOpen()){   // ONE guard for the dropdown, search and the grade chips
+    restoreSelect(); $('msg').textContent = 'Finish or clear the staged ticket, working order and open position before switching contracts.'; return;
+  }
   const [type, span] = S.tf.split(',');
   const tick = +o.dataset.tick, dec = (o.dataset.tick.split('.')[1] || '').length;
   LS.set('px.contract', o.value);
@@ -1820,6 +1837,7 @@ function load(){
   want = {ticker: o.value, type, span: +span}; lastPx = null; $('price').textContent = 'NA'; $('price').className = 'price';
   if(sym) chart.setSymbol({ticker: o.value, pricePrecision: dec, volumePrecision: 0});
   if(per) chart.setPeriod({span: +span, type});
+  if(sym){S.seq++; S.ai = null; S.sizeCid = null; S.aiKey = ''}   // a reply still in flight for the old contract must not land on the new chart
   schedule(0);
 }
 $('q').onkeydown = e => {if(e.key === 'Enter') search()};
@@ -1837,7 +1855,7 @@ schedule(0);
 
 /* ================= bias board: advisory bias + grade per tracked root; display only ================= */
 const BD = {busy: false};
-function stagedOrOpen(){const t = S.ticket, p = S.ai && S.ai.positions; return !!((t && t.ticket_id && !t.consumed && !t.gone) || (Array.isArray(p) && p.length))}
+function stagedOrOpen(){const t = S.ticket, o = S.ai && S.ai.orders, p = S.ai && S.ai.positions; return !!(staging || (t && t.ticket_id && !t.consumed && !t.gone) || (t && t.placing) || (Array.isArray(o) && o.length) || (Array.isArray(p) && p.length))}
 const BD_ROOT = /^[A-Z0-9]{1,6}$/;
 function boardDraw(b){
   const host = $('board-rows'), bx = $('board'), rows = b && Array.isArray(b.rows) ? b.rows : [];
@@ -1848,7 +1866,7 @@ function boardDraw(b){
     const dir = BIAS_DIR.has(r.direction) ? r.direction : 'NA', gr = BIAS_GRADE.has(r.grade) ? r.grade : '-';
     const w = mk('button', 'bd-row ' + (dir === 'LONG' ? 'long' : dir === 'SHORT' ? 'short' : 'flat') + (r.root === now ? ' on' : '') + (r.caution ? ' caution' : ''));
     const fl = Array.isArray(r.flags) ? r.flags.filter(f => /^[A-Z_]{2,16}$/.test(f)).join(', ') : '';
-    w.title = dir === 'NA' ? `${r.root}: not enough reads yet` : `${r.root} trend ${dir} ${gr}: NOT A SIGNAL. ${r.agree}/${r.reads} reads agree, score ${r.score}/5` + (/^[A-Z_]{2,16}$/.test(String(r.entry)) ? `, entry ${r.entry}` : '') + (fl ? ` (${fl})` : '');
+    w.title = dir === 'NA' ? `${r.root}: not enough reads yet` : `${r.root} trend ${dir} ${gr}: NOT A SIGNAL. ${r.agree}/${r.reads} reads agree, score ${r.score}/${typeof r.max === 'number' ? r.max : 3.5}` + (/^[A-Z_]{2,16}$/.test(String(r.entry)) ? `, entry ${r.entry}` : '') + (fl ? ` (${fl})` : '');
     w.type = 'button'; w.dataset.root = r.root; w.dataset.cid = typeof r.cid === 'string' && /^CON\.[A-Za-z0-9._]{1,40}$/.test(r.cid) ? r.cid : '';
     w.setAttribute('aria-pressed', String(r.root === now));
     w.append(mk('span', 'bd-r', r.root), mk('b', 'bd-g', gr + (r.caution ? '!' : '')));
@@ -1863,7 +1881,7 @@ boardFetch(); setInterval(() => {if(document.visibilityState === 'visible') boar
 
 $('board-rows').addEventListener('click', async e => {   // switch the chart to that contract, same as picking it in the dropdown
   const b = e.target.closest('button.bd-row'); if(!b || !b.dataset.root) return;
-  if(stagedOrOpen()){$('msg').textContent = 'Finish or clear the staged ticket and open position before switching contracts.'; return}
+  if(stagedOrOpen()){$('msg').textContent = 'Finish or clear the staged ticket, working order and open position before switching contracts.'; return}
   $('q').value = b.dataset.root; await search();
   const sel = $('c'); if(b.dataset.cid && [...sel.options].some(o => o.value === b.dataset.cid)){sel.value = b.dataset.cid; load()}
   boardFetch();
@@ -1925,36 +1943,43 @@ function ctParts(ms){const o = {}; for(const p of CT_FMT.formatToParts(ms)) o[p.
 klinecharts.registerOverlay({
   name: 'orbBox', totalStep: 4, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
   createPointFigures: ({coordinates: cs, bounding, overlay}) => {
-    if(cs.length < 2 || !cs.every(c => isFinite(c.x) && isFinite(c.y))) return [];
-    const ed = overlay.extendData || {}, [a, b] = cs;
-    const top = Math.min(a.y, b.y), bot = Math.max(a.y, b.y), x0 = a.x;
+    const ed = overlay.extendData || {};
+    if(!cs.length || !cs.every(c => isFinite(c.x) && isFinite(c.y))) return [];
+    const x0 = cs[0].x, label = {type: 'text', ignoreEvent: true, attrs: {x: x0 + 4, y: 4, text: 'OPEN 8:30 CT' + (ed.forming ? ' \u00b7 ORB forming' : ''), align: 'left', baseline: 'top'},
+      styles: {color: '#aab6c8', size: 10, family: MONO, weight: '600', backgroundColor: 'rgba(7,9,13,.7)', borderSize: 0, borderRadius: 2, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, style: 'fill'}};
+    const vline = {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x0, y: 0}, {x: x0, y: bounding.height}]}, styles: {style: 'dashed', color: 'rgba(233,238,246,0.35)', size: 1, dashedValue: [2, 4]}};
+    if(ed.markOnly || cs.length < 2) return [vline, label];       // no complete opening range on this timeframe: just the open
+    const [a, b] = cs, top = Math.min(a.y, b.y), bot = Math.max(a.y, b.y);
     const xe = ed.toEdge ? bounding.width : (cs[2] ? Math.max(cs[2].x, x0 + 2) : Math.max(b.x, x0 + 2));   // today runs to the right edge; past days to their 15:00 CT close
     const col = 'rgba(95,179,217,0.55)', x1 = Math.min(Math.max(b.x, x0 + 2), xe);
     return [
-      {type: 'rect', ignoreEvent: true, attrs: {x: x0, y: top, width: Math.max(2, xe - x0), height: Math.max(1, bot - top)}, styles: {style: 'fill', color: 'rgba(95,179,217,0.13)'}},
+      {type: 'rect', ignoreEvent: true, attrs: {x: x0, y: top, width: Math.max(2, xe - x0), height: Math.max(1, bot - top)}, styles: {style: 'fill', color: ed.forming ? 'rgba(95,179,217,0.07)' : 'rgba(95,179,217,0.13)'}},
       {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x1, y: top}, {x: xe, y: top}]}, styles: {style: 'dashed', color: col, size: 1, dashedValue: [4, 4]}},
       {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x1, y: bot}, {x: xe, y: bot}]}, styles: {style: 'dashed', color: col, size: 1, dashedValue: [4, 4]}},
-      {type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x0, y: 0}, {x: x0, y: bounding.height}]}, styles: {style: 'dashed', color: 'rgba(233,238,246,0.35)', size: 1, dashedValue: [2, 4]}},
-      {type: 'text', ignoreEvent: true, attrs: {x: x0 + 4, y: 4, text: 'OPEN 8:30 CT', align: 'left', baseline: 'top'},
-       styles: {color: '#aab6c8', size: 10, family: MONO, weight: '600', backgroundColor: 'rgba(7,9,13,.7)', borderSize: 0, borderRadius: 2, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, style: 'fill'}},
+      vline, label,
     ];
   }});
 let orbSig = '';
 const CLOSE_M = 15 * 60;
 function orbDays(){
   const per = chart.getPeriod(), data = chart.getDataList();
-  if(!per || per.type !== 'minute' || !(per.span < 60) || !data.length) return [];
-  const days = new Map(), lastD = ctParts(data[data.length - 1].timestamp).d;
+  if(!per || per.type !== 'minute' || !data.length) return [];
+  const span = per.span, full = span <= ORB_MIN && ORB_MIN % span === 0;   // 1m, 3m, 5m, 15m tile the range exactly; 30m and 45m bars cannot
+  const days = new Map(), lastB = data[data.length - 1], lastP = ctParts(lastB.timestamp);
   for(const b of data){
     const p = ctParts(b.timestamp);
-    if(p.m === OPEN_M && !days.has(p.d)) days.set(p.d, {t0: b.timestamp, t1: b.timestamp, hi: b.high, lo: b.low, tEnd: b.timestamp, day: p.d});
-    else if(days.has(p.d) && p.m > OPEN_M){
+    if(!days.has(p.d) && p.m <= OPEN_M && OPEN_M < p.m + span) days.set(p.d, {day: p.d, t0: b.timestamp, hi: b.high, lo: b.low, n: 1, tEnd: b.timestamp, px: b.close});
+    else if(days.has(p.d)){
       const d = days.get(p.d);
-      if(p.m < OPEN_M + ORB_MIN){d.t1 = b.timestamp; d.hi = Math.max(d.hi, b.high); d.lo = Math.min(d.lo, b.low)}
+      if(full && p.m >= OPEN_M && p.m < OPEN_M + ORB_MIN){d.hi = Math.max(d.hi, b.high); d.lo = Math.min(d.lo, b.low); d.n++}
       if(p.m <= CLOSE_M) d.tEnd = b.timestamp;
     }
   }
-  return [...days.values()].slice(-3).map(d => ({t0: d.t0, t1: d.t1, hi: d.hi, lo: d.lo, tEnd: d.tEnd, toEdge: d.day === lastD && ctParts(data[data.length - 1].timestamp).m <= CLOSE_M}));
+  return [...days.values()].slice(-3).map(d => {
+    const need = full ? ORB_MIN / span : 0, today = d.day === lastP.d, forming = full && today && d.n < need && lastP.m < OPEN_M + ORB_MIN;
+    const complete = full && d.n === need, box = complete || forming;   // a hole inside the range means no box, never a wrong one
+    return {t0: d.t0, t1: Math.min(d.t0 + ORB_MIN * 60000, lastB.timestamp), hi: d.hi, lo: d.lo, tEnd: d.tEnd, px: d.px, box, forming, toEdge: today && lastP.m <= CLOSE_M};
+  });
 }
 function drawOrb(){
   try{
@@ -1962,8 +1987,9 @@ function drawOrb(){
     if(sig === orbSig) return;
     orbSig = sig;
     chart.removeOverlay({groupId: 'orb'});
-    for(const d of days) chart.createOverlay({name: 'orbBox', groupId: 'orb', lock: true, extendData: {toEdge: d.toEdge},
-      points: [{timestamp: d.t0, value: d.hi}, {timestamp: d.t1, value: d.lo}, {timestamp: d.tEnd, value: d.lo}]});
+    for(const d of days) chart.createOverlay(d.box
+      ? {name: 'orbBox', groupId: 'orb', lock: true, extendData: {toEdge: d.toEdge, forming: d.forming}, points: [{timestamp: d.t0, value: d.hi}, {timestamp: d.t1, value: d.lo}, {timestamp: d.tEnd, value: d.lo}]}
+      : {name: 'orbBox', groupId: 'orb', lock: true, extendData: {markOnly: true}, points: [{timestamp: d.t0, value: d.px}]});
   }catch(e){err(e)}
 }
 setInterval(() => {if(document.visibilityState === 'visible') drawOrb()}, 2000);

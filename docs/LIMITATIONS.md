@@ -145,3 +145,13 @@ POST routes do not, for the reason given above.
 - Scale-in is not supported: a second entry on a contract with a position, working order or entry in flight is refused.
 
 - **`live: true` on bars is refused for the Combine account** (verified 2026-10-16: `success:false, errorCode:1`; `live: false` returns bars that match the market-hub quote to the tick). `PX_LIVE_DATA=1` therefore blanks ATR, VWAP and sizing (unreadable inputs size to 0). One `live_data()` in `projectx_desk/client.py` now feeds the chart, digest, respect scan and MCP; before this the digest and MCP hardcoded `False`. Likely needs a live market-data entitlement on the account; unconfirmed.
+
+## Found on day one (2026-10-23), not fixed
+
+- **A resting limit order can only be cancelled with FLATTEN.** There is no cancel route or button; `guard.cancel` exists but nothing calls it from the UI. FLATTEN also closes positions, and live accounts cannot cancel through the API at all.
+- **No loss-breach flatten.** Past the daily limit the desk refuses new opens, but it does not flatten an open position that is already losing more than the limit. The protection is the stop on every order and the firm's own limits, not a desk latch. Needs a design pass before it is trusted.
+- **Micro crude does not size.** ProjectX names it `MCLE`, which `sizing.spec_for` does not recognise, so MCL fails closed. It is not tracked by default.
+- **The trend read is untested.** The first version showed no follow-through edge over 21 days; the current rule (v2.1) has never been backtested. Judge it only after 60 or more logged trade days (`data/bias_log.jsonl`), against always-long, always-short and shuffled nulls, with day-clustered intervals.
+- **The opening range is a fixed 08:30 CT, 15 minute reference** for every contract, and is drawn only where bars tile it exactly (1m, 3m, 5m, 15m).
+- **GEX levels hold the conversion basis from the moment their payload arrived.** Between payloads they stay put while the futures price moves, so they can sit a few points off the futures-implied level until the next update (up to `PX_GEX_MAX_AGE_S`).
+- **Stale input risk in the trend strip:** the board is cached for 10 seconds on top of a 15 second indicator cache and has no per-input age shown.

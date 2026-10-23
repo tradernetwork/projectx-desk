@@ -113,6 +113,17 @@ RULE: agent reads and stages; the operator places. Voice never confirms.
 NOTE: GEX marks positioning, not targets; the flip is a regime boundary, not a forecast.
 ```
 
+Since 2026-10-23 the digest also carries a `BIAS:` line, advisory trend context and **not a signal** (never backtested; see [DECISIONS](DECISIONS.md) Rounds 17 and 18).
+The format, shown with a real read from a simulated account (not the practice market above):
+
+```
+BIAS: LONG grade=B score=2.28/3.5 agree=4/5 entry=MID 5m=+ 15m=+ 1h=0 vwap=+ flow=+ flags=VOL_HIGH
+BIAS_NOTE: advisory trend context, NOT a signal (backtest showed no follow-through edge); entry=PULLBACK means price is near the 21 EMA, EXTENDED means chasing; never sizes or gates an order
+```
+
+`entry` is PULLBACK, MID, EXTENDED or THROUGH_EMA; `flags` can include DISSENT, EXTENDED, STRETCHED, EXTENDED_RSI, THROUGH_EMA, RANGING, VOL_HIGH, VOL_EXTREME, OPEN_CHOP and FLOW_NA.
+An agent should read it as context and must never treat the letter as a reason to stage.
+
 ### Mid-trade (excerpt of the lines that change)
 
 ```

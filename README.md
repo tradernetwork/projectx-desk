@@ -45,20 +45,47 @@ is sent until you hold *PLACE*. *MCP* is a standard way for AI assistants to use
 > point it at anything. The code has been reviewed by several AI models and one agent audit ([the results](docs/AUDIT_2026-10-16.md)),
 > not yet by a human futures-execution engineer.
 
-## Try it in two minutes (no account needed)
+## Start here: this is not a website
 
-```bash
-git clone https://github.com/tradernetwork/projectx-desk && cd projectx-desk
-python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
-./run_dev.sh            # starts a practice market and the desk, then prints the address
-```
+If you clicked the GitHub link and only saw files and code, that is what GitHub shows. **There is nothing to open from the link.** The desk is a
+program that runs **on your own computer**, and you view it in your browser at an address only your computer can see (`http://127.0.0.1:8613`).
+That is on purpose: your orders have to come from your own device, so do not put it on a cloud server.
 
-Open the address it prints (`http://127.0.0.1:8613/?ai=1`). Pick a risk chip, press **STAGE**, then press and hold
-**PLACE** for 600 ms. Watch the fill, the stop being placed and acknowledged, and the trade manager. Try **FLATTEN**,
-**HALT**, a losing trade (a cooldown starts), and `?stream=1`.
+**You need** Python 3.10 or newer and a terminal. No account, no money, no broker: the first run uses a built-in practice market with made-up prices.
 
-Needs Python 3.10+ (tested on 3.10, 3.11 and 3.13), bash and curl. Linux tested; on Windows use WSL.
+1. **Get the code.** Either `git clone https://github.com/tradernetwork/projectx-desk`, or on the GitHub page press the green **Code** button,
+   then **Download ZIP**, unzip it, and open a terminal inside the unzipped folder (it is called `projectx-desk-main`).
+2. **Install it, once.**
+   ```bash
+   python3 -m venv .venv && . .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+3. **Start it.**
+   ```bash
+   ./run_dev.sh
+   ```
+4. **Open the address it prints** (`http://127.0.0.1:8613/?ai=1`) in your browser. Leave the terminal window open: closing it stops the desk, and `Ctrl+C` stops it too.
+
+You should see a chart, a size box with a number and its reasons, and a **PLACE** button. Pick a risk chip, press **STAGE**, then press and hold **PLACE** for 600 ms.
+Watch the fill, the stop being placed and acknowledged, and the trade manager. Try **FLATTEN**, **HALT**, a losing trade (a cooldown starts), and `?stream=1`.
+
+**Windows:** `run_dev.sh` is a bash script, so run everything above inside **WSL** (install "Ubuntu" from the Microsoft Store, open it, and follow the steps there).
+Your normal Windows browser can still open the address. Native Windows (PowerShell) is not tested. **Mac and Linux:** the steps work as written;
+if `python3` is missing, install Python from [python.org](https://www.python.org/downloads/).
+
+| If you see | Do this |
+|---|---|
+| Only code files on the GitHub page | Expected. Follow the four steps above; the page itself is not the app. |
+| `python3: command not found`, or a version older than 3.10 | Install Python 3.10 or newer. On Ubuntu or WSL: `sudo apt install python3 python3-venv python3-pip`. |
+| `ensurepip is not available` or `No module named venv` | `sudo apt install python3-venv`, then repeat step 2. |
+| `Permission denied: ./run_dev.sh` | Run `bash run_dev.sh` instead. |
+| `The desk did not start` with a log excerpt | Read the last lines it prints. If a port is busy: `CHART_PORT=8623 DEV_GATEWAY_PORT=8710 ./run_dev.sh`. |
+| The browser says it cannot connect | The terminal running `run_dev.sh` must still be open, and the address must be the one it printed. |
+| The prices look odd or random | They are made up. The practice market is for learning the rules, not for anything about real markets. |
+
+Needs Python 3.10+ (tested on 3.10, 3.11 and 3.13), bash and curl. Linux tested.
+
+**To use it with your real TopstepX account** (after you have tried the practice market, and starting on a simulated account with `PX_TRADING=0`), see [Use it for real](#use-it-for-real).
 
 ## Why I built this
 
@@ -97,9 +124,12 @@ arithmetic, not the result.
 | **Respected levels (how they are scored)** | For 5m, 15m, 1h, 4h and 1d: which of about 25 candidate levels (EMAs, SMAs, Keltner, Bollinger, VWAP, prior day or week, swing fibs) price has actually reacted to, scored against a calibrated random baseline, with "tested K candidates" beside the winners and a STABLE badge only if the level passes in both halves of the data. Winners are drawn on the chart (toggle: Respect). History, not a forecast. |
 | **Timeframes** | The main chart opens on 5m (switch freely); two mini charts (15m, 1h) with the full EMA ribbon 8/13/21/34/55/89 and a bias line: `ribbon N/5 BULL / BEAR / MIXED`, which EMAs price is above, and a BULLISH / BEARISH / NEUTRAL badge that needs the whole ribbon in order. |
 | **Trending or ranging** | A chip by the Size heading reads TRENDING or RANGING from the 5m ADX (below 20 is the sit-out zone). Size is the ATR stop only; the chip is advice and never blocks an order. |
+| **Trend context (not a signal)** | A chip by the EMA badge and a strip in the top ribbon (one chip per tracked contract; click one to switch the chart) read a direction and a letter from the 5m, 15m and 1h EMA stacks, VWAP side, tape delta and where price sits against the 21 EMA (a pullback scores, chasing does not). A `!` means a caution flag is active; hover for the reasons. It has **not been backtested** (the first version showed no follow-through edge, see [Round 17](docs/DECISIONS.md)), it never gates or sizes an order, and every read is logged to `data/bias_log.jsonl` so it can be tested out of sample. |
+| **Limit orders by right-click** | Right-click the price pane to stage a limit entry at that price (simulated accounts only, within 20 ticks of the market, with the quantity and stop from the Manual row). Same preview, ticket and 600 ms hold as every order. There is no cancel button yet: FLATTEN cancels a resting limit on a simulated account. |
+| **Cash open and opening range** | A marker at 08:30 CT, with the first 15 minutes shaded and extended to the right, on 1m, 3m, 5m and 15m charts. A fixed US-stock-market reference: it is not tuned for gold or crude. |
 | **Real buy and sell volume** | A volume pane built from the trade tape's aggressor side (who hit the bid or the ask), not candle colour, plus delta. ProjectX has no tick history, so it records from the moment the desk starts, saves to disk, and shows a gap as a gap, never as a wrong number. |
 | **Tick charts** | 1024, 2048 and 4096-trade bars built from the same tape, in a strip under the main chart so all six charts (main, 15m, 1h and the three tick charts) are on screen at once. They start empty when the desk starts. |
-| **Tracked contracts** | `PX_TRACK_ROOTS` (default `MES,MNQ,MGC`) records those tapes and rescans the indicators every 5 minutes with no browser open, so switching contract does not start from empty. |
+| **Tracked contracts** | `PX_TRACK_ROOTS` (default `MES,MNQ,MGC`) records those tapes and rescans the indicators every 5 minutes with no browser open, so switching contract does not start from empty. It also feeds the trend strip and the bias log. |
 | **Phone alerts** | Install it as an app and get push notifications on halt, flatten, fills, stop hits or failures, low loss room and a dead feed (analyst callouts and regime flips are opt-in). Fixed short messages with no account details. Needs HTTPS, for example Tailscale; see `docs/DEPLOY.md`. Not yet verified on a real phone. |
 | **Guided tour** | The Tour button highlights each part of the desk and says what it does. It only draws an overlay and swallows clicks while open, so it cannot place or halt anything. |
 | **GEX on the chart** | Flip, pin and walls from the TraderDaddy API, converted to futures prices and drawn as labelled lines. Display only: they never feed sizing, stops or targets. |

@@ -42,3 +42,11 @@ def test_no_env_file_opt_out_loads_nothing(tmp_path):
     f.write_text("PX_SECRET_THING=1\n")
     env = {"PX_ENV_FILE": str(f), "PX_NO_ENV_FILE": "1"}
     assert load_env_file(environ=env) == [] and "PX_SECRET_THING" not in env
+
+
+def test_a_notepad_bom_does_not_hide_the_first_key(tmp_path):
+    f = tmp_path / ".env.projectx"
+    f.write_bytes("\ufeffPROJECTX_USERNAME=trader\nPX_NOTE=caf\u00e9\n".encode("utf-8"))
+    env = {}
+    assert load_env_file(f, env) == ["PROJECTX_USERNAME", "PX_NOTE"]
+    assert env == {"PROJECTX_USERNAME": "trader", "PX_NOTE": "caf\u00e9"}

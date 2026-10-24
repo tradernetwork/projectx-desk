@@ -358,7 +358,7 @@ def test_service_worker_route_headers_and_content(tmp_path):
 
 
 def test_manifest_meets_install_criteria_and_icons_exist():
-    m = json.loads((STATIC / "manifest.webmanifest").read_text())
+    m = json.loads((STATIC / "manifest.webmanifest").read_text(encoding="utf-8"))
     assert m["start_url"] == "/" and m["scope"] == "/" and m["id"] and m["display"] == "standalone"
     assert m["name"] and m["short_name"]
     by = {(i["sizes"], i["purpose"]): i for i in m["icons"] if i["type"] == "image/png"}
@@ -375,24 +375,24 @@ def test_manifest_meets_install_criteria_and_icons_exist():
 
 
 def test_index_links_manifest_with_credentials_and_keeps_the_byline():
-    html = (STATIC / "index.html").read_text()
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
     assert 'rel="manifest" href="/static/manifest.webmanifest" crossorigin="use-credentials"' in html
     assert 'rel="apple-touch-icon"' in html and 'name="apple-mobile-web-app-capable"' in html
     assert '<a class="byline"' in html and 'id="alerts-btn"' in html and 'src="/static/alerts.js"' in html
     for f in ("alerts.js", "sw.js", "index.html"):
-        assert "—" not in (STATIC / f).read_text(), f
+        assert "—" not in (STATIC / f).read_text(encoding="utf-8"), f
 
 
 def test_no_new_hard_dependency():
-    assert "cryptography" not in (ROOT / "requirements.txt").read_text().lower()
-    assert "pywebpush" not in (ROOT / "requirements.txt").read_text().lower()
+    assert "cryptography" not in (ROOT / "requirements.txt").read_text(encoding="utf-8").lower()
+    assert "pywebpush" not in (ROOT / "requirements.txt").read_text(encoding="utf-8").lower()
     assert not (ROOT / "requirements-push.txt").exists()
 
 
 def test_push_modules_have_no_bare_write_and_import_nothing_from_the_order_side():
     import ast
     for name in ("push.py", "notify.py"):
-        tree = ast.parse((ROOT / "projectx_desk" / name).read_text())
+        tree = ast.parse((ROOT / "projectx_desk" / name).read_text(encoding="utf-8"))
         for n in ast.walk(tree):
             if isinstance(n, ast.ImportFrom) and n.module:
                 assert n.module.split(".")[-1] not in ("guard", "client", "limits"), (name, n.module)

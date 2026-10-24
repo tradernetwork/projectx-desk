@@ -198,7 +198,7 @@ def test_panel_refusal_and_bad_last():
 
 
 def test_no_em_dash_in_module():
-    assert chr(0x2014) not in _SRC.read_text()
+    assert chr(0x2014) not in _SRC.read_text(encoding="utf-8")
 
 
 def test_unrecognised_strike_list_entry_refuses_instead_of_passing_through():

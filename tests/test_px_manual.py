@@ -68,7 +68,7 @@ def test_manual_qty_goes_through_the_route_and_mcp_never_offers_it(tmp_path):
         assert post(c, "/api/preview", tok, {"contract": CID, "side": "long", "stop_ticks": 20, "qty": True}).status_code == 400
         over = post(c, "/api/preview", tok, {"contract": CID, "side": "long", "stop_ticks": 20, "qty": 3}).json()
         assert not over["ok"] and any(v["check"] == "manual_qty_cap" and not v["ok"] for v in over["verdict"])
-    src = pathlib.Path(px_guard.__file__).with_name("mcp.py").read_text()
+    src = pathlib.Path(px_guard.__file__).with_name("mcp.py").read_text(encoding="utf-8")
     assert "qty=" not in src and "qty:" not in src                     # the AI surface sizes by risk only; manual size is the human's
     assert "qty" in inspect.signature(g.preview).parameters
 

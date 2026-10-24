@@ -97,4 +97,4 @@ def test_no_bare_write_attribute_in_new_code():
     from test_px_guard_pin import violations
     root = pathlib.Path(px_ticks.__file__).parent
     for name in ("ticks.py", "recorder.py", "app.py", "state.py"):
-        assert violations((root / name).read_text(), f"projectx_desk/{name}") == [], name
+        assert violations((root / name).read_text(encoding="utf-8"), f"projectx_desk/{name}") == [], name

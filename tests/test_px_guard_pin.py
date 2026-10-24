@@ -68,7 +68,7 @@ def test_no_module_but_the_guard_can_reach_the_order_path():
         rel = f.relative_to(ROOT)
         if rel.parts[0] in ("tests", ".venv", "venv", "node_modules") or any(part.startswith(".") for part in rel.parts):
             continue
-        bad += violations(f.read_text(), rel.as_posix())
+        bad += violations(f.read_text(encoding="utf-8"), rel.as_posix())
     assert not bad, "\n".join(bad)
 
 
@@ -118,7 +118,7 @@ def test_scan_is_recursive_and_ignores_tests_and_hidden_dirs(tmp_path):
     hits = []
     for f in sorted(tmp_path.rglob("*.py")):
         rel = f.relative_to(tmp_path)
-        hits += violations(f.read_text(), str(rel))
+        hits += violations(f.read_text(encoding="utf-8"), rel.as_posix())
     assert hits and "pkg/sneaky.py" in hits[0]
 
 
@@ -132,7 +132,7 @@ def test_detector_allows_what_it_should():
 
 def test_mock_is_server_only_so_its_exemption_is_safe():
     for name in SERVER_SIDE_MOCKS:
-        tree = ast.parse((ROOT / name).read_text())
+        tree = ast.parse((ROOT / name).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 mods = [a.name for a in node.names] + ([node.module] if isinstance(node, ast.ImportFrom) and node.module else [])

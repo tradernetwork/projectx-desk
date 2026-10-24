@@ -946,22 +946,41 @@ const C = {up: '#D6A73A', dn: '#7088AD', dnWick: '#C8D8EE', flat: '#6C7A92', gri
 const EMA_COL = ['#E9EEF6', '#5FB3D9', '#B49AE0'];   // EMA 8 / 21 / 34: the card's SMA light, EMA-21 blue and magnet lilac; keep in step with --ema8/21/34 in desk.css
 const RC = {BOUNCE: C.green, FAIL: C.mag, NEUTRAL: '#76839a', PENDING: C.cyan};
 const MONO = '"JetBrains Mono", ui-monospace, monospace';
-const axis = {axisLine: {color: C.axis}, tickLine: {color: C.axis}, tickText: {color: C.text, size: 10, family: MONO}};
-const chs = {line: {color: '#3B4A68', style: 'dashed', dashedValue: [3, 3]}, text: {backgroundColor: '#0F1522', borderColor: '#2A3550', color: C.ink, family: MONO, size: 11}};
-const legendTxt = {size: 11, family: MONO, color: C.text};
+// The chart chrome is the WheelForge (ember) chart's: a visible solid grid, brighter axis text, a solid crosshair, dim high and low
+// marks, an amber last-price tag with dark ink, and every level drawn as a full-width line with a solid colour chip. Only the
+// candles keep the TraderMatrix gold and steel above: a colour that means "price went up" stays the desk's own.
+const E = {grid: '#161c27', axis: '#2a3140', text: '#8b97a8', ink: '#e7edf5', cross: '#3a4456', crossBg: '#1a212e', last: '#ffb000',
+           dark: '#07090e', hot: '#ff7a18', sup: '#26d07c'};
+const axis = {axisLine: {color: E.axis}, tickLine: {color: E.axis}, tickText: {color: E.text, size: 10, family: MONO}};
+const chs = {line: {color: E.cross, style: 'solid'}, text: {backgroundColor: E.crossBg, borderColor: E.axis, color: E.ink, family: MONO, size: 11}};
+const legendTxt = {size: 11, family: MONO, color: E.text};
 const STYLES = {
-  grid: {horizontal: {color: C.grid, style: 'solid'}, vertical: {color: C.grid, style: 'solid'}},
+  grid: {horizontal: {color: E.grid, style: 'solid'}, vertical: {color: E.grid, style: 'solid'}},
   candle: {bar: {upColor: C.up, downColor: C.dn, noChangeColor: C.flat, upBorderColor: C.up, downBorderColor: C.dn,
                  noChangeBorderColor: C.flat, upWickColor: C.up, downWickColor: C.dnWick, noChangeWickColor: C.flat},
-           priceMark: {high: {show: false}, low: {show: false},
-                       last: {upColor: C.cyan, downColor: C.cyan, noChangeColor: C.cyan, line: {style: 'dashed', dashedValue: [2, 3]},
-                              text: {color: '#04121c', family: MONO, weight: '600', borderRadius: 3}}},
-           tooltip: {title: {...legendTxt, color: '#93a0b4'}, legend: {...legendTxt, template: [{title: 'O ', value: '{open}'}, {title: 'H ', value: '{high}'}, {title: 'L ', value: '{low}'}, {title: 'C ', value: '{close}'}]}}},
+           priceMark: {high: {show: true, color: E.text, textSize: 10, textFamily: MONO}, low: {show: true, color: E.text, textSize: 10, textFamily: MONO},
+                       last: {upColor: E.last, downColor: E.last, noChangeColor: E.last, line: {style: 'solid', size: 1},
+                              text: {color: E.dark, family: MONO, weight: '700', borderRadius: 2}}},
+           tooltip: {title: {...legendTxt, color: '#93a0b4'}, legend: {...legendTxt, color: E.ink, template: [{title: 'O ', value: '{open}'}, {title: 'H ', value: '{high}'}, {title: 'L ', value: '{low}'}, {title: 'C ', value: '{close}'}]}}},
   indicator: {bars: [{upColor: 'rgba(214,167,58,.55)', downColor: 'rgba(112,136,173,.55)', noChangeColor: 'rgba(108,122,146,.45)'}],
               lines: ['#5FB3D9', '#B49AE0', '#C8D8EE', '#fb7185', '#8EA3C4'].map(color => ({color, size: 1})),
               tooltip: {title: legendTxt, legend: legendTxt}},
-  xAxis: axis, yAxis: axis, separator: {color: C.axis}, crosshair: {horizontal: chs, vertical: chs},
+  xAxis: axis, yAxis: axis, separator: {color: E.axis}, crosshair: {horizontal: chs, vertical: chs},
 };
+/* ember's level label: a solid chip in the level's colour with dark ink, not coloured text on a dark box. Also the hover tag on the
+   y axis (klinecharts only draws that tag while the line is hovered), so pass it as the overlay's text style too. */
+const chip = (color, bold) => ({color: E.dark, backgroundColor: color, borderSize: 0, borderRadius: 2, size: 11, family: MONO, weight: bold ? '700' : '600',
+                                paddingLeft: 5, paddingRight: 5, paddingTop: 2, paddingBottom: 2, style: 'fill'});
+const LEGEND_H = 80;   // the OHLC and indicator legends own the top-left corner: a chip that high goes to the right edge instead
+function levelFigs(cs, bounding, ed, line){
+  if(!cs.length || !isFinite(cs[0].y)) return [];
+  const y = cs[0].y, right = y < LEGEND_H;
+  return [
+    {type: 'line', attrs: {coordinates: [{x: 0, y}, {x: bounding.width, y}]}, styles: line},
+    {type: 'text', ignoreEvent: true, attrs: {x: right ? bounding.width - 6 : 6, y: y - 2, text: String(ed.label || ''), align: right ? 'right' : 'left', baseline: 'bottom'},
+     styles: chip(ed.color || C.purple, ed.stable !== false)},   // a level that is not stable gets the lighter weight, nothing else
+  ];
+}
 const dimText = {color: C.ink, backgroundColor: 'rgba(10,14,23,.92)', borderColor: '#2a3550', borderSize: 1, size: 12, family: MONO, paddingLeft: 6, paddingRight: 6, paddingTop: 3, paddingBottom: 3, style: 'stroke_fill', borderRadius: 3};
 klinecharts.registerOverlay({
   name: 'zoneBand', totalStep: 3, needDefaultPointFigure: true, needDefaultXAxisFigure: false, needDefaultYAxisFigure: true,
@@ -992,13 +1011,17 @@ klinecharts.registerOverlay({
   name: 'deskLevel', totalStep: 2, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: true,
   createPointFigures: ({coordinates: cs, bounding, overlay}) => {
     if(!cs.length || !isFinite(cs[0].y)) return [];
-    const ed = overlay.extendData || {}, y = cs[0].y;
-    return [
-      {type: 'line', attrs: {coordinates: [{x: 0, y}, {x: bounding.width, y}]}, styles: {style: ed.dash ? 'dashed' : 'solid', color: ed.color || C.purple, size: ed.size || 1, dashedValue: [6, 4]}},
-      {type: 'text', ignoreEvent: true, attrs: {x: bounding.width - 6, y: y - 2, text: String(ed.label || ''), align: 'right', baseline: 'bottom'},
-       styles: {color: ed.ink || ed.color || C.purple, size: 10, family: MONO, weight: '600', backgroundColor: 'rgba(7,9,13,.78)', borderSize: 0, borderRadius: 2,
-                paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, style: 'fill'}},
-    ];
+    const ed = overlay.extendData || {};
+    return levelFigs(cs, bounding, ed, {style: ed.dash ? 'dashed' : 'solid', color: ed.color || C.purple, size: ed.size || 1, dashedValue: [6, 4]});
+  }});
+/* the shaded trade zone (ember's put-sell band): a full-width translucent band between two prices, the colour rides in extendData */
+klinecharts.registerOverlay({
+  name: 'tradeBand', totalStep: 3, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
+  createPointFigures: ({coordinates: cs, bounding, overlay}) => {
+    if(cs.length < 2 || !isFinite(cs[0].y) || !isFinite(cs[1].y)) return [];
+    const top = Math.min(cs[0].y, cs[1].y), bot = Math.max(cs[0].y, cs[1].y), w = bounding.width;
+    return [{type: 'polygon', ignoreEvent: true, attrs: {coordinates: [{x: 0, y: top}, {x: w, y: top}, {x: w, y: bot}, {x: 0, y: bot}]},
+             styles: {style: 'fill', color: (overlay.extendData && overlay.extendData.color) || 'rgba(244,63,94,.10)'}}];
   }});
 
 /* reaction markers for the selected level: shape AND colour carry the result */
@@ -1168,37 +1191,57 @@ function deskLines(){
   const cl = CALL.live;       // the analyst's own entry, stop and first target, while it is recent and this is its chart
   if(cl && cl.root === curRoot() && cl.age0 + (performance.now() - cl.at) / 1000 < 5400){
     for(const [nm, p, col] of [['E', cl.entry, '#fbbf24'], ['SL', cl.stop, '#fb7185'], ['T1', cl.tp1, '#4ade80']])
-      if(typeof p === 'number') out.push({price: p, label: 'CALLOUT ' + nm + ' ' + p, color: col, ink: col, dash: true, size: 2});
+      if(typeof p === 'number') out.push({price: p, label: 'CALLOUT ' + nm + ' ' + p, color: col, dash: true, size: 2});
   }
   const t = S.ticket;
   if(t && t.ticket_id && !t.consumed && !t.gone && t.contract === S.contractId && t.readback){
     const e = Number(t.readback.entry_ref), s = Number(t.readback.stop_price);
-    if(isFinite(e)) out.push({price: e, label: 'ENTRY ' + e, color: C.cyan, ink: '#7dd3fc', dash: false, size: 1});
-    if(isFinite(s)) out.push({price: s, label: 'STOP ' + s, color: C.mag, ink: '#fb7185', dash: false, size: 1});
+    if(isFinite(e)) out.push({price: e, label: 'ENTRY ' + e, color: C.cyan, dash: false, size: 2});
+    if(isFinite(s)) out.push({price: s, label: 'STOP ' + s, color: C.mag, dash: false, size: 2});
   }else{
     const tr = S.ai && S.ai.trade;   // live bracket on the contract we placed it on
     if(tr && S.placed && S.placed.contract === S.contractId){
-      if(num(tr.entry_ref)) out.push({price: tr.entry_ref, label: 'ENTRY ' + tr.entry_ref + ' ' + (tr.state === 'PLACED' ? ((tr.filled || 0) > 0 ? 'FILLED' : tr.acked ? 'ACCEPTED' : 'PLACED') : tr.state), color: C.cyan, ink: '#7dd3fc', dash: false, size: 1});
+      if(num(tr.entry_ref)) out.push({price: tr.entry_ref, label: 'ENTRY ' + tr.entry_ref + ' ' + (tr.state === 'PLACED' ? ((tr.filled || 0) > 0 ? 'FILLED' : tr.acked ? 'ACCEPTED' : 'PLACED') : tr.state), color: C.cyan, dash: false, size: 2});
       const sp = S.ai.manage && num(S.ai.manage.stop) ? S.ai.manage.stop : tr.stop_price;   // manage.stop follows a moved stop
-      if(num(sp)) out.push({price: sp, label: 'STOP ' + sp + ' ' + (tr.stop_state || 'PENDING'), color: C.mag, ink: '#fb7185', dash: tr.stop_state !== 'ACKED' && tr.stop_state !== 'ATOMIC', size: 1});
+      if(num(sp)) out.push({price: sp, label: 'STOP ' + sp + ' ' + (tr.stop_state || 'PENDING'), color: C.mag, dash: tr.stop_state !== 'ACKED' && tr.stop_state !== 'ATOMIC', size: 2});
     }else if(S.ai && S.ai.manage && num(S.ai.manage.stop)){   // position not placed from this page: still show where its stop is
-      out.push({price: S.ai.manage.stop, label: 'STOP ' + S.ai.manage.stop, color: C.mag, ink: '#fb7185', dash: false, size: 1});
+      out.push({price: S.ai.manage.stop, label: 'STOP ' + S.ai.manage.stop, color: C.mag, dash: false, size: 2});
     }
   }
   return out;
 }
+/* The shaded zone, ported from the WheelForge chart (there: spot down to the put strike, tinted by score). On a futures desk the
+   zone is the trade: the RISK band from entry to stop (magenta: that is the money) and the TARGET band from entry to the anchored
+   target (green), when the size box has one on the far side of the entry. Source, in order: the staged ticket, the live bracket,
+   else the size box's plan for the inputs on screen (fainter: it moves with the quote). Numbers are the server's; nothing is derived. */
+function tradeZones(){
+  const z = S.ai && S.ai.size, plan = z && z.status === 'OK' && z.root === curRoot() ? z : null;
+  const t = S.ticket, tr = S.ai && S.ai.trade;
+  let entry = null, stop = null, firm = false;
+  if(t && t.ticket_id && !t.consumed && !t.gone && t.contract === S.contractId && t.readback){entry = Number(t.readback.entry_ref); stop = Number(t.readback.stop_price); firm = true}
+  else if(tr && S.placed && S.placed.contract === S.contractId && num(tr.entry_ref)){entry = tr.entry_ref; stop = S.ai.manage && num(S.ai.manage.stop) ? S.ai.manage.stop : tr.stop_price; firm = true}
+  else if(plan && num(plan.entry) && num(plan.stop)){entry = plan.entry; stop = plan.stop}
+  const out = [];
+  if(!num(entry) || !num(stop) || stop === entry) return out;
+  const long = stop < entry;
+  out.push({band: true, price: entry, price2: stop, color: `rgba(244,63,94,${firm ? .13 : .07})`});
+  const tg = plan && num(plan.target) && String(plan.side || '').toLowerCase() === (long ? 'long' : 'short') ? plan.target : null;
+  if(tg != null && (long ? tg > entry : tg < entry)) out.push({band: true, price: entry, price2: tg, color: `rgba(34,197,94,${firm ? .10 : .06})`});
+  return out;
+}
 function drawDesk(force){
-  const lines = deskLines(), sig = JSON.stringify(lines);
+  const lines = deskLines(), zones = tradeZones(), sig = JSON.stringify([zones, lines]);
   if(sig === deskSig && !force) return;
   const last = chart.getDataList().slice(-1)[0];
-  if(!last && lines.length) return;                       // retry once bars exist
+  if(!last && (lines.length || zones.length)) return;    // retry once bars exist
   deskSig = sig;
   try{
     chart.removeOverlay({groupId: 'desk'});
-    for(const l of lines) chart.createOverlay({name: 'deskLevel', groupId: 'desk', lock: true, points: [{timestamp: last.timestamp, value: l.price}], extendData: l});
+    for(const z of zones) chart.createOverlay({name: 'tradeBand', groupId: 'desk', lock: true, points: [{timestamp: last.timestamp, value: z.price}, {timestamp: last.timestamp, value: z.price2}], extendData: z});   // bands first: under the lines
+    for(const l of lines) chart.createOverlay({name: 'deskLevel', groupId: 'desk', lock: true, points: [{timestamp: last.timestamp, value: l.price}], extendData: l, styles: {text: chip(l.color || C.purple, true)}});
   }catch(e){err(e)}
 }
-function syncDesk(){drawDesk(false)}
+function syncDesk(){drawDesk(false); if(typeof drawAutoLevels === 'function' && I.sel) drawAutoLevels(indWanted().hz)}   // auto levels are side-coded against the last price: a cross recolours them within a poll
 
 /* ---- level reaction markers (group 'react': never saved with the user's drawings) ---- */
 let reactSig = '';
@@ -1227,13 +1270,8 @@ klinecharts.registerOverlay({
   name: 'respectLevel', totalStep: 2, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: true,
   createPointFigures: ({coordinates: cs, bounding, overlay}) => {
     if(!cs.length || !isFinite(cs[0].y)) return [];
-    const ed = overlay.extendData || {}, y = cs[0].y, a = ed.stable ? 1 : .55;
-    return [
-      {type: 'line', attrs: {coordinates: [{x: 0, y}, {x: bounding.width, y}]}, styles: {style: ed.stable ? 'solid' : 'dashed', color: ed.color, size: ed.stable ? 1.5 : 1, dashedValue: ed.stable ? [1, 0] : ed.dv}},
-      {type: 'text', ignoreEvent: true, attrs: {x: y < 80 ? bounding.width - 6 : 6, y: y - 2, text: String(ed.label || ''), align: y < 80 ? 'right' : 'left', baseline: 'bottom'},
-       styles: {color: ed.color, size: 10, family: MONO, weight: ed.stable ? '700' : '500', backgroundColor: `rgba(7,9,13,${.78 * a + .1})`, borderSize: 0, borderRadius: 2,
-                paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, style: 'fill'}},
-    ];
+    const ed = overlay.extendData || {};
+    return levelFigs(cs, bounding, ed, {style: ed.stable ? 'solid' : 'dashed', color: ed.color, size: ed.stable ? 2 : 1, dashedValue: ed.stable ? [1, 0] : ed.dv});
   }});
 const rspNum = v => typeof v === 'number' && isFinite(v);
 const rspName = v => String(v == null ? '' : v).replace(/[^\w .\-\/+%()]/g, '').slice(0, 24) || 'level';
@@ -1266,7 +1304,7 @@ function drawRespect(force){
   R.sig = sig;
   try{
     chart.removeOverlay({groupId: 'respect'});
-    for(const l of lines) chart.createOverlay({name: 'respectLevel', groupId: 'respect', lock: true, points: [{timestamp: last.timestamp, value: l.price}], extendData: l});
+    for(const l of lines) chart.createOverlay({name: 'respectLevel', groupId: 'respect', lock: true, points: [{timestamp: last.timestamp, value: l.price}], extendData: l, styles: {text: chip(l.color, l.stable)}});
   }catch(e){err(e)}
 }
 function renderRespect(){
@@ -1678,7 +1716,7 @@ const PINS = [['EMA8', 'EMA 8 (fast)'], ['SMA50', 'SMA 50'], ['EMA34', 'EMA 34']
 const PIN = {...LS.get('px.ind.pin', {})};
 const IND_TF = {'second,15': '5m', 'minute,1': '5m', 'minute,5': '5m', 'minute,15': '15m', 'minute,30': '15m', 'hour,1': '1h', 'hour,4': '4h', 'day,1': '1d'};
 const IND_POLL_MS = 60000, IND_KEEP_MS = 600000;
-const AUTO_COL = '#d6a73a';
+const AUTO_COL = '#d6a73a';   // legend swatch only: on the chart an auto level is side-coded, hot above the last price (resistance wall), green below (support wall), as on the WheelForge chart
 const MA_COL = ['#E9EEF6', '#5FB3D9', '#B49AE0', '#7fb08a', '#D6A73A', '#8EA3C4'];
 const I = {seq: 0, busy: false, key: '', sel: null, good: 0, applied: '', hsig: '', timer: null};   // sel: last good {levels, oscillators}
 const indNum = v => typeof v === 'number' && isFinite(v);
@@ -1736,8 +1774,8 @@ function indSync(){   // diff the wanted set against what is drawn; only touch w
   indChips();
 }
 function drawAutoLevels(hz){   // horizontal auto levels (fib, prior, keltner) on the respectLevel overlay; a line the Respect toggle already draws is skipped
-  const tk = cur && cur.tick ? cur.tick : 0, rl = respectLines();
-  const lines = hz.filter(l => !rl.some(r => Math.abs(r.price - l.price) <= Math.max(tk * 2, 1e-9))).map(l => ({price: l.price, color: AUTO_COL, dv: [6, 4], stable: false,
+  const tk = cur && cur.tick ? cur.tick : 0, rl = respectLines(), lastBar = chart.getDataList().slice(-1)[0], px = lastBar ? lastBar.close : null;
+  const lines = hz.filter(l => !rl.some(r => Math.abs(r.price - l.price) <= Math.max(tk * 2, 1e-9))).map(l => ({price: l.price, color: px == null ? AUTO_COL : l.price >= px ? E.hot : E.sup, dv: [6, 4], stable: false,
     label: `${rspName(l.label)}${indNum(l.held) && indNum(l.tests) ? ` ${l.held}/${l.tests}` : ''}`}));
   const sig = JSON.stringify(lines) + '|' + (S.contractId || '');
   if(sig === I.hsig) return;
@@ -1746,7 +1784,7 @@ function drawAutoLevels(hz){   // horizontal auto levels (fib, prior, keltner) o
   I.hsig = sig;
   try{
     chart.removeOverlay({groupId: 'autolvl'});
-    for(const l of lines) chart.createOverlay({name: 'respectLevel', groupId: 'autolvl', lock: true, points: [{timestamp: last.timestamp, value: l.price}], extendData: l});
+    for(const l of lines) chart.createOverlay({name: 'respectLevel', groupId: 'autolvl', lock: true, points: [{timestamp: last.timestamp, value: l.price}], extendData: l, styles: {text: chip(l.color, false)}});
   }catch(e){err(e)}
 }
 function indChips(){   // locked "always" chips, auto chips with the reason as tooltip, and the pin box

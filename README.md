@@ -93,20 +93,15 @@ Needs Python 3.10+ (tested on 3.10, 3.11 and 3.13), bash and curl. Linux tested.
 
 ## Why I built this
 
-My losers were bigger than my winners. Not by a little.
+My problem was never finding the trade. It was knowing how big to go, and when to sit out.
 
-I pulled my own trade history: 42 stock round trips over one month. Average win, $1.50. Average loss, $5.09. To break even at
-that ratio you have to win 77% of the time (5.09 / (1.50 + 5.09) = 0.77). I won 45%.
+I win about 45% of my trades and do about as well as a friend who wins 85%. Win rate is not the score. The size of the wins
+against the losses is, and that is exactly the part emotions wreck.
 
-It got worse. After a loss, my next position was 55% bigger than after a win. My worst loss was 5.35 times my average one.
-That is before fees.
+So I built something that makes the dumb stuff expensive: size set by the math, a stop that has to exist, a cooldown after a
+loss, a lockout after three in a row. Then I built a practice market so nobody has to learn the rules with real money.
 
-I did not need a better entry. I needed something that makes the dumb stuff expensive: size set by the math, a stop that has to
-exist, a cooldown after a loss, a lockout after three in a row. So I built that, then built a practice market so nobody has to
-learn the rules with real money.
-
-It will not make you profitable. It stands between you and the leaks. One month, small sample, gross of fees: the point is the
-arithmetic, not the result.
+It will not make you profitable. It stands between you and the leaks.
 
 ~ Michael
 

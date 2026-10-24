@@ -342,6 +342,10 @@ body.acct-live .ribbon{border-top:2px solid var(--magenta)}
 .lg{display:inline-flex;align-items:center;gap:5px}
 .lg::before{content:"";width:14px;height:0;border-top:2px solid}
 .lg.entry::before{border-color:var(--cyan)} .lg.stop::before{border-color:var(--magenta)} .lg.vwap::before{border-color:var(--amber)} .lg.gex::before{border-top-style:dashed;border-color:var(--purple)}
+/* the chart key, as on the WheelForge chart: a filled swatch for a shaded zone, a line for a level */
+.lg.zrisk::before,.lg.ztgt::before{height:8px;border:0;border-radius:1px} .lg.zrisk::before{background:rgba(244,63,94,.35)} .lg.ztgt::before{background:rgba(34,197,94,.3)}
+.lg.rsp::before{border-image:linear-gradient(90deg,#56b4e9,#f0e442,#cc79a7,#ff8a3d,#e6ebf2) 1}
+.lg.wall::before{border-top-style:dashed;border-image:linear-gradient(90deg,#ff7a18 50%,#26d07c 50%) 1}
 .dot-wrap{margin-left:auto;flex:none;white-space:nowrap;font:500 var(--fs-2xs)/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);display:inline-flex;align-items:center;gap:6px}
 #dot{width:7px;height:7px;border-radius:50%;background:var(--text-dim);display:inline-block}
 #dot.live{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s ease-in-out infinite} #dot.warn{background:var(--amber)}

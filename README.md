@@ -60,7 +60,6 @@ That is on purpose: your orders have to come from your own device, so do not put
    python3 -m venv .venv && . .venv/bin/activate
    pip install -r requirements.txt
    ```
-   On native Windows (PowerShell) the venv lines are `py -m venv .venv; .venv\Scripts\Activate.ps1`, then `pip install -r requirements-dev.txt; pytest -q` runs the tests. `run_dev.sh` needs bash, so use WSL for the offline desk.
 3. **Start it.**
    ```bash
    ./run_dev.sh
@@ -70,8 +69,12 @@ That is on purpose: your orders have to come from your own device, so do not put
 You should see a chart, a size box with a number and its reasons, and a **PLACE** button. Pick a risk chip, press **STAGE**, then press and hold **PLACE** for 600 ms.
 Watch the fill, the stop being placed and acknowledged, and the trade manager. Try **FLATTEN**, **HALT**, a losing trade (a cooldown starts), and `?stream=1`.
 
-**Windows:** `run_dev.sh` is a bash script, so run everything above inside **WSL** (install "Ubuntu" from the Microsoft Store, open it, and follow the steps there).
-Your normal Windows browser can still open the address. Native Windows (PowerShell) is not tested. **Mac and Linux:** the steps work as written;
+**Windows (PowerShell):** use `run_dev.ps1` instead of `run_dev.sh`, and `py` or `python` instead of `python3`:
+```powershell
+python -m venv .venv; .venv\Scripts\python -m pip install -r requirements.txt
+powershell -ExecutionPolicy Bypass -File run_dev.ps1
+```
+The full test suite passes on Windows 11 with Python 3.13. WSL works too, with the steps above as written. **Mac and Linux:** the steps work as written;
 if `python3` is missing, install Python from [python.org](https://www.python.org/downloads/).
 
 | If you see | Do this |

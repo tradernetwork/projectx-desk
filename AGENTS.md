@@ -11,6 +11,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt
 pytest -q                      # offline: runs against the mock gateway; no broker, no credentials. Python 3.10+
 ./run_dev.sh                   # offline desk + mock gateway: http://127.0.0.1:8613/?ai=1
+powershell -ExecutionPolicy Bypass -File run_dev.ps1   # the same on native Windows
 python scripts/screenshots.py  # regenerates docs/img from the OFFLINE mock desk (needs requirements-screenshots.txt + playwright install chromium)
 ```
 

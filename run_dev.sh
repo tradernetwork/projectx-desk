@@ -19,7 +19,7 @@ if [ -z "$PX_MCP_TOKEN" ]; then
 fi
 # The mock must never inherit the real desk's settings: no .env.projectx, no advisory feeds, its own tape file.
 unset PX_FEED_URL PX_FEED_KEY PX_GEX_KEY PX_GEX_URL TD_API_KEY PX_MLL_FLOOR PX_FLAT_BY
-export PX_NO_ENV_FILE=1 PX_FLOW_FILE="$D/flow.json" PX_LOCK_FILE="$D/desk.lock" PX_GRADES_FILE="$D/grades.jsonl"   # own lock and log: a real desk on this box keeps its own
+export PX_WEEKEND_QUIET=0 PX_NO_ENV_FILE=1 PX_FLOW_FILE="$D/flow.json" PX_LOCK_FILE="$D/desk.lock" PX_GRADES_FILE="$D/grades.jsonl"   # own lock and log: a real desk on this box keeps its own
 export PROJECTX_API=http://127.0.0.1:$GWP PROJECTX_HUB_BASE=ws://127.0.0.1:$GWP/hubs \
   PROJECTX_USERNAME=dev PROJECTX_API_KEY=dev PX_ACCOUNT_ID=4242 PX_ACCOUNT_KIND=sim PX_BRACKET_MODE=position \
   PX_DAILY_LOSS_LIMIT=1000 PX_DRAWDOWN_BUFFER=2000 PX_NO_NEW_AFTER=16:55 PX_TRADING=1 CHART_PORT=$APPP \

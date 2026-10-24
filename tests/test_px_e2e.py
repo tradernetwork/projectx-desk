@@ -49,6 +49,7 @@ async def make_desk(tmp_path, monkeypatch):
     async def start(preload=None, bracket_mode="position", **limit_over):
         monkeypatch.setenv("PX_ACCOUNT_ID", str(ACCOUNT_ID))
         monkeypatch.delenv("PX_MCP_TOKEN", raising=False)
+        monkeypatch.setenv("PX_WEEKEND_QUIET", "0")    # the mock market streams on any day; quiet would idle the market hub on a weekend
         d = Desk()
         d.gw = DevGateway(walk=False, tick_s=0.1, ping_s=1.0, bracket_mode=bracket_mode, now=wall)
         if preload:

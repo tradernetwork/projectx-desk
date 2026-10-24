@@ -3,6 +3,7 @@ import json
 import os
 import pathlib
 import stat
+import sys
 
 import httpx
 import pytest
@@ -100,7 +101,7 @@ def test_vapid_jwt_verifies_has_the_right_claims_and_header(tmp_path):
 def test_vapid_key_file_is_0600_stable_and_never_served(tmp_path, monkeypatch):
     f = tmp_path / "sub" / "vapid.json"
     v1 = push.Vapid.load_or_create(f)
-    assert stat.S_IMODE(f.stat().st_mode) == 0o600
+    assert sys.platform == "win32" or stat.S_IMODE(f.stat().st_mode) == 0o600   # Windows has no mode bits
     assert not list(f.parent.glob("*.tmp"))
     v2 = push.Vapid.load_or_create(f)
     assert v1.public_b64 == v2.public_b64
@@ -153,7 +154,7 @@ def test_store_is_0600_atomic_survives_reload_and_caps_devices(tmp_path):
     st = push.PushStore(f)
     k, pub, auth = make_ua()
     sid = st.add(push.clean_subscription(sub_for(pub, auth)))
-    assert stat.S_IMODE(f.stat().st_mode) == 0o600 and not list(f.parent.glob("*.tmp"))
+    assert (sys.platform == "win32" or stat.S_IMODE(f.stat().st_mode) == 0o600) and not list(f.parent.glob("*.tmp"))
     assert push.PushStore(f).subs[sid]["prefs"]["events"]["halt"] is True
     assert push.PushStore(f).subs[sid]["prefs"]["events"]["callout"] is False
     for i in range(push.MAX_SUBS - 1):
@@ -273,7 +274,7 @@ def test_vapid_route_serves_only_the_public_key(tmp_path):
         r = c.get("/api/push/vapid")
         key = r.json()["key"]
         assert len(d64(key)) == 65
-        raw = json.loads((tmp_path / "v.json").read_text())
+        raw = json.loads((tmp_path / "v.json").read_text(encoding="utf-8"))
         assert raw["public"] == key and raw["private"] not in r.text
 
 

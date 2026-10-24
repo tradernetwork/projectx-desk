@@ -19,7 +19,7 @@ async def test_manual_qty_stages_exactly_that_many_with_the_derived_risk(tmp_pat
     assert p.ticket.payload["size"] == 2 and p.sizing["contracts"] == 2 and p.sizing["total_risk_dollars"] == 62.5
     assert p.ticket.readback["sized_by"] == "MANUAL" and p.ticket.readback["size"] == 2 and p.ticket.readback["risk_usd"] == 62.5
     assert ("manual_qty", True, "") in p.verdict and ("manual_qty_cap", True, "") in p.verdict
-    events = [json.loads(l) for l in (tmp_path / "audit.jsonl").read_text().splitlines()]
+    events = [json.loads(l) for l in (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines()]
     assert [e for e in events if e["event"] == "manual"][0]["size"] == 2
     one = await prev(g, risk_dollars=None, qty=1)
     assert one.ok and one.ticket.payload["size"] == 1 and one.ticket.readback["risk_usd"] == 31.25

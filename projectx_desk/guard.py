@@ -201,7 +201,7 @@ class Guard:
         """Freeze all opens. Survives restart. Only a human clears it (clear_halt, UI-only)."""
         p = self.limits.halt_path
         p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8") as f:
             f.write(code if SAFE_AUDIT.match(code) else "halt")
             f.flush()
             os.fsync(f.fileno())
@@ -226,14 +226,14 @@ class Guard:
                 (v if isinstance(v, str) and SAFE_AUDIT.match(v) else "?")
         try:
             self.limits.audit_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.limits.audit_path, "a") as f:
+            with open(self.limits.audit_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec) + "\n")
         except OSError:
             pass  # audit failure must not block a reducing action; opens are checked elsewhere
 
     def _load_intents(self):
         try:
-            raw = json.loads(self.limits.intent_path.read_text())
+            raw = json.loads(self.limits.intent_path.read_text(encoding="utf-8"))
             return (raw if isinstance(raw, dict) else {}), isinstance(raw, dict)
         except FileNotFoundError:
             return {}, True

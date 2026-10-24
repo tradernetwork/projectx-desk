@@ -253,7 +253,7 @@ def test_track_loop_tapes_and_logs_then_survives_failures(tmp_path, monkeypatch)
     asyncio.run(go())
     assert taped == ["CON.F.US.MES.Z99", "CON.F.US.MNQ.Z99"]            # unknown root skipped
     assert "CON.F.US.MNQ.Z99" in calls                                  # failure did not stop the loop
-    lines = (tmp_path / "g.jsonl").read_text().splitlines()
+    lines = (tmp_path / "g.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 5                                              # one per timeframe, deduped across rescans
 
 

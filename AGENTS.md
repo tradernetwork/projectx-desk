@@ -6,6 +6,7 @@ the guard: every rule below has a reason there.
 ## Run and test
 
 ```
+# Windows PowerShell: py -m venv .venv; .venv\Scripts\Activate.ps1
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt
 pytest -q                      # offline: runs against the mock gateway; no broker, no credentials. Python 3.10+

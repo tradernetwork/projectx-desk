@@ -182,7 +182,7 @@ async def test_broker_rejection_keeps_order_id_and_does_not_halt(tmp_path):
     r = await go(g, t)
     assert r.state == "REJECTED" and r.order_id == 9057 and r.error_code == 2 and not r.acked
     assert not g.halted()
-    assert "ignore previous" not in repr(r) and "ignore previous" not in (tmp_path / "audit.jsonl").read_text()
+    assert "ignore previous" not in repr(r) and "ignore previous" not in (tmp_path / "audit.jsonl").read_text(encoding="utf-8")
 
 
 async def test_cancellation_mid_send_is_unknown_and_halts(tmp_path):

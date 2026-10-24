@@ -151,7 +151,7 @@ def atomic_write_json(path: pathlib.Path, obj) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".")
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(obj, f)
             f.flush()
             os.fsync(f.fileno())
@@ -177,7 +177,7 @@ class DayState:
 
     def _load(self):
         try:
-            raw = json.loads(self.path.read_text())
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
             self.date, self.orders = raw["date"], int(raw["orders"])
             lr = raw.get("last_risk")
             self.last_risk = float(lr) if isinstance(lr, (int, float)) else None

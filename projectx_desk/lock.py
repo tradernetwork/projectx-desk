@@ -25,7 +25,7 @@ def acquire(path=None):
     p = pathlib.Path(path) if path else lock_path()
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
-        f = open(p, "a+")
+        f = open(p, "a+", encoding="utf-8")
     except OSError as e:                 # cannot prove we are the only desk: refuse, never guess
         raise SystemExit(f"cannot open the desk lock file {p} ({type(e).__name__}); refusing to start")
     try:

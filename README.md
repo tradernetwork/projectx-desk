@@ -60,6 +60,7 @@ That is on purpose: your orders have to come from your own device, so do not put
    python3 -m venv .venv && . .venv/bin/activate
    pip install -r requirements.txt
    ```
+   On native Windows (PowerShell) the venv lines are `py -m venv .venv; .venv\Scripts\Activate.ps1`, then `pip install -r requirements-dev.txt; pytest -q` runs the tests. `run_dev.sh` needs bash, so use WSL for the offline desk.
 3. **Start it.**
    ```bash
    ./run_dev.sh

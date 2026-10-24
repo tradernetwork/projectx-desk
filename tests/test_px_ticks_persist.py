@@ -68,7 +68,7 @@ def test_cap_per_contract_and_size(tmp_path):
     tb = TickBars(sizes=(1,), path=str(p), save_every_s=1e9)
     feed(tb, "C", [(T0 + i, 10.0, 1, 0) for i in range(MAX_BARS + 120)])
     tb.save()
-    raw = json.loads(p.read_text())
+    raw = json.loads(p.read_text(encoding="utf-8"))
     assert len(raw["c"]["C"]["done"]["1"]) == MAX_BARS == 5000
     tb2 = TickBars(sizes=(1,), path=str(p))
     assert len(tb2._c["C"]["done"][1]) == MAX_BARS
@@ -81,7 +81,7 @@ def test_periodic_save_and_state_wiring(tmp_path):
     ls.ticks.sizes = (3,)
     ls.ticks._every = 0.0
     ls._on_trade("C", [{"timestamp": T0 + i, "price": 5.0, "volume": 1, "type": 0} for i in range(5)])
-    assert p.exists() and json.loads(p.read_text())["v"] == 1               # written while prints flow, no explicit save
+    assert p.exists() and json.loads(p.read_text(encoding="utf-8"))["v"] == 1               # written while prints flow, no explicit save
     assert LiveState(None, None).ticks._path is None                        # no path = in-memory only
 
 

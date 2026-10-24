@@ -144,5 +144,5 @@ def test_bias_log_loop_writes_one_line_per_tracked_contract_per_closed_bar(tmp_p
         asyncio.run(appmod._bias_log_loop(app))
     except asyncio.CancelledError:
         pass
-    lines = [json.loads(x) for x in f.read_text().splitlines()]
+    lines = [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines()]
     assert [x["contract"] for x in lines] == ["CON.F.US.MES.Z26", "CON.F.US.MNQ.Z26"]

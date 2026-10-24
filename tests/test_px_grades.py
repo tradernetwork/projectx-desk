@@ -33,7 +33,7 @@ def test_dedupe_per_bar(tmp_path):
     assert g.log_eval(CID, "5m", ev(1000), 2) is False
     assert g.log_eval(CID, "15m", ev(1000), 3) is True
     assert g.log_eval(CID, "5m", ev(1300), 4) is True
-    lines = (tmp_path / "sub" / "g.jsonl").read_text().splitlines()
+    lines = (tmp_path / "sub" / "g.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 3 and all(json.loads(x)["contract"] == CID for x in lines)
 
 
@@ -45,12 +45,12 @@ def test_rotation_replaces_old_dot_one(tmp_path):
         n += 1
         g.log_eval(CID, "5m", ev(1000 + n), n)
     assert (tmp_path / "g.jsonl.1").exists()
-    old = (tmp_path / "g.jsonl.1").read_text()
+    old = (tmp_path / "g.jsonl.1").read_text(encoding="utf-8")
     assert p.exists() and p.stat().st_size < 300 + 2000
-    while (tmp_path / "g.jsonl.1").read_text() == old and n < 200:     # a second rotation replaces the first .1
+    while (tmp_path / "g.jsonl.1").read_text(encoding="utf-8") == old and n < 200:     # a second rotation replaces the first .1
         n += 1
         g.log_eval(CID, "5m", ev(1000 + n), n)
-    assert (tmp_path / "g.jsonl.1").read_text() != old
+    assert (tmp_path / "g.jsonl.1").read_text(encoding="utf-8") != old
 
 
 def test_write_failure_swallowed_one_warning(tmp_path, capsys):

@@ -7,6 +7,7 @@ Every order write lives in px_guard.py; the routes here only call it, and only a
 import asyncio
 import hmac
 import json
+import mimetypes
 import os
 import pathlib
 import re
@@ -625,6 +626,8 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         res = await p.send_to(sid, {"title": px_notify.TITLE, "body": "Test notification", "tag": "test", "kind": "test"})
         return {"result": res}
 
+    mimetypes.add_type("text/javascript", ".js")   # Windows reads the registry, which can say text/plain
+    mimetypes.add_type("application/manifest+json", ".webmanifest")
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     return app
 

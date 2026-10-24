@@ -42,7 +42,7 @@ def load_env_file(path=None, environ=None) -> list:
                                       pathlib.Path(__file__).resolve().parent.parent / ".env.projectx"]
     for c in candidates:
         if c and pathlib.Path(c).is_file():
-            vals = parse_env_text(pathlib.Path(c).read_text(encoding="utf-8"))
+            vals = parse_env_text(pathlib.Path(c).read_text(encoding="utf-8-sig"))
             set_keys = []
             for k, v in vals.items():
                 if k not in env and v != "":

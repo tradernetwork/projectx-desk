@@ -209,7 +209,7 @@ def test_callout_staging_is_refused_server_side_when_the_flag_is_off(tmp_path):
         tok = c.get("/api/csrf").json()["token"]
         r = post(c, "/api/preview", tok, {"contract": CID, "side": "long", "stop_price": 4994.0, "risk_dollars": 50, "source": "callout"})
         assert r.status_code == 403
-    assert not (tmp_path / "audit.jsonl").exists() or "stage_source" not in (tmp_path / "audit.jsonl").read_text()
+    assert not (tmp_path / "audit.jsonl").exists() or "stage_source" not in (tmp_path / "audit.jsonl").read_text(encoding="utf-8")
 
 
 def test_callout_sourced_tickets_are_audited(tmp_path):
@@ -223,10 +223,10 @@ def test_callout_sourced_tickets_are_audited(tmp_path):
         r2 = post(c, "/api/preview", tok, {"contract": CID, "side": "long", "stop_price": 4994.0, "risk_dollars": 50, "source": "<script>"})
         assert r2.json()["ok"]
         post(c, "/api/preview", tok, {"contract": CID, "side": "long", "stop_price": 4994.0, "risk_dollars": 50})
-    events = [json.loads(l) for l in (tmp_path / "audit.jsonl").read_text().splitlines()]
+    events = [json.loads(l) for l in (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines()]
     src = [e for e in events if e["event"] == "stage_source"]
     assert len(src) == 1 and src[0]["code"] == "callout" and src[0]["origin"] == "ui" and len(src[0]["ticket"]) == 8
-    assert "<script>" not in (tmp_path / "audit.jsonl").read_text()
+    assert "<script>" not in (tmp_path / "audit.jsonl").read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------------- respect: the three gates

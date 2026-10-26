@@ -31,6 +31,7 @@ class Client:
 
     async def bars(self, params):
         self.calls += 1
+        self.last_params = params
         return self.bars_rows
 
 
@@ -149,3 +150,11 @@ def test_the_route_is_a_get_with_a_validated_contract(tmp_path, monkeypatch):
         assert c.get("/api/tomorrow", params={"contract": MES}).json() == {"status": "OK", "contract": MES}
         assert c.get("/api/tomorrow", params={"contract": "bad id"}).status_code == 400
         assert c.post("/api/tomorrow", json={}, headers={"origin": "http://testserver"}).status_code in (403, 405)     # no write surface
+
+
+def test_a_snapshot_taken_seconds_ago_uses_the_forming_bar():
+    a = app()
+    res = run(F.tomorrow_result(a, MES, environ=ENV, fetch=fake_fetch(), now=SNAP_EPOCH + 30))
+    assert res["status"] == "OK"
+    assert a.state.client.last_params["includePartialBar"] is True               # excluding it made GLD (MGC) return NO_REF at the top of a bar
+    assert a.state.client.last_params["unit"] == 2 and a.state.client.last_params["unitNumber"] == 5

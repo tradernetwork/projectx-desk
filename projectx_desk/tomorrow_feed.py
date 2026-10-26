@@ -107,11 +107,12 @@ def build_from_clean(c, today, ratio, tick):
 
 
 async def futures_ref(app, contract_id, snap_epoch):
-    """Close of the futures 5m bar that contained the snapshot, or None. One REST read, cached with the result."""
+    """Close of the futures 5m bar that contained the snapshot, or None. One REST read, cached with the result. The bar may still be
+    forming (a snapshot seconds old), in which case its close is the price now: within one bar of the snapshot, which is all a ratio needs."""
     t0 = datetime.fromtimestamp(snap_epoch, timezone.utc)
     raw = await app.state.client.bars({"contractId": contract_id, "live": live_data(), "unit": 2, "unitNumber": 5, "limit": 12,
                                        "startTime": (t0 - timedelta(minutes=30)).isoformat(), "endTime": (t0 + timedelta(minutes=10)).isoformat(),
-                                       "includePartialBar": False})
+                                       "includePartialBar": True})      # a snapshot taken seconds ago sits in the bar still forming
     best = None
     for b in raw or []:
         try:

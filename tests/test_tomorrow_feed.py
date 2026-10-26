@@ -201,3 +201,34 @@ def test_no_number_in_a_futures_sentence_is_in_the_wrong_space(name, ratio, tick
         assert re.sub(r"\d+(?:\.\d+)?", "N", sc) == re.sub(r"\d+(?:\.\d+)?", "N", fc)
     for sr, fr in zip(src["roads"], mp["roads"]):
         assert re.sub(r"\d+(?:\.\d+)?", "N", sr["rule"]).replace("N.00", "N") == re.sub(r"\d+(?:\.\d+)?", "N", fr["rule"]).replace("N.00", "N")
+
+
+def test_survivors_use_the_snapshots_own_date_not_the_clock_of_a_late_retry():
+    late = SNAP_EPOCH + 10 * 3600                                                    # a retry hours later, past midnight in New York
+    res = run(F.tomorrow_result(app(), MES, environ=ENV, fetch=fake_fetch(), now=late))
+    assert res["status"] == "OK" and res["today"] == "2026-10-16" and res["after_hours"] is False       # 15:01 CT is inside the cash session
+
+
+def test_a_snapshot_outside_the_cash_session_is_flagged_after_hours(monkeypatch):
+    g, m, h = payloads()
+    evening = "2026-10-16T01:30:00Z"                                                 # 20:30 CT the evening before
+    snap = gex._parse_epoch(evening)
+
+    async def fetch(base, key, path):
+        return {**g, "lastUpdated": evening} if path.endswith("/SPY") else {**m, "snapshotTime": evening} if path.endswith("/matrix") else h
+    a = app(bars=[bar(snap, REF)])
+    res = run(F.tomorrow_result(a, MES, environ=ENV, fetch=fetch, now=snap + 600))
+    assert res["status"] == "OK" and res["after_hours"] is True
+
+
+def test_an_early_refusal_is_reported_with_its_real_code_not_loading_forever(monkeypatch):
+    for k in ("PX_GEX_KEY", "TD_API_KEY", "PX_GEX_URL"):
+        monkeypatch.delenv(k, raising=False)
+    a = app()
+
+    async def go():
+        first = await F.ai_block(a, MES)
+        await asyncio.gather(*list(a.state.tmap_kick_tasks))
+        return first, await F.ai_block(a, MES), len(a.state.tmap_kick_tasks)
+    first, second, held = run(go())
+    assert first["code"] == "LOADING" and second == {"status": "NO_KEY", "code": None} and held == 0       # the task was kept while running and dropped when done

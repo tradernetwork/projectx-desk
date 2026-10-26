@@ -1563,7 +1563,8 @@ function drawTrend(force){
 }
 $('tr-toggle').onclick = () => {TR.on = !TR.on; LS.set('px.trend', TR.on); $('tr-toggle').setAttribute('aria-pressed', String(TR.on)); drawTrend(true)};
 $('tr-toggle').setAttribute('aria-pressed', String(TR.on));
-function syncDesk(){if(typeof drawTrend === 'function') drawTrend(false); if(typeof tmapSync === 'function') tmapSync(); drawDesk(false); if(typeof drawAutoLevels === 'function' && I.sel) drawAutoLevels(indWanted().hz)}   // auto levels are side-coded against the last price: a cross recolours them within a poll
+function syncDesk(){try{drawTrend(false)}catch(e){err(e)} try{tmapSync()}catch(e){err(e)}      // try/catch, not typeof: both read consts defined further down, so a call before they exist throws
+  drawDesk(false); if(typeof drawAutoLevels === 'function' && I.sel) drawAutoLevels(indWanted().hz)}   // auto levels are side-coded against the last price: a cross recolours them within a poll
 
 /* ---- level reaction markers (group 'react': never saved with the user's drawings) ---- */
 let reactSig = '';
@@ -1867,7 +1868,8 @@ function mnMeta(tf){
   kids[1].title = 'The six EMAs (8, 13, 21, 34, 55, 89). Arrows: each one rising \u25B2, falling \u25BC or flat \u25AC over the last 5 bars, fastest first. "turning up" = the fast three are rising while a slow one is not yet.';
   kids[2].textContent = bz.pos === 'NA' ? '' : bz.pos;
   if(kids[3] && typeof PXRegime !== 'undefined'){      // chop read of this timeframe's own closed bars: ADX lags, so efficiency sits beside it
-    const rg = PXRegime.tfRegime(all.slice(0, -1)), a = rg.adx == null ? null : rg.adx.toFixed(0), e = rg.er == null ? 'NA' : rg.er.toFixed(2).replace(/^0/, '');
+    const lastBar = all[all.length - 1], forming = lastBar && Date.now() < lastBar.timestamp + MN.unit[tf][2];      // drop the last row only when it is still forming (a history view has none)
+    const rg = PXRegime.tfRegime(forming ? all.slice(0, -1) : all), a = rg.adx == null ? null : rg.adx.toFixed(0), e = rg.er == null ? 'NA' : rg.er.toFixed(2).replace(/^0/, '');
     kids[3].textContent = (a == null ? 'ADX NA' : rg.state + ' ADX ' + a) + ' · ER ' + e + (rg.choppy ? ' CHOPPY' : '');
     kids[3].className = 'rg rg-' + rg.state.toLowerCase() + (rg.choppy ? ' rg-chop' : '');
     kids[3].title = 'Trend or chop on this timeframe. ADX under 20 = RANGING (it lags: 29 bars to read). ER = efficiency of the last 12 closes, net move over distance travelled: under .20 = CHOPPY (a straight line is 1). Display only.';

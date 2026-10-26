@@ -15,7 +15,8 @@ def test_generated_overlays_are_never_saved_as_the_traders_own_drawings():
 
 def test_trend_is_loaded_toggled_and_driven_from_the_poll_loop():
     assert '<script src="/static/trend.js"></script>' in HTML.split("</head>")[0] and 'id="tr-toggle"' in HTML
-    assert "function syncDesk(){if(typeof drawTrend === 'function') drawTrend(false);" in JS
+    body = JS.split("function syncDesk(){")[1].split("\n")[0]
+    assert "try{drawTrend(false)}catch(e){err(e)}" in body                       # try/catch, not typeof: the consts it reads are defined further down
     block = JS.split("Automatic trendlines and channels")[1].split("function syncDesk")[0]
     assert "PXTrend.fit(data)" in block and "groupId: 'trend'" in block
     assert "method: 'POST'" not in block and "/api/" not in block                  # display only: no network, no order path

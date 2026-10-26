@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from projectx_desk import digest as px_digest
 from projectx_desk import tomorrow_feed as px_tomorrow
 from projectx_desk import tomorrow_ledger as px_tledger
+from projectx_desk import mapplan_log as px_mapplan
 from projectx_desk import grades as px_grades
 from projectx_desk import indicators as px_ind
 from projectx_desk import respect as px_respect
@@ -147,8 +148,9 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             app.state.track_task = asyncio.create_task(_track_loop(app, roots)) if roots else None
             app.state.bias_task = asyncio.create_task(_bias_log_loop(app)) if roots else None
             app.state.tledger_task = asyncio.create_task(_tomorrow_ledger_loop(app)) if roots else None
+            app.state.mapplan_task = asyncio.create_task(_mapplan_shadow_loop(app)) if roots else None
             yield
-            for name in ("bias_task", "tledger_task"):
+            for name in ("bias_task", "tledger_task", "mapplan_task"):
                 if getattr(app.state, name, None) is not None:
                     getattr(app.state, name).cancel()
             if notifier_task is not None:
@@ -875,6 +877,7 @@ async def _bias_snapshot(app, cid):
     if bias_bar_is_stale(ind["closed_ts"], time.time() * 1000):     # after a closure the last closed bar is days old: never file today's inputs under it
         return None
     live = app.state.live
+    ind = {**ind, **(ind.get("closed") or {})}                          # every input from CLOSED bars: nothing of the next bar leaks into the bar being logged
     em = ind.get("ema") or {}
     b = px_digest.bias_state(app, cid, ind, ind["closed_close"], px_flow.summary(live.flow, cid, time.time() * 1000))
     return {"ts": int(time.time() * 1000), "contract": cid, "tf": "bias", "bar_ts": int(ind["closed_ts"]), "price": ind["closed_close"],
@@ -921,6 +924,23 @@ async def _tomorrow_ledger_loop(app):
             raise
         except Exception as e:  # noqa: BLE001 - the record must never break the desk
             print(f"tomorrow ledger failed {type(e).__name__}", flush=True)
+
+
+async def _mapplan_shadow_loop(app):
+    """SHADOW MODE (Round 21): at each 5m close, grade earlier dealer-map proposals and file new ones. Logs only: nothing is shown or stageable."""
+    path = px_mapplan.path_from_env(ROOT)
+    print("mapplan shadow loop started (logs only; nothing is shown or stageable)", flush=True)
+    while True:
+        now = time.time()
+        await asyncio.sleep(300 - (now % 300) + 25)                  # after the bias log (+8 s), so the closed bar is in the cached history
+        if _quiet(app):
+            continue
+        try:
+            await px_mapplan.tick(app, path, time.time())
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 - the record must never break the desk
+            print(f"mapplan shadow failed {type(e).__name__}", flush=True)
 
 
 async def _track_loop(app, roots):

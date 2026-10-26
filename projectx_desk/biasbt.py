@@ -242,7 +242,11 @@ def folds(tr, grades=GOOD, k=3):
 def monte_carlo(tr, grades=GOOD, risk_pct=0.10, paths=5000, length=40, block=6, seed=1):
     """Block bootstrap of the observed R sequence into `paths` runs of `length` trades. Room compounds: room *= 1 + risk_pct * R, so a
     loss costs risk_pct of what is LEFT of the loss room, as the desk sizes it. Returns streak and survival numbers."""
-    seq = [t["r"] for t in tr if t["grade"] in grades]
+    pooled = {}
+    for t in tr:
+        if t["grade"] in grades:
+            pooled.setdefault(t["t"], []).append(t["r"])
+    seq = [sum(v) / len(v) for _, v in sorted(pooled.items())]        # one averaged R per bar across contracts: the path the account would actually have lived
     if len(seq) < block * 2:
         return None
     rng = random.Random(seed)
@@ -274,7 +278,7 @@ def monte_carlo(tr, grades=GOOD, risk_pct=0.10, paths=5000, length=40, block=6, 
 
 def verdict(tr, p, fold_stats, grades=GOOD, horizon=6):
     sel = [t for t in tr if t["grade"] in grades]
-    eff = len(sel) / horizon
+    eff = len({t["t"] for t in sel}) / horizon                          # MES, MNQ and MGC leaning at the same minute are one observation of the market, not three
     if eff < MIN_EFFECTIVE_N:
         return f"INSUFFICIENT: {len(sel)} trades is about {eff:.0f} independent ones (need {MIN_EFFECTIVE_N}); keep logging, this says nothing yet"
     mean = sum(t["r"] for t in sel) / len(sel)

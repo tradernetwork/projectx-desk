@@ -34,7 +34,7 @@
     chop = chop == null ? 20 : chop;
     const hi = bars.map(b => b.high), lo = bars.map(b => b.low), cl = bars.map(b => b.close);
     const ok = [...hi, ...lo, ...cl].every(fin);
-    const a = ok && cl.length >= 29 ? adx(hi, lo, cl, 14) : null, er = ok ? efficiency(cl, 12) : null;
+    const a = ok && cl.length >= 29 ? adx(hi, lo, cl, 14) : null, er = efficiency(cl, 12);      // ER needs only the last 13 closes, exactly as regime.py does
     return {adx: a, er: er, state: a == null ? 'UNKNOWN' : a < chop ? 'RANGING' : 'TRENDING', choppy: er == null ? null : er < 0.20};
   }
   /* Ribbon slope: is each EMA rising, falling or flat over the last k bars, judged against ATR so noise is not a slope. Same EMA recurrence as the

@@ -87,12 +87,12 @@ def test_bias_log_line_carries_the_regime_fields(monkeypatch):
     monkeypatch.setattr(appmod.px_flow, "summary", lambda *a, **k: None)
     bars15, bars1h = walk(80, 5, drift=0.9, vol=0.4), walk(80, 6, drift=-0.2, vol=1.0)
     st = types.SimpleNamespace(live=types.SimpleNamespace(quotes={}, flow=None),
-                               respect_bars={("CON.F.US.MES.Z26", "15m"): {"bars": bars15}, ("CON.F.US.MES.Z26", "1h"): {"bars": bars1h}})
+                               respect_bars={("CON.F.US.MES.Z26", "15m"): {"at": time.monotonic(), "bars": bars15}, ("CON.F.US.MES.Z26", "1h"): {"at": time.monotonic(), "bars": bars1h}})
     e = asyncio.run(appmod._bias_snapshot(types.SimpleNamespace(state=st), "CON.F.US.MES.Z26"))
     assert (e["er5"], e["vwapx"], e["run_up"], e["run_dn"]) == (0.31, 3, 1.2, 4.5)
     assert e["adx15"] > 20 and 0 <= e["er15"] <= 1 and e["adx1h"] is not None and e["er1h"] is not None
     json.dumps(e, allow_nan=False)                                        # numbers or None only, nothing NaN
-    st.respect_bars = {}
+    st.respect_bars = {k: {**v, "at": time.monotonic() - 3600} for k, v in st.respect_bars.items()}      # the scan stopped an hour ago: unknown, not current
     e2 = asyncio.run(appmod._bias_snapshot(types.SimpleNamespace(state=st), "CON.F.US.MES.Z26"))
     assert e2["adx15"] is None and e2["er1h"] is None                     # nothing cached yet: unknown, never zero
 

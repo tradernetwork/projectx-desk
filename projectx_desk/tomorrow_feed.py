@@ -143,34 +143,36 @@ async def tomorrow_result(app, contract_id, environ=None, fetch=fetch_json, now=
 
 async def _tomorrow(app, contract_id, environ, fetch, now):
     st = app.state
+    if not hasattr(st, "tmap_lock"):
+        st.tmap_lock = asyncio.Lock()
+        st.tmap_cache = {}
+
+    def remember(res):                          # an early refusal is cached too, so the AI surface reports the real code instead of LOADING forever
+        if len(st.tmap_cache) >= 16:
+            st.tmap_cache.pop(next(iter(st.tmap_cache)))
+        st.tmap_cache[contract_id] = (time.monotonic(), res)
+        return res
     try:
         cfg = gex.gex_config(environ)
     except gex.GexError as e:
-        return _res("ERROR", e.code)
+        return remember(_res("ERROR", e.code))
     if cfg is None:
-        return _res("NO_KEY")
+        return remember(_res("NO_KEY"))
     base, key, _ = cfg
     try:
         spec = sizing.spec_for(contract_id)
     except sizing.SizingError:
-        return _res("UNAVAILABLE", "CONTRACT")
+        return remember(_res("UNAVAILABLE", "CONTRACT"))
     src = map_source(spec.root)
     if src is None:
-        return _res("UNAVAILABLE", "UNSUPPORTED")
+        return remember(_res("UNAVAILABLE", "UNSUPPORTED"))
     sym, nominal = src
-    if not hasattr(st, "tmap_lock"):
-        st.tmap_lock = asyncio.Lock()
-        st.tmap_cache = {}
     now_ts = time.time() if now is None else now
     async with st.tmap_lock:                                   # single flight: one fetch (and one bars read) per contract per TTL
         hit = st.tmap_cache.get(contract_id)
         if hit and time.monotonic() - hit[0] < (TTL_S if hit[1].get("status") == "OK" else ERR_TTL_S):
             return hit[1]
-        out = await _compute(app, contract_id, spec, sym, nominal, base, key, fetch, now_ts)
-        if len(st.tmap_cache) >= 16:
-            st.tmap_cache.pop(next(iter(st.tmap_cache)))
-        st.tmap_cache[contract_id] = (time.monotonic(), out)
-        return out
+        return remember(await _compute(app, contract_id, spec, sym, nominal, base, key, fetch, now_ts))
 
 
 async def _compute(app, contract_id, spec, sym, nominal, base, key, fetch, now_ts):
@@ -195,12 +197,14 @@ async def _compute(app, contract_id, spec, sym, nominal, base, key, fetch, now_t
     ratio = ref / c["spot"]
     if nominal and abs(ratio / nominal - 1.0) > RATIO_DEV:
         return _res("UNAVAILABLE", "CONVERT")
-    today = datetime.fromtimestamp(now_ts, NY).date().isoformat()
+    today = datetime.fromtimestamp(c["snap"], NY).date().isoformat()          # the snapshot's own date: a late retry must not drop tomorrow's expiry from "survives tonight"
+    snap_ct = datetime.fromtimestamp(c["snap"], CT)
+    after_hours = snap_ct.weekday() >= 5 or not ((8, 25) <= (snap_ct.hour, snap_ct.minute) <= (15, 5))
     mp = build_from_clean(c, today, ratio, spec.tick_size)
     if mp is None:
         return _res("UNAVAILABLE", "NO_MAP")
     return _res("OK", None, source=sym, root=spec.root, ratio=round(ratio, 6), tick=spec.tick_size, snapshot_epoch=int(c["snap"]),
-                age_s=int(max(0.0, age)), today=today, source_spot=c["spot"], source_flip=c["flip"], map=mp)
+                age_s=int(max(0.0, age)), today=today, after_hours=after_hours, source_spot=c["spot"], source_flip=c["flip"], map=mp)
 
 
 MIN_SESSION_BARS = 60                      # 78 five-minute bars in 08:30 to 15:00; fewer means the session is not all there yet
@@ -247,7 +251,13 @@ async def ai_block(app, contract_id):
                     await tomorrow_result(app, contract_id)
                 finally:
                     kicks.discard(contract_id)
-            st.tmap_kick_task = asyncio.create_task(go())
+            tasks = getattr(st, "tmap_kick_tasks", None)
+            if tasks is None:
+                tasks = st.tmap_kick_tasks = set()
+            t = asyncio.create_task(go())
+            tasks.add(t)                                     # the loop holds tasks weakly: keep a reference until each one is done
+            t.add_done_callback(tasks.discard)
+            st.tmap_kick_task = t
         return {"status": "UNAVAILABLE", "code": "LOADING"}
     m = res.get("map")
     if res.get("status") != "OK" or not isinstance(m, dict):

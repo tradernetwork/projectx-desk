@@ -102,14 +102,22 @@ async def indicators(app, contract_id):
                            "last_result": st_["last_result"], "last_bars_ago": st_["last_bars_ago"],
                            "events": [{"ms": e["t"], "price": e["price"], "kind": e["kind"], "result": e["result"]}
                                       for e in st_["events"][-8:]]})
-        cc = max(len(cl) - 1, 0)                                         # closed bars only: the last row is the forming bar
+        bar_ms = BAR_N * 60_000
+        now_ms = now.timestamp() * 1000
+        cc = sum(1 for t in tms if t + bar_ms <= now_ms)               # CLOSED rows by the clock: a forming bar, or a new bar with no print yet, never decides which bar is closed
         ru, rd = px_regime.run_extent(hi[:cc], lo[:cc], cl[:cc], atrs[cc - 1] if cc else None)
+        closed = None
+        if cc >= 30:
+            a_c, adx_c, st_c = sizing.atr(hi[:cc], lo[:cc], cl[:cc], 14), sizing.adx(hi[:cc], lo[:cc], cl[:cc], 14), ema_stack(cl[:cc])
+            closed = {"atr": _n(a_c), "adx": _n(adx_c[0]) if adx_c else None, "vwap": _n(vwap_s[cc - 1]) if vwap_s[cc - 1] else None,
+                      "atr_pctile": percentile_rank(a_c, atrs[:cc][-100:]), "rsi": _n(rsi_series(cl[:cc])[-1]),
+                      "ema": {"state": st_c["state"], **{str(k): _n(v) for k, v in st_c["values"].items()}}}
         reg5 = {"er": px_regime.r2(px_regime.efficiency(cl[:cc])), "vwapx": px_regime.vwap_cross_count(cl[:cc], vwap_s[:cc]),
                 "run_up": px_regime.r2(ru), "run_dn": px_regime.r2(rd)}
         out = {"atr": _n(a), "adx": _n(adx[0]) if adx else None, "reg5": reg5, "vwap": _n(pv / vol) if vol else None,
                "hi": _n(shi), "lo": _n(slo), "volume": _n(vol, 0), "tf": f"{BAR_N}m", "bars": len(bars),
                "atr_pctile": percentile_rank(a, atrs[-100:]), "rsi": _n(rsi_series(cl)[-1]) if cl else None,
-               "closed_ts": tms[-2] if len(tms) > 1 else None, "closed_close": _n(cl[-2]) if len(cl) > 1 else None,
+               "closed_ts": tms[cc - 1] if cc else None, "closed_close": _n(cl[cc - 1]) if cc else None, "closed": closed,
                "ema": {"state": stack["state"], **{str(k): _n(v) for k, v in stack["values"].items()}},
                "levels": levels}
     except Exception:  # noqa: BLE001 - indicators are advisory; the guard never depends on them
@@ -453,13 +461,21 @@ def regime_view(adx_value, tf=None):
     return {"state": state, "adx": a, "threshold": float(sizing.ADX_CHOP), "tf": tf if tf in ("5m", "15m", "1h") else "5m"}
 
 
+HTF_MAX_AGE_S = 1200.0
+
+
+def _htf_fresh(hit):
+    """A cached higher-timeframe bar set is used only while it is recent: the respect scan refreshes it every few minutes, so older means the scan stopped."""
+    return bool(hit) and time.monotonic() - hit.get("at", 0) <= HTF_MAX_AGE_S
+
+
 def htf_stacks(app, cid):
     """EMA stack state per higher timeframe, from the closed bars the respect scan already cached. Missing or short = NA."""
     out = {}
     cache = getattr(app.state, "respect_bars", None) or {}
     for tf in ("15m", "1h"):
         hit = cache.get((cid, tf))
-        closes = [b["close"] for b in (hit or {}).get("bars", [])]
+        closes = [b["close"] for b in (hit or {}).get("bars", [])] if _htf_fresh(hit) else []
         out[tf] = ema_stack(closes)["state"] if len(closes) >= 40 else "NA"
     return out
 
@@ -469,7 +485,8 @@ def htf_regime(app, cid):
     cache = getattr(app.state, "respect_bars", None) or {}
     out = {}
     for tf in ("15m", "1h"):
-        r = px_regime.tf_regime((cache.get((cid, tf)) or {}).get("bars") or [])
+        hit = cache.get((cid, tf))
+        r = px_regime.tf_regime((hit or {}).get("bars") or [] if _htf_fresh(hit) else [])
         out[tf] = {"adx": px_regime.r2(r["adx"], 1), "er": px_regime.r2(r["er"])}
     return out
 
@@ -496,7 +513,11 @@ def board_price(q, ind):
         p = _n(q.get("lastPrice"))
         if p is not None:
             return p
-    return (ind or {}).get("closed_close")
+    ind = ind or {}
+    ts = ind.get("closed_ts")
+    if isinstance(ts, (int, float)) and time.time() * 1000 - ts > 3 * 300_000 + 300_000:      # the last closed bar is more than ~15 minutes old: a weekend or a break, not a price
+        return None
+    return ind.get("closed_close")
 
 
 async def bias_board(app):
@@ -759,7 +780,16 @@ async def _tomorrow_state(app, contract_id):
     blk = await px_tomorrow.ai_block(app, contract_id)
     if blk.get("status") == "OK" and blk.get("root"):
         try:
-            blk["record"] = px_tledger.summarize(px_tledger.load(px_tledger.path_from_env(pathlib.Path(__file__).resolve().parent.parent)), blk["root"])
+            path = px_tledger.path_from_env(pathlib.Path(__file__).resolve().parent.parent)
+            st = path.stat() if path.exists() else None
+            key = (str(path), blk["root"], st.st_mtime_ns if st else None, st.st_size if st else None)
+            cache = getattr(app.state, "tledger_summary", None)
+            if cache is None:
+                cache = app.state.tledger_summary = {}
+            if key not in cache:
+                cache.clear()
+                cache[key] = px_tledger.summarize(px_tledger.load(path), blk["root"])
+            blk["record"] = cache[key]
         except Exception:  # noqa: BLE001 - the record is advisory
             blk["record"] = None
     return blk

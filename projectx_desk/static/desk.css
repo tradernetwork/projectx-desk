@@ -874,3 +874,9 @@ html[data-layout="portrait"] #tm-body{display:grid;grid-template-columns:repeat(
 html[data-layout="portrait"] #tm-body>.tm-key,html[data-layout="portrait"] #tm-body>.tm-foot{grid-column:1/-1}
 @media (min-width:2200px){html[data-layout="landscape"] .col.col-right{gap:6px}}
 #tr-tfs{padding:1px;gap:1px} #tr-tfs button{min-height:22px;padding:0 6px;font:600 var(--fs-xs)/1 var(--mono)}
+html[data-layout="portrait"][data-pos="1"] .col-right>#blotter{order:0}
+
+/* level-cross alert: below the analyst entry banner, red for a break down, green for a break up */
+.level-alert{top:70px}
+.callout-alert.level-alert.down{background:linear-gradient(90deg,#fb3b64,#be123c);color:#fff;box-shadow:0 0 0 2px #fecdd3,0 0 26px 6px rgba(251,59,100,.6)}
+.callout-alert.level-alert.up{background:linear-gradient(90deg,#34d399,#16a34a);color:#052e16;box-shadow:0 0 0 2px #bbf7d0,0 0 26px 6px rgba(52,211,153,.55)}

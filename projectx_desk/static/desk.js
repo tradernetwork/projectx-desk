@@ -969,7 +969,7 @@ const STYLES = {
 };
 /* ember's level label: a solid chip in the level's colour with dark ink, not coloured text on a dark box. Also the hover tag on the
    y axis (klinecharts only draws that tag while the line is hovered), so pass it as the overlay's text style too. */
-const chip = (color, bold) => ({color: E.dark, backgroundColor: color, borderSize: 0, borderRadius: 2, size: 12, family: MONO, weight: bold ? '700' : '600',
+const chip = (color, bold) => ({color: E.dark, backgroundColor: color, borderSize: 0, borderRadius: 2, size: document.documentElement.dataset.layout === 'portrait' ? 14 : 12, family: MONO, weight: bold ? '700' : '600',
                                 paddingLeft: 5, paddingRight: 5, paddingTop: 2, paddingBottom: 2, style: 'fill'});
 const LEGEND_H = 80;   // the OHLC and indicator legends own the top-left corner: a chip that high goes to the right edge instead
 function levelFigs(cs, bounding, ed, line){
@@ -977,7 +977,7 @@ function levelFigs(cs, bounding, ed, line){
   const y = cs[0].y, right = y < LEGEND_H;
   return [
     {type: 'line', attrs: {coordinates: [{x: 0, y}, {x: bounding.width, y}]}, styles: line},
-    {type: 'text', ignoreEvent: true, attrs: {x: right ? bounding.width - 6 : 6, y: y - 2, text: String(ed.label || ''), align: right ? 'right' : 'left', baseline: 'bottom'},
+    {type: 'text', ignoreEvent: true, attrs: {x: right ? bounding.width - 6 : 6, y: y - 2 + (ed.dy || 0), text: String(ed.label || ''), align: right ? 'right' : 'left', baseline: 'bottom'},
      styles: chip(ed.color || C.purple, ed.stable !== false)},   // a level that is not stable gets the lighter weight, nothing else
   ];
 }
@@ -1264,6 +1264,13 @@ function tradeZones(){
   if(tg != null && (long ? tg > entry : tg < entry)) out.push({band: true, price: entry, price2: tg, color: `rgba(34,197,94,${firm ? .10 : .06})`});
   return out;
 }
+function nudgeLevels(lines){      // chips of nearby levels stack: push them apart so each stays readable (the line itself does not move)
+  try{
+    const ys = lines.map(l => {const c = chart.convertToPixel({value: l.price}, {paneId: 'candle_pane'}); return c && isFinite(c.y) ? c.y : null});
+    let prev = -1e9;
+    for(const i of lines.map((_, k) => k).filter(k => ys[k] != null).sort((a, b) => ys[a] - ys[b])){const y = Math.max(ys[i], prev + 16); lines[i].dy = y - ys[i]; prev = y}
+  }catch(e){}
+}
 function drawDesk(force){
   const lines = deskLines(), zones = [...gexBands(), ...tradeZones()], sig = JSON.stringify([zones, lines]);
   if(sig === deskSig && !force) return;
@@ -1272,6 +1279,7 @@ function drawDesk(force){
   deskSig = sig;
   try{
     chart.removeOverlay({groupId: 'desk'});
+    nudgeLevels(lines.filter(l => !l.from));
     for(const z of zones) chart.createOverlay({name: 'tradeBand', groupId: 'desk', lock: true, points: [{timestamp: last.timestamp, value: z.price}, {timestamp: last.timestamp, value: z.price2}], extendData: z});   // bands first: under the lines
     for(const l of lines){
       if(l.from) chart.createOverlay({name: 'deskRay', groupId: 'desk', lock: true, points: [{timestamp: l.from, value: l.price}, {timestamp: last.timestamp, value: l.price}], extendData: l});     // from the moment it was posted, rightwards only
@@ -1356,8 +1364,9 @@ klinecharts.registerOverlay({
   name: 'tmapSeg', totalStep: 3, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
   createPointFigures: ({coordinates: cs, bounding, overlay}) => {
     if(cs.length < 2 || !finPt(cs)) return [];
+    if(cs.some(c => c.y < TM_EDGE || c.y > bounding.height - TM_EDGE)) return [];      // an end that is off the price scale has no honest slope: the pinned chip says how far it is
     const ed = overlay.extendData || {};
-    return [{type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: cs[0].x, y: clampY(cs[0].y, bounding)}, {x: cs[1].x, y: clampY(cs[1].y, bounding)}]}, styles: {style: ed.dash ? 'dashed' : 'solid', color: ed.color, size: ed.size || 2, dashedValue: [6, 4]}}];
+    return [{type: 'line', ignoreEvent: true, attrs: {coordinates: [cs[0], cs[1]]}, styles: {style: ed.dash ? 'dashed' : 'solid', color: ed.color, size: ed.size || 2, dashedValue: [6, 4]}}];
   }});
 klinecharts.registerOverlay({
   name: 'tmapDot', totalStep: 2, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
@@ -1365,7 +1374,7 @@ klinecharts.registerOverlay({
     if(!finPt(cs)) return [];
     const x = cs[0].x, ed = overlay.extendData || {}, arrow = offSide(cs[0].y, bounding), y = clampY(cs[0].y, bounding);
     const out = [{type: 'circle', ignoreEvent: true, attrs: {x, y, r: ed.bold ? 7 : 5}, styles: {style: 'stroke_fill', color: ed.hollow || arrow ? E.dark : ed.color, borderColor: ed.color, borderSize: 2}}];
-    if(ed.label) out.push({type: 'text', ignoreEvent: true, attrs: {x: x + 11, y, text: arrow + ed.label, align: 'left', baseline: 'middle'},
+    if(ed.label) out.push({type: 'text', ignoreEvent: true, attrs: {x: x + 11, y, text: arrow ? arrow + (ed.dist != null ? ed.dist + ' pts ' : '') + ed.label : ed.label, align: 'left', baseline: 'middle'},
       styles: ed.dim ? {...chip(E.dark, false), color: ed.color, backgroundColor: hexA(E.dark, .85), borderColor: ed.color, borderSize: 1, style: 'stroke_fill'} : chip(ed.color, !!ed.bold)});
     return out;
   }});
@@ -1381,10 +1390,14 @@ klinecharts.registerOverlay({
             {type: 'text', ignoreEvent: true, attrs: {x: x1 + 11, y: (y0 + y1) / 2, text: ed.label || '', align: 'left', baseline: 'middle'}, styles: chip(TM_COL.RANGE, true)}];
   }});
 const ROOM = {map: 0, trend: 0};       // right-hand room each overlay needs for its labels; the chart takes the larger, never less than the stock 40 px
-function applyRoom(){const d = Math.max(40, ROOM.map, ROOM.trend); if(Math.abs(d - TM.off) > 4){chart.setOffsetRightDistance(d); TM.off = d}}
+const chartPx = () => {const e = document.getElementById('chart'); return e && e.clientWidth ? e.clientWidth : 1000};
+function applyRoom(){      // never more than 40% of the chart: zoomed in, the room used to grow with the candles until it ate the chart
+  const d = Math.max(40, Math.min(Math.round(0.4 * chartPx()), Math.max(ROOM.map, ROOM.trend)));
+  if(Math.abs(d - TM.off) > 4){chart.setOffsetRightDistance(d); TM.off = d}
+}
 const barPx = () => {let bs = 8; try{bs = chart.getBarSpace().bar || 8}catch(e){} return bs};
 // labels carry an emoji and a gloss now: the longest chip needs about 320 px of room past the last candle
-function tmapOffset(spanBars){ROOM.map = spanBars ? Math.round(spanBars * barPx() + 330) : 0; applyRoom()}
+function tmapOffset(spanBars){ROOM.map = spanBars ? Math.round(spanBars * barPx() + 300) : 0; applyRoom()}
 function drawTmap(force){
   const r = TM.res, m = r && r.status === 'OK' && r.map ? r.map : null, data = chart.getDataList(), lastBar = data[data.length - 1];
   const lp = num(gexLast()) ? gexLast() : lastBar && num(lastBar.close) ? lastBar.close : null;
@@ -1394,7 +1407,7 @@ function drawTmap(force){
   try{
     chart.removeOverlay({groupId: 'tmap'});
     if(!TM.on || !m || lp == null){tmapOffset(0); return}
-    const i0 = data.length - 1, X0 = 3, STEP = 4, road = k => m.roads.find(x => x.key === k) || {waypoints: []};
+    const bp = barPx(), i0 = data.length - 1, X0 = Math.max(1, Math.round(36 / bp)), STEP = Math.max(1, Math.round(70 / bp)), road = k => m.roads.find(x => x.key === k) || {waypoints: []};      // spacing in PIXELS, so zoom does not stretch the roads
     const maxK = Math.max(road('UP').waypoints.length, road('DOWN').waypoints.length, 1), span = X0 + STEP * maxK;
     tmapOffset(span);
     const ov = (name, points, ed) => chart.createOverlay({name, groupId: 'tmap', lock: true, points, extendData: ed});
@@ -1407,7 +1420,7 @@ function drawTmap(force){
         const at = {dataIndex: i0 + X0 + STEP * k, value: w.price}, flipW = /FLIP$/.test(w.tag);
         const passed = key === 'UP' ? w.price < lp : w.price > lp, col = flipW ? TM_COL.FLIP : TM_COL[key];
         ov('tmapSeg', [prev, at], {color: passed ? hexA(col, .4) : col, dash: !!w.tail || passed, size: flipW ? 3 : 2});
-        ov('tmapDot', [at], {color: col, label: (tmEmoji(w.tag, pinAt.has(w.price)) ? tmEmoji(w.tag, pinAt.has(w.price)) + ' ' : '') + w.tag + (pinAt.has(w.price) ? ' + PIN' : '') + (tmGloss(w.tag, pinAt.has(w.price)) ? ' \u00b7 ' + tmGloss(w.tag, pinAt.has(w.price)) : '') + (passed ? ' (through)' : ''), hollow: !!w.open, bold: flipW, dim: passed || !!w.tail});
+        ov('tmapDot', [at], {color: col, label: (tmEmoji(w.tag, pinAt.has(w.price)) ? tmEmoji(w.tag, pinAt.has(w.price)) + ' ' : '') + w.tag + (pinAt.has(w.price) ? ' + PIN' : '') + (tmGloss(w.tag, pinAt.has(w.price)) ? ' \u00b7 ' + tmGloss(w.tag, pinAt.has(w.price)) : '') + (passed ? ' (through)' : ''), hollow: !!w.open, bold: flipW, dim: passed || !!w.tail, dist: Math.round(Math.abs(w.price - lp))});
         prev = at;
       });
     }
@@ -1488,6 +1501,7 @@ function tmapSync(){
   if(cid !== TM.cid){TM.cid = cid; TM.res = null; TM.at = 0; TM.sig = ''; renderTmap()}
   if(cid && !TM.busy && Date.now() - TM.at > (TM.res && TM.res.status === 'OK' ? 300000 : 60000)) tmapFetch(cid);
   drawTmap(false);
+  try{levelAlerts(TM.res && TM.res.status === 'OK' ? TM.res.map : null)}catch(e){err(e)}
   const nowEl = $('tm-now'), m = TM.res && TM.res.status === 'OK' ? TM.res.map : null;
   if(nowEl && m){const t = tmapNowText(m), s = nowEl.querySelector('span'); if(s && s.textContent !== t) s.textContent = t}      // follows price without rebuilding the panel
 }
@@ -1501,7 +1515,7 @@ renderTmap();
    a regression channel (yellow, dotted) appears only when no pivot line fits and it explains at least half the move. Projected 6 bars past the
    last candle. Never saved as a user drawing (group 'trend' is in NONUSER). */
 const TR = {on: LS.get('px.trend', true) !== false, sig: ''};
-const TR_COL = {support: '#00c8ff', resistance: '#ff3da6', reg: '#ffd400'}, TR_EXT = 6;
+const TR_COL = {support: '#9aa9bd', resistance: '#f2f5f9', reg: '#ffd400'}, TR_EXT = 6;      // neutral on purpose: pink is the STOP, cyan is the ENTRY, green and orange are the map
 klinecharts.registerOverlay({
   name: 'trendSeg', totalStep: 3, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
   createPointFigures: ({coordinates: cs, overlay}) => {
@@ -1556,7 +1570,7 @@ function drawTrend(force){
       const arrow = ln => Math.abs(ln.slope) < 0.03 * r.atr ? '▬' : ln.slope > 0 ? '▲' : '▼';
       const pt = (ln, i, off) => ({dataIndex: abs(i), value: ln.p1 + ln.slope * (i - ln.i1) + (off || 0)});
       const seg = (ln, col, off, dash) => ov('trendSeg', [pt(ln, ln.i1, off), pt(ln, r.last + TR_EXT, off)], {color: col, size: dash ? 1 : 2, dash: !!dash});
-      const tag = (ln, col, text, off) => ov('trendTag', [pt(ln, r.last + TR_EXT, off)], {color: col, label: text});
+      const tag = (ln, col, text, off) => ov('trendTag', [pt(ln, Math.max(ln.i1, r.last - 40), off)], {color: col, label: text});      // at the start of the line: the right edge belongs to the map
       const fill = (a, b, col) => ov('trendFill', [{dataIndex: abs(a.i1), value: a.p1}, {dataIndex: iEnd, value: a.p1 + a.slope * (r.last + TR_EXT - a.i1)},
                                                     {dataIndex: abs(b.i1), value: b.p1 + (b.off || 0)}, {dataIndex: iEnd, value: b.p1 + b.slope * (r.last + TR_EXT - b.i1) + (b.off || 0)}], {color: col});
       if(r.support && r.resistance && r.parallel){            // two independent lines that run together: a confirmed channel
@@ -1587,13 +1601,13 @@ function drawTrend(force){
         for(const ln of [tl.support, tl.resistance]) if(ln){
           const t0 = Math.max(ln.t1, stamps[0]), col = TR_COL[ln.kind], up = ln.slopeMs * 60000 > 0.03 * (tl.atr || 1) / TRX_MIN[tf];
           ov('trendSeg', [{dataIndex: PXTrend.indexAt(stamps, t0, B), value: PXTrend.valueAt(ln, t0)}, {dataIndex: PXTrend.indexAt(stamps, tEnd, B), value: PXTrend.valueAt(ln, tEnd)}], {color: col, size: 1, dash: true, dots: tf === '1m'});
-          ov('trendTag', [{dataIndex: PXTrend.indexAt(stamps, tEnd, B), value: PXTrend.valueAt(ln, tEnd)}], {color: col, label: tf + ' ' + (Math.abs(ln.slopeMs * 60000) < 0.03 * (tl.atr || 1) / TRX_MIN[tf] ? '▬' : up ? '▲' : '▼') + ' ' + ln.kind + ' · ' + ln.touches});
+          ov('trendTag', [{dataIndex: PXTrend.indexAt(stamps, Math.max(t0, last.timestamp - 40 * B), B), value: PXTrend.valueAt(ln, Math.max(t0, last.timestamp - 40 * B))}], {color: col, label: tf + ' ' + (Math.abs(ln.slopeMs * 60000) < 0.03 * (tl.atr || 1) / TRX_MIN[tf] ? '▬' : up ? '▲' : '▼') + ' ' + ln.kind + ' · ' + ln.touches});
           drew = true;
         }
       }
     }
     if(!drew){applyRoom(); return}
-    ROOM.trend = Math.round(TR_EXT * barPx() + 250); applyRoom();       // labels sit past the last candle: leave room for them
+    ROOM.trend = Math.round(TR_EXT * barPx() + 30); applyRoom();       // only the projection past the last candle needs room; the tags sit at the line starts
   }catch(e){err(e)}
 }
 $('tr-toggle').onclick = () => {TR.on = !TR.on; LS.set('px.trend', TR.on); $('tr-toggle').setAttribute('aria-pressed', String(TR.on));
@@ -1602,7 +1616,52 @@ for(const b of document.querySelectorAll('#tr-tfs button')){
   b.onclick = () => {const t = b.dataset.tf; if(TRX.tfs.has(t)) TRX.tfs.delete(t); else TRX.tfs.add(t); LS.set('px.trendTfs', [...TRX.tfs]); b.setAttribute('aria-pressed', String(TRX.tfs.has(t))); TR.sig = ''; drawTrend(true)};
 } drawTrend(true)};
 $('tr-toggle').setAttribute('aria-pressed', String(TR.on));
-function syncDesk(){try{drawTrend(false)}catch(e){err(e)} try{tmapSync()}catch(e){err(e)}      // try/catch, not typeof: both read consts defined further down, so a call before they exist throws
+
+/* ================= Level-cross alerts: a flash, a chime and the tab title when price crosses a dealer-map level. Display only. =================
+   Says what HAPPENED ("TRAPDOOR BROKE 7704.5"), never a call to act: the map has no proven edge. The crossing logic is static/watch.js (node-tested). */
+const LV = {on: LS.get('px.levelAlerts', true) !== false, sides: new Map(), fired: new Map(), hideT: 0, titleT: 0, ac: null, cid: null};
+const LV_SAY = {      // role: [what to say when price crossed DOWN through it, what to say when it crossed UP]
+  'TRAPDOOR': ['BROKE DOWN. Dealers are short gamma here: selling can feed on itself.', 'RECLAIMED. The breakdown has failed so far.'],
+  'LAST SHELF': ['LOST. The last support is gone; little is underneath.', 'RECLAIMED.'],
+  'THIN CUSHION': ['LOST. The small support is gone.', 'RECLAIMED.'],
+  'PUT WALL': ['price went THROUGH. A crowd, not a floor: it gave way.', 'back ABOVE it.'],
+  'ACCELERANT': ['fell back UNDER it.', 'price pushed THROUGH. Dealers buy into the rise: it can speed up.'],
+  'BRAKE': ['back UNDER it.', 'CLEARED. Rallies were stalling here.'],
+  'CEILING': ['REJECTED at it.', 'CLEARED. The ceiling is gone.'],
+  'FLIP': ['crossed BELOW the flip: dealers chase again.', 'crossed ABOVE the flip: dealers brake, not chase.'],
+};
+function lvBeep(down){
+  try{
+    const ac = LV.ac || (LV.ac = new (window.AudioContext || window.webkitAudioContext)()); if(ac.state === 'suspended') ac.resume();
+    [down ? [520, 0] : [660, 0], down ? [390, 0.22] : [880, 0.22]].forEach(([f, at]) => {
+      const o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine'; o.frequency.value = f; g.gain.value = 0.16; o.connect(g); g.connect(ac.destination);
+      o.start(ac.currentTime + at); o.stop(ac.currentTime + at + 0.2);
+    });
+  }catch(e){}        // audio is blocked until the page has been touched once; the flash and the title still work
+}
+function showLevelAlert(ev, p){
+  const box = $('level-alert'); if(!box) return;
+  const down = ev.side < 0, say = (LV_SAY[ev.role] || ['', ''])[down ? 0 : 1], emo = TM.emoji ? (TM_EMO[ev.role] || '') + ' ' : '';
+  box.replaceChildren();
+  const main = mk('span', 'ca-main', emo + ev.price + ' ' + ev.role + ' · price ' + p + ' ' + (down ? '▼' : '▲'));
+  const sub = mk('span', 'ca-sub', say + ' · ' + ctClock.format(new Date()).replace(/^\w+\s/, '') + ' CT · an alert, not a signal');
+  box.append(main, sub); box.hidden = false; box.className = 'callout-alert level-alert flash ' + (down ? 'down' : 'up'); box.onclick = () => {box.hidden = true; clearInterval(LV.titleT); document.title = 'PXDESK'};
+  clearTimeout(LV.hideT); LV.hideT = setTimeout(() => box.classList.remove('flash'), 25000);
+  lvBeep(down);
+  clearInterval(LV.titleT); let k = 0; const label = (down ? '▼ ' : '▲ ') + ev.role + ' ' + ev.price;
+  LV.titleT = setInterval(() => {document.title = k++ % 2 ? 'PXDESK' : label; if(k > 60){clearInterval(LV.titleT); document.title = 'PXDESK'}}, 800);
+}
+function levelAlerts(m){
+  if(S.contractId !== LV.cid){LV.cid = S.contractId; LV.sides.clear(); LV.fired.clear()}
+  if(!LV.on || !m || typeof PXWatch === 'undefined') return;
+  const p = gexLast(); if(!num(p)) return;
+  const tick = cur && num(cur.tick) && cur.tick > 0 ? cur.tick : 0.25;
+  for(const ev of PXWatch.crossEvents(tmapLevels(m), p, tick, LV.sides, LV.fired, Date.now(), 120000, role => !!LV_SAY[role])) showLevelAlert(ev, p);
+}
+$('lv-toggle').onclick = () => {LV.on = !LV.on; LS.set('px.levelAlerts', LV.on); $('lv-toggle').setAttribute('aria-pressed', String(LV.on)); if(LV.on) lvBeep(false)};      // the click also unlocks audio
+$('lv-toggle').setAttribute('aria-pressed', String(LV.on));
+function syncDesk(){document.documentElement.dataset.pos = S.ai && Array.isArray(S.ai.positions) && S.ai.positions.length ? '1' : '';      // in a trade the blotter moves to the top of the portrait band
+  try{drawTrend(false)}catch(e){err(e)} try{tmapSync()}catch(e){err(e)}      // try/catch, not typeof: both read consts defined further down, so a call before they exist throws
   drawDesk(false); if(typeof drawAutoLevels === 'function' && I.sel) drawAutoLevels(indWanted().hz)}   // auto levels are side-coded against the last price: a cross recolours them within a poll
 
 /* ---- level reaction markers (group 'react': never saved with the user's drawings) ---- */

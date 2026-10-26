@@ -9,7 +9,7 @@ HTML = (STATIC / "index.html").read_text(encoding="utf-8")
 
 def test_panel_and_toggle_exist_and_the_poll_loop_drives_the_map():
     assert 'id="tmap"' in HTML and 'id="tm-body"' in HTML and 'id="tm-toggle"' in HTML
-    assert "try{tmapSync()}catch(e){err(e)}" in JS.split("function syncDesk(){")[1].split("\n")[0]         # every AI-state poll syncs the map
+    assert "try{tmapSync()}catch(e){err(e)}" in JS.split("function syncDesk(){")[1].split("drawDesk(false)")[0]         # every AI-state poll syncs the map
     assert "'/api/tomorrow?contract=' + encodeURIComponent(cid)" in JS
 
 
@@ -52,3 +52,13 @@ def test_analyst_callout_lines_start_when_posted_and_run_right_only():
 
 def test_the_panel_is_called_the_dealer_map_on_screen():
     assert "<h2>Dealer map</h2>" in HTML and "Tomorrow's map</h2>" not in HTML and 'aria-label="Dealer map"' in HTML
+
+
+def test_level_alerts_say_what_happened_never_trade_now_and_reach_the_page():
+    assert 'id="level-alert"' in HTML and 'id="lv-toggle"' in HTML and '<script src="/static/watch.js"></script>' in HTML
+    block = JS.split("Level-cross alerts: a flash")[1].split("function syncDesk")[0]
+    for shout in ("trade now", "TRADE NOW", "BUY NOW", "SELL NOW", "go long", "go short", "enter "):
+        assert shout not in block, shout
+    assert "an alert, not a signal" in block and "PXWatch.crossEvents" in block
+    assert "try{levelAlerts(" in JS                                                     # a failure in the alert path can never break the poll loop
+    assert "method: 'POST'" not in block and "/api/" not in block                       # display only

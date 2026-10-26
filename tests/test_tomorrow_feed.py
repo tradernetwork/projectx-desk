@@ -181,3 +181,23 @@ def test_the_data_wrapper_is_unwrapped_and_a_huge_body_is_refused(monkeypatch):
     with pytest.raises(gex.GexError) as e:
         run(F.fetch_json("https://example.test", "k" * 40, "/gex/SPY"))
     assert e.value.code == "UPSTREAM_ERROR"
+
+
+@pytest.mark.parametrize("name", ["spy-2026-10-17", "spy-2026-10-17-brake-ceiling", "spy-2026-10-17-shelf-cushion"])
+@pytest.mark.parametrize("ratio,tick", [(10.0788, 0.25), (41.3579, 0.25), (10.9477, 0.1)])
+def test_no_number_in_a_futures_sentence_is_in_the_wrong_space(name, ratio, tick):
+    """Regression: a flip-led trigger was converted twice (78337.5 for 7833.75). Every number a sentence prints must sit near futures spot."""
+    import re
+    fx = json.loads((pathlib.Path(__file__).resolve().parent / "fixtures" / "tomorrow" / f"{name}.json").read_text(encoding="utf-8"))
+    ladder, share = T.survivor_ladder(fx["matrix"], fx["today"])
+    g = fx["gex"]
+    src = T.build_tomorrow_map(g["spotPrice"], g["gammaFlipLevel"], g["totalGEX"], ladder, T.bars_from_history(fx["historical"]), share)
+    mp = T.build_tomorrow_map(g["spotPrice"], g["gammaFlipLevel"], g["totalGEX"], ladder, T.bars_from_history(fx["historical"]), share, ratio=ratio, tick=tick)
+    spot = mp["spot"]
+    text = " ".join(c + " " + r for _, c, r in T.branches(mp)) + " " + " ".join(w["tag"] for rd in mp["roads"] for w in rd["waypoints"])
+    for tok in re.findall(r"\d+(?:\.\d+)?", text):
+        assert 0.9 * spot <= float(tok) <= 1.1 * spot, (tok, spot, text)
+    for (_, sc, _), (_, fc, _) in zip(T.branches(src), T.branches(mp)):             # the same sentence shapes, only the numbers differ
+        assert re.sub(r"\d+(?:\.\d+)?", "N", sc) == re.sub(r"\d+(?:\.\d+)?", "N", fc)
+    for sr, fr in zip(src["roads"], mp["roads"]):
+        assert re.sub(r"\d+(?:\.\d+)?", "N", sr["rule"]).replace("N.00", "N") == re.sub(r"\d+(?:\.\d+)?", "N", fr["rule"]).replace("N.00", "N")

@@ -194,7 +194,7 @@ def build_tomorrow_map(spot, flip, net_gex, ladder, bars, expiring_share, regime
     if gate:
         up_pts.append(wp(gate["strike"], f"{P(gate['strike'])} CEILING", "the move dies here"))
     up_lead = brake or gate or accel
-    up_trigger = up_lead["strike"] if up_lead else (float(f"{P2(flip)}") if flip_up else None)
+    up_trigger = up_lead["strike"] if up_lead else (float(f"{flip:.2f}") if flip_up else None)
     if brake:
         up_cond = f"up into {P(brake['strike'])}"
     elif gate:

@@ -996,6 +996,7 @@ const STYLES = {
    y axis (klinecharts only draws that tag while the line is hovered), so pass it as the overlay's text style too. */
 const chip = (color, bold) => ({color: E.dark, backgroundColor: color, borderSize: 0, borderRadius: 2, size: document.documentElement.dataset.layout === 'portrait' ? 14 : 12, family: MONO, weight: bold ? '700' : '600',
                                 paddingLeft: 5, paddingRight: 5, paddingTop: 2, paddingBottom: 2, style: 'fill'});
+const LEGEND_W = 420;   // and about this wide
 const LEGEND_H = 80;   // the OHLC and indicator legends own the top-left corner: a chip that high goes to the right edge instead
 function levelFigs(cs, bounding, ed, line){
   if(!cs.length || !isFinite(cs[0].y)) return [];
@@ -1054,8 +1055,12 @@ klinecharts.registerOverlay({
   createPointFigures: ({coordinates: cs, bounding, overlay}) => {
     if(cs.length < 2 || !isFinite(cs[0].y) || !isFinite(cs[1].y)) return [];
     const top = Math.min(cs[0].y, cs[1].y), bot = Math.max(cs[0].y, cs[1].y), w = bounding.width;
-    return [{type: 'polygon', ignoreEvent: true, attrs: {coordinates: [{x: 0, y: top}, {x: w, y: top}, {x: w, y: bot}, {x: 0, y: bot}]},
-             styles: {style: 'fill', color: (overlay.extendData && overlay.extendData.color) || 'rgba(244,63,94,.10)'}}];
+    const st = {style: 'fill', color: (overlay.extendData && overlay.extendData.color) || 'rgba(244,63,94,.10)'}, rect = (x0, y0, y1) => ({type: 'polygon', ignoreEvent: true, attrs: {coordinates: [{x: x0, y: y0}, {x: w, y: y0}, {x: w, y: y1}, {x: x0, y: y1}]}, styles: st});
+    if(top >= LEGEND_H || w <= LEGEND_W) return [rect(0, top, bot)];
+    // the OHLC and indicator legends own the top-left corner: a band behind them washes the text out, so it starts to the right of the legend up there
+    const out = [rect(LEGEND_W, top, Math.min(bot, LEGEND_H))];
+    if(bot > LEGEND_H) out.push(rect(0, LEGEND_H, bot));
+    return out;
   }});
 
 /* reaction markers for the selected level: shape AND colour carry the result */
@@ -1335,62 +1340,9 @@ const TM_WHY = {NO_KEY: 'No TraderDaddy key on this desk.', UNSUPPORTED: 'No map
   NO_REF: 'No futures price at the snapshot time to scale with.', CONVERT: 'Source and futures prices do not line up, so nothing is drawn.',
   STALE: 'The latest gamma is more than five days old.', NO_MAP: 'The book is too thin to map.', AUTH: 'The GEX key was rejected.',
   UPSTREAM_ERROR: 'The GEX source is unavailable.', RATE_LIMIT: 'The GEX source is rate-limited right now (30 a minute); it retries by itself.', BAD_PAYLOAD: 'The GEX payload failed validation.', INTERNAL: 'The map failed.', CONFIG: 'The GEX URL is unsafe.'};
-/* What each level means in ordinary words. The chart chip carries the short gloss; the panel's key carries the sentence. Description, never advice. */
-const TM_ROLES = {
-  'PIN': ['magnet', 'The biggest gamma strike right near price. Price gravitates to it and wrestles around it, like a magnet. Expect chop around it.'],
-  'FLIP': ['chasing ends', 'Where dealers flip from net short gamma to net long. Under it they chase price, so moves speed up. Over it they brake price, so moves slow down.'],
-  'ACCELERANT': ['speeds up', 'A short-gamma strike above price. Once price pushes through it, dealers have to buy into the rise, so the move speeds up. It is not a wall.'],
-  'BRAKE': ['stalls', 'A long-gamma strike above price. Dealers sell into strength here, so rallies tend to stall. A wick over is normal; closing over is the real test.'],
-  'CEILING': ['move dies', 'The heaviest long-gamma strike above. The move tends to die here.'],
-  'TRAPDOOR': ['breakdown point', 'A breakdown point, not a buy level. Dealers are short gamma here, so if price falls through it they sell into the drop and it speeds up. Holding above it means nothing special.'],
-  'LAST SHELF': ['last support', 'The last long-gamma strike below. Dealers buy dips here, so it is the last thing to lean on. Lose it and there is little underneath.'],
-  'THIN CUSHION': ['small support', 'A small pocket of dealer buying below. Some support, but small.'],
-  'EMPTY': ['no support', 'A stretch with no gamma at all. Nothing holds price here, so it can slide fast.'],
-  'PUT WALL': ['fight, not floor', 'Heavy put positioning. A crowd, not a floor: lots of action here, and it can give way.'],
-};
-const TM_PAIRS = {   // two roles on the same strike: say what the COMBINATION means
-  'ACCELERANT+PIN': 'Price is sitting on the biggest gamma strike, and dealers are short gamma there. Expect whippy chop around it, then a fast move once it breaks away, because dealers chase instead of fading.',
-  'TRAPDOOR+PIN': 'Price is sitting on the biggest gamma strike, and it is also a breakdown point. Expect chop around it; if it gives way below, selling feeds on itself and the drop speeds up. It is not a buy level.',
-  'LAST SHELF+PIN': 'Price is sitting on the biggest gamma strike, and it is also the last support below. Dealers defend it, so it tends to hold and settle. If it breaks there is little underneath.',
-  'PUT WALL+PIN': 'Price is sitting on the biggest gamma strike, and it is the put wall: a crowd, not a floor. Expect a fight here, and it can give way.',
-  'BRAKE+PIN': 'Price is sitting on the biggest gamma strike, and dealers sell rallies into it. Expect it to stall and chop here.',
-  'CEILING+PIN': 'Price is sitting on the biggest gamma strike, and it is the ceiling above. The move tends to die here.',
-};
-const TM_EMO = {'PIN': '\u{1F9F2}', 'FLIP': '\u{1F504}', 'ACCELERANT': '\u{1F680}', 'BRAKE': '\u{1F6D1}', 'CEILING': '\u{1F9F1}', 'TRAPDOOR': '\u{1F6AA}',
-  'LAST SHELF': '\u{1F6E1}\uFE0F', 'THIN CUSHION': '\u{1FAA3}', 'EMPTY': '\u{1F573}\uFE0F', 'PUT WALL': '\u{1F94A}'};      // magnet, flip, rocket, stop, brick wall, door, shield, bucket, hole, glove
+const {TM_ROLES, TM_PAIRS, TM_EMO, TM_WATCH, tmRole, tmapLevels, roleColor: tmRoleColor} = PXTmap;      // words and level logic live in tmap.js (node-tested)
+const tmapNowText = m => PXTmap.nowText(m, gexLast(), TM.emoji);
 const tmEmoji = (tag, withPin) => TM.emoji ? (TM_EMO[tmRole(tag)] || '') + (withPin ? TM_EMO.PIN : '') : '';
-const TM_WATCH = {   // what to WATCH at each level, and what would change it. Never "buy" or "sell": the map describes dealer hedging, not a trade.
-  'PIN': 'Price tends to wrestle around a pin: expect chop, not a trend.',
-  'FLIP': 'This is the regime line. Over it dealers brake moves; under it they chase them.',
-  'ACCELERANT': 'Watch for a push through. If it goes, dealers buy into the rise and it speeds up. Under it, nothing special.',
-  'BRAKE': 'Watch for a stall. Rallies tend to fade here; closing over it is the real test.',
-  'CEILING': 'Watch for the move to die here. Closing over it removes the ceiling.',
-  'TRAPDOOR': 'Watch for a close below. If it goes, selling can feed on itself and the drop speeds up. Holding above, nothing special.',
-  'LAST SHELF': 'Watch whether it holds. Dealers buy dips here; closing below it removes the last support.',
-  'THIN CUSHION': 'Small support. If it fails there is little underneath.',
-  'EMPTY': 'No support in this stretch. If price enters it, it can slide.',
-  'PUT WALL': 'A fight, not a floor. Expect a messy reaction either way.',
-};
-function tmapLevels(m){      // one entry per strike, roles merged (a pin on the same strike as another level), top to bottom like the chart
-  const byPrice = new Map();
-  for(const rd of m.roads) for(const w of rd.waypoints){const e = byPrice.get(w.price) || {price: w.price, tags: [], road: rd.key}; e.tags.push(w.tag); byPrice.set(w.price, e)}
-  return [...byPrice.values()].map(e => ({...e, roles: [...new Set(e.tags.map(tmRole))]})).sort((a, b) => b.price - a.price);
-}
-function tmapNowText(m){
-  const p = gexLast(); if(!num(p)) return '';
-  const lv = tmapLevels(m); if(!lv.length) return 'No levels to watch on this map.';
-  const tol = Math.max(0.1 * (m.typical_move || 0), 1), near = lv.slice().sort((a, b) => Math.abs(a.price - p) - Math.abs(b.price - p))[0];
-  const name = it => (TM.emoji ? it.roles.map(r => TM_EMO[r] || '').join('') + ' ' : '') + it.price + ' ' + it.roles.join(' + ');
-  if(Math.abs(near.price - p) <= tol){
-    const key = near.roles.slice().sort((a, b) => (a === 'PIN') - (b === 'PIN') || a.localeCompare(b)).join('+');
-    const what = near.roles.length > 1 ? near.roles.filter(r => r !== 'PIN').map(r => TM_WATCH[r]).join(' ') + (near.roles.includes('PIN') ? ' ' + TM_WATCH.PIN : '') : TM_WATCH[near.roles[0]];
-    return `Price ${p} is AT the ${name(near)}. ${what} A thing to WATCH, not a signal.`;
-  }
-  const up = lv.filter(i => i.price > p).pop(), dn = lv.find(i => i.price < p);       // nearest level above and below
-  const gap = i => Math.abs(i.price - p).toFixed(2).replace(/\.?0+$/, '');
-  return `Price ${p} is between ${dn ? name(dn) + ' (' + gap(dn) + ' below)' : 'nothing below'} and ${up ? name(up) + ' (' + gap(up) + ' above)' : 'nothing above'}. Nothing is being tested right now: just watch.`;
-}
-const tmRole = tag => String(tag || '').replace(/^[0-9.]+\s*/, '');
 const tmGloss = (tag, withPin) => { const r = TM_ROLES[tmRole(tag)]; return r ? r[0] + (withPin ? ' + magnet' : '') : ''; };
 const hexA = (h, a) => `rgba(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)},${a})`;
 const finPt = cs => cs.length > 0 && cs.every(c => isFinite(c.x) && isFinite(c.y));
@@ -1455,7 +1407,7 @@ function drawTmap(force){
       let prev = {dataIndex: i0, value: lp};
       road(key).waypoints.slice().sort((a, b) => Math.abs(a.price - m.spot) - Math.abs(b.price - m.spot)).forEach((w, k) => {
         const at = {dataIndex: i0 + X0 + STEP * k, value: w.price}, flipW = /FLIP$/.test(w.tag);
-        const passed = key === 'UP' ? w.price < lp : w.price > lp, col = flipW ? TM_COL.FLIP : TM_COL[key];
+        const passed = key === 'UP' ? w.price < lp : w.price > lp, col = flipW ? TM_COL.FLIP : tmRoleColor(tmRole(w.tag), TM_COL[key]);
         ov('tmapSeg', [prev, at], {color: passed ? hexA(col, .4) : col, dash: !!w.tail || passed, size: flipW ? 3 : 2});
         ov('tmapDot', [at], {color: col, label: (tmEmoji(w.tag, pinAt.has(w.price)) ? tmEmoji(w.tag, pinAt.has(w.price)) + ' ' : '') + w.tag + (pinAt.has(w.price) ? ' + PIN' : '') + (tmGloss(w.tag, pinAt.has(w.price)) ? ' \u00b7 ' + tmGloss(w.tag, pinAt.has(w.price)) : '') + (passed ? ' (through)' : ''), hollow: !!w.open, bold: flipW, dim: passed || !!w.tail, dist: Math.round(Math.abs(w.price - lp))});
         prev = at;

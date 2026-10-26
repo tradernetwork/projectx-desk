@@ -4,6 +4,7 @@ import re
 
 STATIC = pathlib.Path(__file__).resolve().parent.parent / "projectx_desk" / "static"
 JS = (STATIC / "desk.js").read_text(encoding="utf-8")
+TMAP = (STATIC / "tmap.js").read_text(encoding="utf-8")
 HTML = (STATIC / "index.html").read_text(encoding="utf-8")
 
 
@@ -31,10 +32,10 @@ def test_every_road_is_drawn_from_server_text_never_rebuilt_in_the_browser():
 
 
 def test_the_right_now_box_says_watch_and_never_tells_you_to_trade():
-    watch = JS.split("const TM_WATCH = {")[1].split("};")[0].lower()
+    watch = TMAP.split("const TM_WATCH = {")[1].split("};")[0].lower()
     for advice in ("go long", "go short", "you should", "enter ", "buy it", "sell it", "take the trade", "place "):
         assert advice not in watch, advice
-    assert "RIGHT NOW" in JS and "A thing to WATCH, not a signal." in JS and "Nothing is being tested right now: just watch." in JS
+    assert "RIGHT NOW" in JS and "A thing to WATCH, not a signal." in TMAP and "Nothing is being tested right now: just watch." in TMAP
     assert "const nowEl = $('tm-now')" in JS                      # the box follows price on every poll without rebuilding the panel
 
 
@@ -55,10 +56,16 @@ def test_the_panel_is_called_the_dealer_map_on_screen():
 
 
 def test_level_alerts_say_what_happened_never_trade_now_and_reach_the_page():
-    assert 'id="level-alert"' in HTML and 'id="lv-toggle"' in HTML and '<script src="/static/watch.js"></script>' in HTML
+    assert 'id="level-alert"' in HTML and 'id="lv-toggle"' in HTML and '<script src="/static/watch.js"></script>' in HTML and '<script src="/static/tmap.js"></script>' in HTML
     block = JS.split("Level-cross alerts: a flash")[1].split("function syncDesk")[0]
     for shout in ("trade now", "TRADE NOW", "BUY NOW", "SELL NOW", "go long", "go short", "enter "):
         assert shout not in block, shout
     assert "an alert, not a signal" in block and "PXWatch.crossEvents" in block
     assert "try{levelAlerts(" in JS                                                     # a failure in the alert path can never break the poll loop
     assert "method: 'POST'" not in block and "/api/" not in block                       # display only
+
+
+def test_gex_bands_keep_clear_of_the_legend_corner_and_trapdoors_use_the_warning_colour():
+    band = JS.split("name: 'tradeBand'")[1].split("reaction markers")[0]
+    assert "LEGEND_W" in band and "LEGEND_H" in band and "starts to the right of the legend" in band
+    assert "tmRoleColor(tmRole(w.tag), TM_COL[key])" in JS

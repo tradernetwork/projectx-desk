@@ -813,6 +813,8 @@ async def _deadline_loop(app):
             await asyncio.sleep(1.0)
             g = getattr(app.state, "guard", None)
             r = await g.enforce_flat_by() if g is not None else None
+            if g is not None:
+                await g.expire_resting_entries()          # a limit entry that rested past PX_LIMIT_TTL_S is cancelled (sim, reduce-only)
             if r is not None and not r.flat:
                 await asyncio.sleep(4.0)
         except asyncio.CancelledError:

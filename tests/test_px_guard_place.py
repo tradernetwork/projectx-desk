@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import json
 from datetime import datetime, timezone
 
@@ -252,3 +253,55 @@ async def test_daily_order_cap_is_enforced_across_places(tmp_path):
     assert (await go(g, t)).ok
     p = await g.preview(contract_id=CID, side="long", stop_price=4994.0, risk_dollars=50.0)
     assert not p.ok and "orders_today" in {n for n, ok, _ in p.verdict if not ok}
+
+
+async def _resting_limit(tmp_path, **over):
+    g, live, clock, gw = build(tmp_path, **over)
+    t = await staged(g, order_type="limit", entry=4999.0)
+    r = await go(g, t)
+    assert r.ok and r.acked and t.order_type == "limit"
+    live.orders[555] = {"id": 555, "contractId": CID, "status": 1, "type": 1, "side": 0, "size": 1}        # the hub shows it working
+    gw.writes.clear()
+    return g, live, clock, gw, t
+
+
+async def test_a_limit_entry_resting_past_the_ttl_is_cancelled_once_and_audited(tmp_path):
+    g, live, clock, gw, t = await _resting_limit(tmp_path, limit_ttl_s=300)
+    assert await g.expire_resting_entries() == 0 and gw.writes == []              # not old enough
+    clock.t += 301
+    gw.reply = {"success": True}
+    assert await g.expire_resting_entries() == 1
+    assert gw.writes == [("/api/Order/cancel", {"accountId": 7, "orderId": 555})]
+    assert t.ttl_cancelled and g.entry_status(t) == "expired"
+    live.orders.pop(555)
+    assert await g.expire_resting_entries() == 0 and len(gw.writes) == 1          # never a second cancel
+    assert '"code": "limit_ttl"' in g.limits.audit_path.read_text(encoding="utf-8")
+
+
+async def test_ttl_is_off_at_zero_skips_market_and_filled_entries_and_retries_a_failed_cancel_a_few_times(tmp_path):
+    g, live, clock, gw, t = await _resting_limit(tmp_path, limit_ttl_s=0)
+    clock.t += 9999
+    assert await g.expire_resting_entries() == 0 and gw.writes == []              # 0 = off
+    g.limits = dataclasses.replace(g.limits, limit_ttl_s=300)
+    t.filled_size = 1
+    assert await g.expire_resting_entries() == 0 and gw.writes == []              # any fill: never touch it
+    t.filled_size = 0
+    gw.reply = {"success": False, "errorCode": 3}
+    for _ in range(6):
+        await g.expire_resting_entries()
+        clock.t += 6
+    assert len(gw.writes) == g.TTL_TRIES and not t.ttl_cancelled                  # a few tries, then it stops and the trader sees it still working
+
+
+async def test_the_ttl_never_touches_a_live_account_or_a_market_ticket(tmp_path):
+    g, live, clock, gw, t = await _resting_limit(tmp_path, limit_ttl_s=300)
+    clock.t += 999
+    g.limits = dataclasses.replace(g.limits, account_kind="live")
+    assert await g.expire_resting_entries() == 0 and gw.writes == []              # the API cannot cancel on live
+    g2, live2, clock2, gw2 = build(tmp_path / "m")
+    t2 = await staged(g2)
+    await go(g2, t2)
+    live2.orders[555] = {"id": 555, "contractId": CID}
+    clock2.t += 999
+    gw2.writes.clear()
+    assert await g2.expire_resting_entries() == 0 and gw2.writes == []

@@ -70,6 +70,7 @@ class Limits:
     max_qty_total: int = 3
     max_orders_day: int = 10
     cooldown_after_loss_s: int = 300      # PX_COOLDOWN_AFTER_LOSS_S: no new opens for this long after a losing trade (0 = off)
+    limit_ttl_s: int = 300                # PX_LIMIT_TTL_S: a resting LIMIT entry that has not filled is cancelled after this long, sim only (0 = off). Reduces exposure only
     max_consecutive_losses: int = 3       # PX_MAX_CONSEC_LOSSES: locked for the session after this many losses in a row (0 = off)
     size_after_loss_lock: bool = True     # PX_SIZE_AFTER_LOSS_LOCK=0 to disable: after a loss, risk may not exceed the last trade's risk
     risk_base: str = "drawdown"          # PX_RISK_BASE: "drawdown" (1R = risk_pct of the live drawdown room, balance minus the MLL floor; the loss limit is the base, not the account size) or "remaining" (old: risk_pct of min(daily, drawdown) room)
@@ -132,6 +133,7 @@ class Limits:
             slippage_ticks=_rail("PX_SLIPPAGE_TICKS", 2),
             feed_stage=os.getenv("PX_FEED_STAGE", "0") == "1",
             cooldown_after_loss_s=_rail("PX_COOLDOWN_AFTER_LOSS_S", 300),
+            limit_ttl_s=_rail("PX_LIMIT_TTL_S", 300),
             max_consecutive_losses=_rail("PX_MAX_CONSEC_LOSSES", 3),
             size_after_loss_lock=os.getenv("PX_SIZE_AFTER_LOSS_LOCK", "1") != "0",
             flatten_fallback=os.getenv("PX_FLATTEN_FALLBACK", "0") == "1",

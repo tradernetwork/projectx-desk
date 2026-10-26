@@ -378,6 +378,7 @@ function renderTree(){
     if(st === 'UNKNOWN') setState('tr-e-state', 'UNKNOWN', 'bad');
     else if(st === 'PLACING') setState('tr-e-state', 'SENDING', 'warn');
     else if(filled) setState('tr-e-state', 'FILLED', 'ok');
+    else if(tr.entry_status === 'expired') setState('tr-e-state', 'EXPIRED: CANCELLED UNFILLED', 'warn');
     else if(tr.entry_status === 'gone') setState('tr-e-state', 'GONE: NOT WORKING, NOT FILLED', 'bad');
     else if(tr.acked) setState('tr-e-state', 'ACCEPTED, NOT FILLED', 'info');
     else setState('tr-e-state', 'PLACED', 'info');

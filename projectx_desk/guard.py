@@ -83,6 +83,9 @@ class Ticket:
     rejected_at: float = 0.0        # clock() when a rejection carrying an order id came back
     acked_at: float = 0.0           # clock() when the broker ACKed the entry (in-flight exposure window)
     position_id: Optional[int] = None   # the broker position this ticket's fill created: evidence of ownership if its stop vanishes
+    ttl_tries: int = 0              # limit-TTL cancel attempts so far (capped)
+    ttl_last: float = 0.0           # clock() of the last attempt
+    ttl_cancelled: bool = False     # the TTL cancel was acknowledged: the entry expired unfilled
     abandoned: bool = False         # the naked-position path flattened this ticket; a late stop ACK must be cancelled
     account_suffix: str = ""        # sensitive: confirm screen only, never in the AI surface or audit
 
@@ -516,6 +519,8 @@ class Guard:
             return None
         if getattr(t, "filled_size", 0):
             return "filled"
+        if getattr(t, "ttl_cancelled", False):
+            return "expired"
         if getattr(t, "broker_order_id", None) is not None and t.broker_order_id in self.live.orders:
             return "working"
         return "working" if self.clock() - getattr(t, "acked_at", 0.0) < self.IN_FLIGHT_S else "gone"
@@ -1422,6 +1427,37 @@ class Guard:
                 self.trip_halt("flatten_failed")
                 reasons.append("exposure not confirmed clear: halted")
             return FlattenResult(flat, tuple(closed), orphans, tuple(reasons))
+
+    TTL_TRIES, TTL_RETRY_S = 3, 5.0
+
+    async def expire_resting_entries(self) -> int:
+        """Cancel a LIMIT entry that has rested unfilled for PX_LIMIT_TTL_S (default 300, 0 = off). A forgotten limit order is exposure the
+        trader no longer remembers: it can fill an hour later, into a different market, with the stop sized for the old one. Sim only (the API
+        cannot cancel on live, and limit opens are sim-only anyway). Reduces exposure only: it never places anything, is allowed while halted,
+        and skips an order that has any fill. A cancel that loses the race to a fill fails harmlessly: the fill is protected by the normal path.
+        Called about once a second by the app. Returns how many cancels were ACKed this pass."""
+        ttl = self.limits.limit_ttl_s
+        if not ttl or self.limits.account_kind != "sim":
+            return 0
+        done, now = 0, self.clock()
+        for t in list(self.tickets.values()):
+            if (t.state != PLACED or t.order_type != "limit" or t.filled_size or t.ttl_cancelled or t.broker_order_id is None
+                    or t.broker_order_id not in self.live.orders or now - t.acked_at < ttl
+                    or t.ttl_tries >= self.TTL_TRIES or now - t.ttl_last < self.TTL_RETRY_S):
+                continue
+            t.ttl_tries, t.ttl_last = t.ttl_tries + 1, now
+            ok = False
+            try:
+                async with self._lock:
+                    resp = await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id, "orderId": t.broker_order_id})
+                ok = isinstance(resp, dict) and resp.get("success") is True
+            except Exception:  # noqa: BLE001 - a failed cancel leaves the order working; the next pass retries, and a fill is protected normally
+                ok = False
+            self._audit("cancel", ticket=t.hash8, origin="ui", state="OK" if ok else "FAILED", code="limit_ttl")
+            if ok:
+                t.ttl_cancelled = True
+                done += 1
+        return done
 
     async def cancel(self, order_id: int, *, origin: str = "ui") -> bool:
         """Cancel a working order. The API supports this on simulated accounts only."""

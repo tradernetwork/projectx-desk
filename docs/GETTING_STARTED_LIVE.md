@@ -34,6 +34,7 @@ its default.
 | `PX_MAX_QTY_ORDER` / `_SYMBOL` / `_TOTAL` | contracts per order, per symbol, in total (default 1 / 2 / 3). |
 | `PX_ALLOWED_ROOTS` | instruments you may open (default micros: MES, MNQ, MCL, MGC). |
 | `PX_COOLDOWN_AFTER_LOSS_S`, `PX_MAX_CONSEC_LOSSES`, `PX_SIZE_AFTER_LOSS_LOCK` | the behavioral rails. |
+| `PX_LIMIT_TTL_S` | cancel a limit entry that has rested unfilled this long (sim only; default 300, 0 = off). |
 | `PX_MAX_ORDERS_DAY` | orders per trading day (default 10). The day rolls at 17:00 Central. |
 | `PX_ALLOW_LIVE`, `PX_ACCOUNT_KIND` | a live account needs `PX_ACCOUNT_KIND=live`, `PX_ALLOW_LIVE=1`, `PX_BRACKET_MODE=oco` and market entries. Never run. Do not enable. |
 | `PX_RISK_BASE` | `drawdown` (default): 1R is `risk_pct` of the live drawdown room (balance minus `PX_MLL_FLOOR`), capped by the daily and drawdown room. `remaining` restores the old base, `risk_pct` of the smaller of the two rooms. |

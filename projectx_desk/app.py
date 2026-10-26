@@ -422,12 +422,12 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
                                               stop_k=stop_k, stream=bool(stream))
 
     @app.get("/ai/state")
-    async def ai_state(request: Request, contract: str | None = None, side: str = "long", risk_pct: float = 0.05,
+    async def ai_state(request: Request, contract: str | None = None, side: str = "long", risk_pct: float = px_digest.DEFAULT_RISK_PCT,
                        stop_k: float = 1.5, stream: int = 0):
         return await _ai(request, contract, side, risk_pct, stop_k, stream)
 
     @app.get("/ai/digest", response_class=PlainTextResponse)
-    async def ai_digest(request: Request, contract: str | None = None, side: str = "long", risk_pct: float = 0.05,
+    async def ai_digest(request: Request, contract: str | None = None, side: str = "long", risk_pct: float = px_digest.DEFAULT_RISK_PCT,
                         stop_k: float = 1.5, stream: int = 0):
         return px_digest.format_digest(await _ai(request, contract, side, risk_pct, stop_k, stream))
 

@@ -13,8 +13,8 @@ risk_per_ct   = stop_ticks x tick_value                                 # live t
 contracts     = floor(risk_budget / risk_per_ct)                        # ALWAYS rounds down, never up
 ```
 
-Default `risk_pct` is 5% of the loss room (chips 2/3/5/6). On a 50K Combine that is $100 of 1R while the room is $2,000,
-which fits one MNQ at a 1.5 ATR stop but not two. An unreadable balance or floor sizes to 0. Micros only (`PX_ALLOWED_ROOTS`
+Default `risk_pct` is 10% of the loss room (chips 2/3/5/10; the stepper tops out at 10%; `digest.DEFAULT_RISK_PCT`). On a 50K Combine that is $200 of 1R while the room is $2,000,
+which fits one MNQ at a 1.5 ATR stop but not two (`PX_MAX_QTY_ORDER=1` caps the count anyway). Ten losses in a row at 10% leave 0.9^10 = 35% of the room, and the behavioral rails stop you long before: `PX_MAX_CONSEC_LOSSES=3` locks the session and the daily limit binds first. An unreadable balance or floor sizes to 0. Micros only (`PX_ALLOWED_ROOTS`
 defaults to MES, MNQ, MCL, MGC).
 
 If `contracts` is 0 the answer is **REFUSED (granularity)**: one contract risks more than the budget. It is never

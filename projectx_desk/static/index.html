@@ -13,6 +13,7 @@
 <link rel="preload" href="/static/fonts/JetBrainsMono_500Medium.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/fonts/Inter_500Medium.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/desk.css">
+<script src="/static/layout.js"></script>
 <script src="/static/klinecharts.min.js"></script>
 </head><body>
 <div class="desk" id="desk">
@@ -127,8 +128,8 @@
       <div class="ctls">
         <span class="lbl" id="lbl-risk" title="Risk % of loss room">Risk</span>
         <span class="chips" id="risk-pct" role="group" aria-labelledby="lbl-risk">
-          <span class="seg"><button id="risk-pct-1" data-v="0.02" aria-pressed="false">2</button><button id="risk-pct-2" data-v="0.03" aria-pressed="false">3</button><button id="risk-pct-3" data-v="0.05" aria-pressed="true">5</button><button id="risk-pct-5" data-v="0.06" aria-pressed="false">6</button></span>
-          <span class="step"><button id="risk-dec" aria-label="Decrease risk percent by half a point">-</button><output id="risk-val" class="val">5%</output><button id="risk-inc" aria-label="Increase risk percent by half a point">+</button></span>
+          <span class="seg"><button id="risk-pct-1" data-v="0.02" aria-pressed="false">2</button><button id="risk-pct-2" data-v="0.03" aria-pressed="false">3</button><button id="risk-pct-3" data-v="0.05" aria-pressed="false">5</button><button id="risk-pct-5" data-v="0.1" aria-pressed="true">10</button></span>
+          <span class="step"><button id="risk-dec" aria-label="Decrease risk percent by half a point">-</button><output id="risk-val" class="val">10%</output><button id="risk-inc" aria-label="Increase risk percent by half a point">+</button></span>
         </span>
         <span class="lbl" id="lbl-stop">Stop</span>
         <span class="chips" id="stop-atr" role="group" aria-labelledby="lbl-stop">
@@ -322,6 +323,7 @@
   <footer class="strip" role="region" aria-label="Status">
     <span id="live-polite" class="live" aria-live="polite"></span>
     <span id="live-assertive" class="live bad" aria-live="assertive"></span>
+    <span class="seg layoutseg" id="layout-seg" role="group" aria-label="Screen layout" title="Layout: Auto follows the monitor, Landscape or Portrait forces it"><button type="button" data-v="auto" aria-pressed="true">Auto</button><button type="button" data-v="landscape" aria-pressed="false">Landscape</button><button type="button" data-v="portrait" aria-pressed="false">Portrait</button></span>
     <span class="push dim" id="asof">asof NA</span>
     <span class="dim">GEX marks positioning, not targets.</span>
     <a class="byline" href="https://www.tradermatrix.pro/?ref=MPHINANCE" target="_blank" rel="noopener noreferrer" title="Built by TraderMatrix. We track the moves. TraderMatrix helps you trade them."><img src="/static/brand-mark.png" alt="" width="14" height="14"><span>Built by TraderMatrix</span></a>

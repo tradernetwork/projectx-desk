@@ -49,6 +49,7 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 | `projectx_desk/sizing.py`, `projectx_desk/gex_futures.py` | pure sizing math; GEX levels converted to futures price space |
 | `projectx_desk/dev_gateway.py` | a mock ProjectX gateway (REST + SignalR) for offline development and end-to-end tests |
 | `projectx_desk/static/` | the desk UI (vanilla JS, no build step) |
+| `projectx_desk/static/layout.js` | Auto / Landscape / Portrait: sets `html[data-layout]` before first paint; the portrait grid lives at the end of `desk.css` (own footer row, full-width chart). Display only |
 
 ## Rules with teeth
 

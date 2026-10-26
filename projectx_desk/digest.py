@@ -464,6 +464,7 @@ def bias_state(app, cid, ind, last, flow):
                              stacks, flow, rsi=ind.get("rsi"), ct_minute=ct.hour * 60 + ct.minute, adx_chop=float(sizing.ADX_CHOP))
 
 
+DEFAULT_RISK_PCT = 0.10       # 1R as a share of the live drawdown room; the one default for the UI, /ai/*, and the MCP tools (the UI stepper tops out here)
 BOARD_TTL_S = 10.0
 BOARD_QUOTE_MAX_S = 15.0      # a quote older than this is not "now"; tracked roots only run the trade tape, so most have none
 BOARD_LABEL = {"MCLE": "MCL", "CLE": "CL"}     # ProjectX ids micro crude as MCLE; the trader calls it MCL
@@ -634,7 +635,7 @@ def active_trade(guard):
             "risk_usd": _n(t.readback.get("risk_usd")), "id8": t.hash8}
 
 
-async def build_ai_state(app, contract_id, *, side="long", risk_pct=0.05, stop_k=1.5, stream=False):
+async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK_PCT, stop_k=1.5, stream=False):
     st = app.state
     live, guard = st.live, st.guard
     lim = guard.limits

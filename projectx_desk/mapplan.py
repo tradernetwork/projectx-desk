@@ -37,6 +37,9 @@ TRIGGERS = {
     ("cross_up", "ACCELERANT"): ("ACCEL_THROUGH", "LONG"), ("cross_up", "BRAKE"): ("BRAKE_CLEARED", "LONG"), ("cross_up", "CEILING"): ("CEILING_CLEARED", "LONG"),
     ("reject", "FLIP"): ("FLIP_REJECT", "SHORT"), ("reject", "BRAKE"): ("BRAKE_REJECT", "SHORT"), ("reject", "CEILING"): ("CEILING_REJECT", "SHORT"),
     ("reclaim", "TRAPDOOR"): ("TRAPDOOR_RECLAIM", "LONG"), ("reclaim", "LAST SHELF"): ("SHELF_RECLAIM", "LONG"),
+    # the 5m EMA21 is not a map level: the caller passes it as an extra level so the shadow record can show whether a wick through it that
+    # closes back (the rejection the trader saw) beats the opposite side. hold is the mirror: a dip through it that closes back above.
+    ("reject", "EMA21"): ("EMA21_REJECT", "SHORT"), ("hold", "EMA21"): ("EMA21_HOLD", "LONG"),
 }
 KINDS = sorted({k for k, _ in TRIGGERS.values()})
 
@@ -71,7 +74,7 @@ def _valid_bars(bars):
             and all(isinstance(b, dict) and all(_fin(b.get(k)) for k in ("timestamp", "high", "low", "close")) for b in bars[-(LOOKBACK_RECLAIM + 2):]))
 
 
-def detect(m, bars, atr, tick, root=None, contract=None, snapshot_epoch=None):
+def detect(m, bars, atr, tick, root=None, contract=None, snapshot_epoch=None, extra_levels=None):
     """Proposals for the LAST CLOSED bar of `bars` (oldest first, closed bars only). Empty list when nothing fires or anything is unusable."""
     if not isinstance(m, dict) or not _valid_bars(bars) or not _fin(atr) or atr <= 0 or not _fin(tick) or tick <= 0:
         return []
@@ -80,7 +83,7 @@ def detect(m, bars, atr, tick, root=None, contract=None, snapshot_epoch=None):
     ticks = stop_dist / tick
     if ticks < MIN_STOP_TICKS or ticks > MAX_STOP_TICKS:
         return []                                                         # the guard would refuse it: do not propose, do not clamp
-    lv = levels(m)
+    lv = levels(m) + [{"price": float(x["price"]), "role": str(x["role"]), "tail": False} for x in (extra_levels or []) if _fin(x.get("price")) and x.get("role") == "EMA21"]
     out = []
     for L in lv:
         p, role = L["price"], L["role"]
@@ -93,6 +96,8 @@ def detect(m, bars, atr, tick, root=None, contract=None, snapshot_epoch=None):
                 events.append("reclaim")
         if bar["high"] >= p and bar["close"] < p and prev["close"] < p:
             events.append("reject")
+        if bar["low"] <= p and bar["close"] > p and prev["close"] > p:
+            events.append("hold")
         for ev in events:
             hit = TRIGGERS.get((ev, role))
             if not hit:
@@ -100,7 +105,7 @@ def detect(m, bars, atr, tick, root=None, contract=None, snapshot_epoch=None):
             kind, side = hit
             entry = float(bar["close"])
             stop = round(entry + stop_dist if side == "SHORT" else entry - stop_dist, 8)
-            beyond = [x for x in lv if x["role"] != "PIN" and ((x["price"] <= entry - stop_dist) if side == "SHORT" else (x["price"] >= entry + stop_dist))]
+            beyond = [x for x in lv if x["role"] not in ("PIN", "EMA21") and ((x["price"] <= entry - stop_dist) if side == "SHORT" else (x["price"] >= entry + stop_dist))]
             tgt = (max(beyond, key=lambda x: x["price"]) if side == "SHORT" else min(beyond, key=lambda x: x["price"])) if beyond else None
             out.append({"id": f"{root}:{int(bar['timestamp'])}:{kind}:{p:g}", "root": root, "contract": contract, "bar_ts": int(bar["timestamp"]), "kind": kind, "side": side,
                         "level": p, "role": role, "entry": entry, "stop": stop, "stop_ticks": int(round(ticks)), "stop_dist": stop_dist,
@@ -116,7 +121,8 @@ def allowed(p, rows, now_ts, ct_date):
     if len(same_day) >= DAILY_CAP:
         return False
     for r in same_day:
-        if r["kind"] == p["kind"] and r["level"] == p["level"] and (p["bar_ts"] - r["bar_ts"]) / 1000 < COOLDOWN_S:
+        same_level = r["level"] == p["level"] or p.get("role") == "EMA21"        # the EMA moves every bar, so its cooldown is per kind
+        if r["kind"] == p["kind"] and same_level and (p["bar_ts"] - r["bar_ts"]) / 1000 < COOLDOWN_S:
             return False
     return not any(r.get("id") == p["id"] for r in same_day)
 

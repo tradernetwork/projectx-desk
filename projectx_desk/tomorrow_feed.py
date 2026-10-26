@@ -109,6 +109,23 @@ def build_from_clean(c, today, ratio, tick):
     return T.build_tomorrow_map(c["spot"], c["flip"], c["net"], ladder, T.bars_from_history(c["hist"]), share, ratio=ratio, tick=tick)
 
 
+def ref_epoch(snap_epoch):
+    """The moment whose futures price pairs with the source's spot. During the cash session that is the snapshot itself. After the cash
+    close (15:00 CT), overnight, or on a weekend, the ETF spot is frozen at its 15:00 CT close while the futures keep trading, so scaling
+    by the snapshot's own futures bar would fold the overnight move into the ratio: use the last cash close (15:00 CT) instead, the
+    previous weekday's when the snapshot is before the 08:30 open. Holidays are not modelled: no bar there is NO_REF, never a guess."""
+    t = datetime.fromtimestamp(snap_epoch, CT)
+    hm = (t.hour, t.minute)
+    if t.weekday() < 5 and (8, 30) <= hm < (15, 0):
+        return snap_epoch
+    d = t.date()
+    if not (t.weekday() < 5 and hm >= (15, 0)):          # before the open, or a weekend: the last close is a day or more back
+        d -= timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return datetime(d.year, d.month, d.day, 14, 59, 59, tzinfo=CT).timestamp()          # inside the 14:55 bar, whose close is the 15:00 price
+
+
 async def futures_ref(app, contract_id, snap_epoch):
     """Close of the futures 5m bar that contained the snapshot, or None. One REST read, cached with the result. The bar may still be
     forming (a snapshot seconds old), in which case its close is the price now: within one bar of the snapshot, which is all a ratio needs."""
@@ -189,7 +206,7 @@ async def _compute(app, contract_id, spec, sym, nominal, base, key, fetch, now_t
     if age > MAX_AGE_S:
         return _res("UNAVAILABLE", "STALE")
     try:
-        ref = await futures_ref(app, contract_id, c["snap"])
+        ref = await futures_ref(app, contract_id, ref_epoch(c["snap"]))
     except Exception:  # noqa: BLE001
         ref = None
     if ref is None:

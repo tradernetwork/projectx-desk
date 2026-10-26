@@ -226,3 +226,24 @@ def test_the_log_survives_garbage_and_the_shadow_modules_cannot_reach_the_order_
         assert not imported & {"guard", "client", "hub", "projectx_desk.guard", "projectx_desk.client", "projectx_desk.hub", "mcp", "state"}, (name, imported)
         called = {n.func.attr for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
         assert not called & {"place", "preview", "flatten", "write", "move_stop", "stage"}, (name, called)      # the same names the order-path pin forbids elsewhere
+
+
+def test_ema21_rejection_and_hold_are_shadow_events_with_atr_stops_and_a_per_kind_cooldown():
+    ema = [{"price": 7702.0, "role": "EMA21"}]
+    s = series(FLAT + [7699.0, 7700.0])
+    s[-1]["high"] = 7703.0                                                  # wick through the 21 EMA, closed back under it
+    rej = [x for x in MP.detect(a_map(), s, 4.0, TICK, root="MES", extra_levels=ema) if x["role"] == "EMA21"]
+    assert [(x["kind"], x["side"], x["level"]) for x in rej] == [("EMA21_REJECT", "SHORT", 7702.0)]
+    assert rej[0]["stop"] == 7700.0 + 6.0 and rej[0]["target"] != 7702.0     # ATR stop, and the EMA is never a target
+    s2 = series(FLAT + [7705.0, 7701.0])
+    s2[-1]["low"] = 7699.5                                                  # dipped through, closed back over
+    hold = [x for x in MP.detect(a_map(), s2, 4.0, TICK, root="MES", extra_levels=[{"price": 7700.0, "role": "EMA21"}]) if x["role"] == "EMA21"]
+    assert [(x["kind"], x["side"]) for x in hold] == [("EMA21_HOLD", "LONG")]
+    assert not any(x["role"] == "EMA21" for x in MP.detect(a_map(), s, 4.0, TICK, root="MES"))     # without the extra level it does not exist
+    assert not [x for x in MP.detect(a_map(), s, 4.0, TICK, root="MES", extra_levels=[{"price": 7702.0, "role": "FLIP"}]) if x["level"] == 7702.0]   # only the EMA21 role is accepted as an extra level
+    # the EMA moves every bar: a second rejection 10 minutes later at a different level is still inside the cooldown
+    first = {**rej[0], "kind_row": "proposal"}
+    later = {**rej[0], "level": 7704.5, "bar_ts": rej[0]["bar_ts"] + 600_000, "id": "other"}
+    cd = lambda ms: "d"
+    assert MP.allowed(later, [first], 0, cd) is False
+    assert MP.allowed({**later, "bar_ts": rej[0]["bar_ts"] + 31 * 60_000}, [first], 0, cd) is True

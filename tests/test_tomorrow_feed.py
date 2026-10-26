@@ -41,7 +41,7 @@ def bar(epoch, close):
 
 
 def app(bars=None):
-    return types.SimpleNamespace(state=types.SimpleNamespace(client=Client([bar(SNAP_EPOCH, REF)] if bars is None else bars)))
+    return types.SimpleNamespace(state=types.SimpleNamespace(client=Client([bar(F.ref_epoch(SNAP_EPOCH), REF)] if bars is None else bars)))
 
 
 def fake_fetch(counter=None, raise_=None):
@@ -125,7 +125,7 @@ def test_every_failure_is_a_fixed_status_and_code(kw, env, contract, status, cod
 def test_no_futures_reference_means_no_map_not_a_guessed_ratio():
     res = run(F.tomorrow_result(app(bars=[]), MES, environ=ENV, fetch=fake_fetch(), now=SNAP_EPOCH + 3600))
     assert (res["status"], res["code"]) == ("UNAVAILABLE", "NO_REF")
-    wrong = [bar(SNAP_EPOCH, 3000.0)]                                               # a futures price nowhere near 10x SPY
+    wrong = [bar(F.ref_epoch(SNAP_EPOCH), 3000.0)]                                               # a futures price nowhere near 10x SPY
     res = run(F.tomorrow_result(app(bars=wrong), MES, environ=ENV, fetch=fake_fetch(), now=SNAP_EPOCH + 3600))
     assert (res["status"], res["code"]) == ("UNAVAILABLE", "CONVERT")
 
@@ -216,7 +216,7 @@ def test_a_snapshot_outside_the_cash_session_is_flagged_after_hours(monkeypatch)
 
     async def fetch(base, key, path):
         return {**g, "lastUpdated": evening} if path.endswith("/SPY") else {**m, "snapshotTime": evening} if path.endswith("/matrix") else h
-    a = app(bars=[bar(snap, REF)])
+    a = app(bars=[bar(F.ref_epoch(snap), REF)])                                      # an evening snapshot pairs with the cash close, not its own bar
     res = run(F.tomorrow_result(a, MES, environ=ENV, fetch=fetch, now=snap + 600))
     assert res["status"] == "OK" and res["after_hours"] is True
 
@@ -232,3 +232,27 @@ def test_an_early_refusal_is_reported_with_its_real_code_not_loading_forever(mon
         return first, await F.ai_block(a, MES), len(a.state.tmap_kick_tasks)
     first, second, held = run(go())
     assert first["code"] == "LOADING" and second == {"status": "NO_KEY", "code": None} and held == 0       # the task was kept while running and dropped when done
+
+
+def test_ref_epoch_is_the_snapshot_in_session_and_the_cash_close_otherwise():
+    from datetime import datetime
+    from projectx_desk.tradeday import CT
+    ct = lambda y, mo, d, h, mi: datetime(y, mo, d, h, mi, tzinfo=CT).timestamp()
+    close = lambda y, mo, d: datetime(y, mo, d, 14, 59, 59, tzinfo=CT).timestamp()
+    mid = ct(2026, 10, 15, 10, 30)                                           # Thursday mid-session: the snapshot's own moment
+    assert F.ref_epoch(mid) == mid
+    assert F.ref_epoch(ct(2026, 10, 15, 15, 1)) == close(2026, 10, 15)       # just after the cash close: that day's 15:00
+    assert F.ref_epoch(ct(2026, 10, 15, 21, 0)) == close(2026, 10, 15)       # evening
+    assert F.ref_epoch(ct(2026, 10, 16, 6, 0)) == close(2026, 10, 15)        # before the open: the day before
+    assert F.ref_epoch(ct(2026, 10, 17, 12, 0)) == close(2026, 10, 16)       # Saturday: Friday's close
+    assert F.ref_epoch(ct(2026, 10, 19, 7, 0)) == close(2026, 10, 16)        # Monday pre-market: Friday's close
+
+
+def test_an_after_hours_snapshot_scales_by_the_cash_close_not_the_overnight_futures_bar():
+    """SNAP is 15:01 CT. A futures bar at the snapshot (the overnight price, 3% away) must be ignored; the 14:55 bar decides the ratio."""
+    overnight = bar(SNAP_EPOCH, REF * 1.03)
+    close_bar = bar(F.ref_epoch(SNAP_EPOCH), REF)
+    res = run(F.tomorrow_result(app(bars=[overnight, close_bar]), MES, environ=ENV, fetch=fake_fetch(), now=SNAP_EPOCH + 3600))
+    assert res["status"] == "OK" and abs(res["ratio"] - REF / FX["gex"]["spotPrice"]) < 1e-5
+    only_overnight = run(F.tomorrow_result(app(bars=[overnight]), MES, environ=ENV, fetch=fake_fetch(), now=SNAP_EPOCH + 3600))
+    assert (only_overnight["status"], only_overnight["code"]) == ("UNAVAILABLE", "NO_REF")        # never falls back to the overnight bar

@@ -7,6 +7,7 @@ import os
 import pathlib
 from datetime import datetime, timedelta
 
+from projectx_desk import levels as levels_mod
 from projectx_desk import mapplan as MP
 from projectx_desk import sizing
 from projectx_desk import tomorrow_feed as F
@@ -100,7 +101,9 @@ async def tick(app, path, now_ts, tracked=None, bars_fn=closed_5m):
             tick_size = sizing.spec_for(cid).tick_size
         except Exception:  # noqa: BLE001
             continue
-        for p in MP.detect(res["map"], bars[-(MP.LOOKBACK_RECLAIM + 3):], atr, tick_size, root=root, contract=cid, snapshot_epoch=snap):
+        ema = [x for x in levels_mod.ema_series([b["close"] for b in bars], 21) if x is not None]
+        extra = [{"price": ema[-1], "role": "EMA21"}] if ema else []
+        for p in MP.detect(res["map"], bars[-(MP.LOOKBACK_RECLAIM + 3):], atr, tick_size, root=root, contract=cid, snapshot_epoch=snap, extra_levels=extra):
             if MP.allowed(p, rows, now_ts, ct_date):
                 append(path, {"kind_row": "proposal", **p, "made_at": int(now_ts), "map_version": res["map"].get("version")})
                 rows = load(path)

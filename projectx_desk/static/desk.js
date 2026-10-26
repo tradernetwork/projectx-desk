@@ -1274,7 +1274,7 @@ const TM_COL = {UP: E.hot, DOWN: E.sup, RANGE: '#9db4ff', FLIP: '#d8b4fe'};
 const TM_WHY = {NO_KEY: 'No TraderDaddy key on this desk.', UNSUPPORTED: 'No map for this contract.', CONTRACT: 'No map for this contract.',
   NO_REF: 'No futures price at the snapshot time to scale with.', CONVERT: 'Source and futures prices do not line up, so nothing is drawn.',
   STALE: 'The latest gamma is more than five days old.', NO_MAP: 'The book is too thin to map.', AUTH: 'The GEX key was rejected.',
-  UPSTREAM_ERROR: 'The GEX source is unavailable.', BAD_PAYLOAD: 'The GEX payload failed validation.', INTERNAL: 'The map failed.', CONFIG: 'The GEX URL is unsafe.'};
+  UPSTREAM_ERROR: 'The GEX source is unavailable.', RATE_LIMIT: 'The GEX source is rate-limited right now (30 a minute); it retries by itself.', BAD_PAYLOAD: 'The GEX payload failed validation.', INTERNAL: 'The map failed.', CONFIG: 'The GEX URL is unsafe.'};
 const hexA = (h, a) => `rgba(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)},${a})`;
 const finPt = cs => cs.length > 0 && cs.every(c => isFinite(c.x) && isFinite(c.y));
 const TM_EDGE = 13;       // the price axis autoscales to candles only: a waypoint beyond the visible range is pinned to the edge with an arrow, never lost

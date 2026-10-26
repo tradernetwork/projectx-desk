@@ -50,6 +50,8 @@ async def fetch_json(base, key, path):
             async with c.stream("GET", f"{base}{path}", headers={"X-API-Key": key, "Authorization": f"Bearer {key}"}) as r:
                 if r.status_code in (401, 403):
                     raise gex.GexError("AUTH")
+                if r.status_code == 429:                  # the API allows 30 requests a minute; each map costs three, cached ten minutes
+                    raise gex.GexError("RATE_LIMIT")
                 if r.status_code != 200:
                     raise gex.GexError("UPSTREAM_ERROR")
                 buf = bytearray()
@@ -63,9 +65,9 @@ async def fetch_json(base, key, path):
         data = json.loads(bytes(buf))
     except (ValueError, RecursionError):
         raise gex.GexError("UPSTREAM_ERROR") from None
+    if isinstance(data, dict) and data.get("success") is False:
+        raise gex.GexError("UPSTREAM_ERROR")
     if isinstance(data, dict) and "data" in data:
-        if data.get("success") is False:
-            raise gex.GexError("UPSTREAM_ERROR")
         data = data["data"]
     return data
 

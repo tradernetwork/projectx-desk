@@ -158,3 +158,26 @@ def test_a_snapshot_taken_seconds_ago_uses_the_forming_bar():
     assert res["status"] == "OK"
     assert a.state.client.last_params["includePartialBar"] is True               # excluding it made GLD (MGC) return NO_REF at the top of a bar
     assert a.state.client.last_params["unit"] == 2 and a.state.client.last_params["unitNumber"] == 5
+
+
+@pytest.mark.parametrize("status,body,code", [(401, "{}", "AUTH"), (403, "{}", "AUTH"), (429, "{}", "RATE_LIMIT"), (500, "{}", "UPSTREAM_ERROR"),
+                                              (200, "not json", "UPSTREAM_ERROR"), (200, json.dumps({"success": False}), "UPSTREAM_ERROR")])
+def test_http_failures_become_fixed_codes(monkeypatch, status, body, code):
+    import httpx
+    real = httpx.AsyncClient
+    monkeypatch.setattr(F.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(lambda req: httpx.Response(status, text=body)), **kw))
+    with pytest.raises(gex.GexError) as e:
+        run(F.fetch_json("https://example.test", "k" * 40, "/gex/SPY"))
+    assert e.value.code == code
+
+
+def test_the_data_wrapper_is_unwrapped_and_a_huge_body_is_refused(monkeypatch):
+    import httpx
+    real = httpx.AsyncClient
+    monkeypatch.setattr(F.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(lambda req: httpx.Response(200, json={"success": True, "data": {"a": 1}})), **kw))
+    assert run(F.fetch_json("https://example.test", "k" * 40, "/gex/SPY")) == {"a": 1}
+    big = "x" * (gex.MAX_BODY + 10)
+    monkeypatch.setattr(F.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(lambda req: httpx.Response(200, text=big)), **kw))
+    with pytest.raises(gex.GexError) as e:
+        run(F.fetch_json("https://example.test", "k" * 40, "/gex/SPY"))
+    assert e.value.code == "UPSTREAM_ERROR"

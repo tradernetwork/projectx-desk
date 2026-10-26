@@ -1014,6 +1014,15 @@ klinecharts.registerOverlay({
     const ed = overlay.extendData || {};
     return levelFigs(cs, bounding, ed, {style: ed.dash ? 'dashed' : 'solid', color: ed.color || C.purple, size: ed.size || 1, dashedValue: [6, 4]});
   }});
+/* a level that starts at a moment and runs right only (the analyst callout's entry, stop and target): less clutter than a full-width line */
+klinecharts.registerOverlay({
+  name: 'deskRay', totalStep: 3, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: true,
+  createPointFigures: ({coordinates: cs, bounding, overlay}) => {
+    if(cs.length < 2 || !isFinite(cs[0].y) || !isFinite(cs[0].x)) return [];
+    const ed = overlay.extendData || {}, y = cs[0].y, x0 = Math.max(0, cs[0].x);
+    return [{type: 'line', attrs: {coordinates: [{x: x0, y}, {x: bounding.width, y}]}, styles: {style: ed.dash ? 'dashed' : 'solid', color: ed.color || C.purple, size: ed.size || 1, dashedValue: [6, 4]}},
+            {type: 'text', ignoreEvent: true, attrs: {x: bounding.width - 6, y: y - 2, text: String(ed.label || ''), align: 'right', baseline: 'bottom'}, styles: chip(ed.color || C.purple, true)}];
+  }});
 /* the shaded trade zone (ember's put-sell band): a full-width translucent band between two prices, the colour rides in extendData */
 klinecharts.registerOverlay({
   name: 'tradeBand', totalStep: 3, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
@@ -1215,8 +1224,9 @@ function deskLines(){
   }
   const cl = CALL.live;       // the analyst's own entry, stop and first target, while it is recent and this is its chart
   if(cl && cl.root === curRoot() && cl.age0 + (performance.now() - cl.at) / 1000 < 5400){
+    const from = Math.floor((Date.now() - (cl.age0 + (performance.now() - cl.at) / 1000) * 1000) / 60000) * 60000;     // when it was posted, to the minute (keeps the draw signature steady)
     for(const [nm, p, col] of [['E', cl.entry, '#fbbf24'], ['SL', cl.stop, '#fb7185'], ['T1', cl.tp1, '#4ade80']])
-      if(typeof p === 'number') out.push({price: p, label: 'CALLOUT ' + nm + ' ' + p, color: col, dash: true, size: 2});
+      if(typeof p === 'number') out.push({price: p, label: 'CALLOUT ' + nm + ' ' + p, color: col, dash: true, size: 2, from});
   }
   const t = S.ticket;
   if(t && t.ticket_id && !t.consumed && !t.gone && t.contract === S.contractId && t.readback){
@@ -1263,7 +1273,10 @@ function drawDesk(force){
   try{
     chart.removeOverlay({groupId: 'desk'});
     for(const z of zones) chart.createOverlay({name: 'tradeBand', groupId: 'desk', lock: true, points: [{timestamp: last.timestamp, value: z.price}, {timestamp: last.timestamp, value: z.price2}], extendData: z});   // bands first: under the lines
-    for(const l of lines) chart.createOverlay({name: 'deskLevel', groupId: 'desk', lock: true, points: [{timestamp: last.timestamp, value: l.price}], extendData: l, styles: {text: chip(l.color || C.purple, true)}});
+    for(const l of lines){
+      if(l.from) chart.createOverlay({name: 'deskRay', groupId: 'desk', lock: true, points: [{timestamp: l.from, value: l.price}, {timestamp: last.timestamp, value: l.price}], extendData: l});     // from the moment it was posted, rightwards only
+      else chart.createOverlay({name: 'deskLevel', groupId: 'desk', lock: true, points: [{timestamp: last.timestamp, value: l.price}], extendData: l, styles: {text: chip(l.color || C.purple, true)}});
+    }
   }catch(e){err(e)}
 }
 
@@ -1326,7 +1339,7 @@ function tmapNowText(m){
   if(Math.abs(near.price - p) <= tol){
     const key = near.roles.slice().sort((a, b) => (a === 'PIN') - (b === 'PIN') || a.localeCompare(b)).join('+');
     const what = near.roles.length > 1 ? near.roles.filter(r => r !== 'PIN').map(r => TM_WATCH[r]).join(' ') + (near.roles.includes('PIN') ? ' ' + TM_WATCH.PIN : '') : TM_WATCH[near.roles[0]];
-    return `Price ${p} is AT the ${name(near)}. ${what} It is something to WATCH, not a signal to act on by itself.`;
+    return `Price ${p} is AT the ${name(near)}. ${what} A thing to WATCH, not a signal.`;
   }
   const up = lv.filter(i => i.price > p).pop(), dn = lv.find(i => i.price < p);       // nearest level above and below
   const gap = i => Math.abs(i.price - p).toFixed(2).replace(/\.?0+$/, '');
@@ -1431,8 +1444,12 @@ function renderTmap(){
     const rd = byKey(k), row = mk('div', 'tm-row ' + cls), c = mk('div', 'tm-cond');
     c.append(mk('i', null, kind), document.createTextNode(verb + rd.cond));
     row.append(c, mk('div', 'tm-rule', rd.plain || rd.rule));
-    if(rd.plain){const pro = mk('details', 'tm-pro'); pro.append(mk('summary', null, 'technical wording'), mk('div', null, rd.rule)); row.append(pro)}
     host.append(row);
+  }
+  if(m.roads.some(r => r.plain)){      // the original one-line rules, for anyone who wants them: one fold-out, not three
+    const pro = mk('details', 'tm-pro'); pro.append(mk('summary', null, 'technical wording'));
+    for(const k of ['UP', 'DOWN', 'RANGE']) pro.append(mk('div', null, byKey(k).rule));
+    host.append(pro);
   }
   tmapKey(host, m);
   let foot = 'Positioning, not targets. Past ' + m.typical_move + ' pts is a tail.';

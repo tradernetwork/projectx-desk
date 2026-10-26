@@ -223,7 +223,7 @@
     <div class="chartbar">
       <span class="ind" id="ind" role="group" aria-label="Indicators"></span>
       <button id="tr-toggle" type="button" class="rsp-tg" aria-pressed="true" title="Automatic trendlines and channels from the swing highs and lows on screen. A line needs 3 touches and no close through it; the label says how many. Where price turned, not a forecast.">Trend</button>
-      <button id="tm-toggle" type="button" class="rsp-tg" aria-pressed="true" title="Tomorrow's map: draw the roads out of price (up, down, else) from dealer gamma, into the bars to come. Positioning, not targets.">Map</button>
+      <button id="tm-toggle" type="button" class="rsp-tg" aria-pressed="true" title="Dealer map: draw the roads out of price (up, down, else) from dealer gamma, into the bars to come. Positioning, not targets.">Map</button>
       <button id="rsp-toggle" type="button" class="rsp-tg" aria-pressed="true" title="Draw the level each timeframe has actually been respecting (history, not a forecast)">Respect</button>
       <span id="ema-badge" class="badge stack" title="EMA 8 / 21 / 34 stack order" hidden><span class="bl"><span class="bl-l">EMA stack</span><span class="bl-s">EMA</span></span><b data-ai="ind.ema.state" class="na">NA</b></span>
       <span id="bias-chip" class="chip" role="status" hidden></span>
@@ -245,8 +245,8 @@
   <!-- right column: risk, blotter, AI -->
   <div class="col col-right">
     <!-- 6d0. TOMORROW'S MAP: the roads out of price from dealer gamma that survives tonight, with the IF / IF / ELSE plan. Display only. -->
-    <section id="tmap" class="panel" role="region" aria-label="Tomorrow's map" data-own="1">
-      <div class="phead"><h2>Tomorrow's map</h2><span id="tm-sub" class="dim sub" role="status"></span><button id="tm-emo" type="button" class="push rsp-tg" aria-pressed="true" title="Emoji on the map labels: on or off">🙂</button></div>
+    <section id="tmap" class="panel" role="region" aria-label="Dealer map" data-own="1">
+      <div class="phead"><h2>Dealer map</h2><span id="tm-sub" class="dim sub" role="status"></span><button id="tm-emo" type="button" class="push rsp-tg" aria-pressed="true" title="Emoji on the map labels: on or off">🙂</button></div>
       <div id="tm-head"></div>
     </section>
 
@@ -258,7 +258,7 @@
 
 
         <!-- 6d1. TOMORROW'S MAP, the plan: IF / IF / ELSE and the level key, below the timeframes. The header (RIGHT NOW, dealers) stays above them. -->
-    <section id="tmplan" class="panel" role="region" aria-label="Tomorrow's map plan" data-own="1" hidden>
+    <section id="tmplan" class="panel" role="region" aria-label="Dealer map plan" data-own="1" hidden>
       <div class="phead"><h2>If / else</h2><button id="tm-hide" type="button" class="push rsp-tg" aria-expanded="true" aria-controls="tm-body">Hide</button></div>
       <div id="tm-body"></div>
     </section>

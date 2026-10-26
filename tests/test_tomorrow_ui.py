@@ -34,7 +34,7 @@ def test_the_right_now_box_says_watch_and_never_tells_you_to_trade():
     watch = JS.split("const TM_WATCH = {")[1].split("};")[0].lower()
     for advice in ("go long", "go short", "you should", "enter ", "buy it", "sell it", "take the trade", "place "):
         assert advice not in watch, advice
-    assert "RIGHT NOW" in JS and "something to WATCH, not a signal" in JS and "Nothing is being tested right now: just watch." in JS
+    assert "RIGHT NOW" in JS and "A thing to WATCH, not a signal." in JS and "Nothing is being tested right now: just watch." in JS
     assert "const nowEl = $('tm-now')" in JS                      # the box follows price on every poll without rebuilding the panel
 
 
@@ -42,3 +42,13 @@ def test_gex_wall_labels_use_words_for_size_and_say_what_the_wall_does():
     block = JS.split("function deskLines()")[1].split("const cl = CALL.live")[0]
     assert "'BIG'" in block and "'MED'" in block and "'SMALL'" in block and "speeds moves" in block and "stalls moves" in block
     assert "Math.round(lv.rel * 100)" not in block                # the bare percentage nobody could read
+
+
+def test_analyst_callout_lines_start_when_posted_and_run_right_only():
+    assert "name: 'deskRay'" in JS and "points: [{timestamp: l.from, value: l.price}, {timestamp: last.timestamp, value: l.price}]" in JS
+    block = JS.split("function deskLines()")[1].split("const t = S.ticket")[0]
+    assert "from})" in block.replace(" ", "") or ", from}" in block                         # E, SL and T1 carry their post time
+
+
+def test_the_panel_is_called_the_dealer_map_on_screen():
+    assert "<h2>Dealer map</h2>" in HTML and "Tomorrow's map</h2>" not in HTML and 'aria-label="Dealer map"' in HTML

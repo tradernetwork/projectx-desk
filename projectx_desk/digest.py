@@ -465,7 +465,19 @@ def bias_state(app, cid, ind, last, flow):
 
 
 BOARD_TTL_S = 10.0
+BOARD_QUOTE_MAX_S = 15.0      # a quote older than this is not "now"; tracked roots only run the trade tape, so most have none
 BOARD_LABEL = {"MCLE": "MCL", "CLE": "CL"}     # ProjectX ids micro crude as MCLE; the trader calls it MCL
+
+
+def board_price(q, ind):
+    """Price the board grades at: a fresh live quote, else the last closed bar (the bias log's price of record). Tracked roots run the
+    trade tape only, so without the fallback every root but the charted one lost its VWAP vote and entry location (up to 1.0 of 3.5
+    points, ENTRY_NA) and could never grade above C."""
+    if q and "_rx" in q and time.monotonic() - q["_rx"] <= BOARD_QUOTE_MAX_S:
+        p = _n(q.get("lastPrice"))
+        if p is not None:
+            return p
+    return (ind or {}).get("closed_close")
 
 
 async def bias_board(app):
@@ -483,9 +495,8 @@ async def bias_board(app):
             row["cid"] = cid if re.match(r"^CON\.[A-Za-z0-9._]{1,40}$", cid) else None
             try:
                 ind = await indicators(app, cid)
-                q = live.quotes.get(cid)
                 flow = px_flow.summary(live.flow, cid, time.time() * 1000)
-                b = bias_state(app, cid, ind, _n(q.get("lastPrice")) if q else None, flow)
+                b = bias_state(app, cid, ind, board_price(live.quotes.get(cid), ind), flow)
                 row |= {k: b[k] for k in ("direction", "grade", "score", "max", "agree", "reads", "flags", "entry", "caution", "rule")}
             except Exception:  # noqa: BLE001 - advisory
                 pass

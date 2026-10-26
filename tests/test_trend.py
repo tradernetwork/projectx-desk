@@ -93,3 +93,36 @@ def test_regression_is_the_fallback_only_when_it_explains_the_move_and_no_pivot_
     assert r["support"] is None and r["regression"] is not None and r["regression"]["r2"] > 0.9 and r["regression"]["slope"] > 0.3
     chop = bars_from([100 + rng.gauss(0, 1.5) for _ in range(160)], rng)
     assert fit(chop, {"minTouches": 99})["regression"] is None             # r2 near zero: nothing to draw
+
+
+def run_js(expr, payload):
+    js = ("const T=require(process.argv[1]);const d=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(JSON.stringify(" + expr + "))")
+    out = subprocess.run(["node", "-e", js, str(STATIC / "trend.js")], input=json.dumps(payload), capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+def test_a_line_from_another_timeframe_keeps_its_price_at_every_time():
+    bars = channel(220, 0.25)
+    for i, b in enumerate(bars):
+        b["timestamp"] = 1_000_000 + i * 60_000                          # a 1m chart
+    res = fit(bars)
+    tl = run_js("T.timeLines(T.fit(d.bars), d.bars, 60000)", {"bars": bars})
+    s = res["support"]
+    assert tl["support"]["t1"] == bars[res["offset"] + s["i1"]]["timestamp"] and tl["support"]["slopeMs"] == pytest.approx(s["slope"] / 60_000)
+    for k in (s["i1"], s["i1"] + 40, res["last"] + 6):                    # the same line at three bars, read back through time
+        t = 1_000_000 + (res["offset"] + k) * 60_000
+        v = run_js("T.valueAt(T.timeLines(T.fit(d.bars), d.bars, 60000).support, d.t)", {"bars": bars, "t": t})
+        assert v == pytest.approx(s["p1"] + s["slope"] * (k - s["i1"]), abs=1e-6)
+
+
+def test_time_maps_to_the_right_candle_on_a_chart_of_a_different_size():
+    ts = [1_000_000 + i * 300_000 for i in range(50)]                    # a 5m chart
+    cases = {1_000_000 - 999: 0, 1_000_000 + 7 * 300_000 + 100_000: 7, 1_000_000 + 7 * 300_000 + 200_000: 8, ts[-1]: 49, ts[-1] + 6 * 300_000: 55, ts[-1] + 1: 49}
+    for t, want in cases.items():
+        assert run_js("T.indexAt(d.ts, d.t, 300000)", {"ts": ts, "t": t}) == want, t
+
+
+def test_no_claim_without_a_fit_or_with_a_bad_bar_size():
+    assert run_js("T.timeLines(null, d.b, 60000)", {"b": []}) is None
+    assert run_js("T.timeLines({offset: 0, support: null, resistance: null}, d.b, 0)", {"b": [1]}) is None

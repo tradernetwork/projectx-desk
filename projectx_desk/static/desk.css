@@ -873,3 +873,4 @@ html[data-layout="portrait"] .col-right{gap:6px}
 html[data-layout="portrait"] #tm-body{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:start}
 html[data-layout="portrait"] #tm-body>.tm-key,html[data-layout="portrait"] #tm-body>.tm-foot{grid-column:1/-1}
 @media (min-width:2200px){html[data-layout="landscape"] .col.col-right{gap:6px}}
+#tr-tfs{padding:1px;gap:1px} #tr-tfs button{min-height:22px;padding:0 6px;font:600 var(--fs-xs)/1 var(--mono)}

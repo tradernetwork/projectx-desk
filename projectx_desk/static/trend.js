@@ -111,6 +111,28 @@
     }
     return out;
   }
-  root.PXTrend = {fit, pivots, atrOf, regression, OPT};
+  /* Lines from another timeframe, expressed in TIME so they can be drawn on whatever chart is on screen. res.support / resistance are indexed
+     into the window the fit ran on (res.offset into `bars`); slopeMs is price per millisecond. */
+  function timeLines(res, bars, barMs){
+    if(!res || !Array.isArray(bars) || !(barMs > 0)) return null;
+    const conv = ln => {
+      if(!ln) return null;
+      const b = bars[res.offset + ln.i1]; if(!b || !fin(b.timestamp)) return null;
+      return {kind: ln.kind, t1: b.timestamp, v1: ln.p1, slopeMs: ln.slope / barMs, touches: ln.touches, breaks: ln.breaks, rail: ln.rail ? {offset: ln.rail.offset, touches: ln.rail.touches, width: ln.rail.width} : null};
+    };
+    return {support: conv(res.support), resistance: conv(res.resistance), parallel: !!res.parallel, atr: res.atr};
+  }
+  const valueAt = (tl, t) => tl.v1 + tl.slopeMs * (t - tl.t1);
+  /* Where a timestamp lands on a chart whose candles are `timestamps` (ascending, one every barMs): the nearest candle inside the data, a
+     fractional-free extrapolation by whole bars beyond the last one, and the first candle for anything before the data starts. */
+  function indexAt(timestamps, t, barMs){
+    const n = timestamps.length; if(!n || !(barMs > 0)) return 0;
+    if(t <= timestamps[0]) return 0;
+    if(t >= timestamps[n - 1]) return n - 1 + Math.round((t - timestamps[n - 1]) / barMs);
+    let lo = 0, hi = n - 1;
+    while(hi - lo > 1){const mid = (lo + hi) >> 1; if(timestamps[mid] <= t) lo = mid; else hi = mid}
+    return t - timestamps[lo] <= timestamps[hi] - t ? lo : hi;
+  }
+  root.PXTrend = {fit, pivots, atrOf, regression, timeLines, valueAt, indexAt, OPT};
   if(typeof module !== 'undefined') module.exports = root.PXTrend;
 })(typeof window !== 'undefined' ? window : globalThis);

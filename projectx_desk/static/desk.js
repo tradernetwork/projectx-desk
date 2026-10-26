@@ -1522,46 +1522,85 @@ klinecharts.registerOverlay({
     const ed = overlay.extendData || {}, y = clampY(cs[0].y, bounding);
     return [{type: 'text', ignoreEvent: true, attrs: {x: cs[0].x + 8, y, text: ed.label || '', align: 'left', baseline: 'middle'}, styles: chip(ed.color, false)}];
   }});
+/* Lines from the OTHER timeframes ride on whichever chart is on screen: a 1m channel is still a channel on the 5m chart. Their candles come from
+   /bars (cached; the chart's own timeframe uses its own data), each is fitted separately and drawn from its first touch to just past the last
+   candle, dashed and tagged with its timeframe (1m dotted). Toggled per timeframe; the current timeframe's own lines are the solid ones above. */
+const TRX = {tfs: new Set(LS.get('px.trendTfs', ['1m', '5m', '15m'])), bars: {}, at: {}, busy: {}, cid: null}, TRX_MIN = {'1m': 1, '5m': 5, '15m': 15}, TRX_TTL = {'1m': 30000, '5m': 60000, '15m': 120000};
+async function trxFetch(tf){
+  const cid = S.contractId; if(!cid || TRX.busy[tf] || Date.now() - (TRX.at[tf] || 0) < TRX_TTL[tf]) return;
+  TRX.busy[tf] = true; TRX.at[tf] = Date.now();
+  try{
+    const rows = await j('/bars?contract=' + encodeURIComponent(cid) + '&unit=2&n=' + TRX_MIN[tf] + '&limit=300');
+    if(cid === S.contractId && Array.isArray(rows)){
+      TRX.bars[tf] = rows.filter(b => b && [b.timestamp, b.high, b.low, b.close].every(num)).map(b => ({timestamp: b.timestamp, high: b.high, low: b.low, close: b.close}));
+      TR.sig = ''; drawTrend(true);
+    }
+  }catch(e){}finally{TRX.busy[tf] = false}
+}
 function drawTrend(force){
   const data = chart.getDataList(), last = data[data.length - 1], lp = last ? last.close : null;
-  const sig = JSON.stringify([TR.on, data.length, last && last.timestamp, lp != null ? Math.round(lp * 4) / 4 : null, TM.on]);
+  if(S.contractId !== TRX.cid){TRX.cid = S.contractId; TRX.bars = {}; TRX.at = {}}
+  const sig = JSON.stringify([TR.on, data.length, last && last.timestamp, lp != null ? Math.round(lp * 4) / 4 : null, TM.on, [...TRX.tfs], Object.keys(TRX.bars).map(k => TRX.bars[k].length)]);
   if(sig === TR.sig && !force) return;
   TR.sig = sig;
   try{
     chart.removeOverlay({groupId: 'trend'});
     ROOM.trend = 0;
     if(!TR.on || !last || typeof PXTrend === 'undefined'){applyRoom(); return}
-    const r = PXTrend.fit(data);
-    if(!r || (!r.support && !r.resistance && !r.channel && !r.regression)){applyRoom(); return}
-    ROOM.trend = Math.round(TR_EXT * barPx() + 250); applyRoom();       // labels sit past the last candle: leave room for them
-    const n = data.length, iEnd = n - 1 + TR_EXT, abs = i => r.offset + i;
+    const n = data.length, B = n > 1 ? data[n - 1].timestamp - data[n - 2].timestamp : 0;
+    const r = PXTrend.fit(data), here = !!(r && (r.support || r.resistance || r.channel || r.regression));
     const ov = (name, points, ed) => chart.createOverlay({name, groupId: 'trend', lock: true, points, extendData: ed});
-    const arrow = ln => Math.abs(ln.slope) < 0.03 * r.atr ? '▬' : ln.slope > 0 ? '▲' : '▼';
-    const pt = (ln, i, off) => ({dataIndex: abs(i), value: ln.p1 + ln.slope * (i - ln.i1) + (off || 0)});
-    const seg = (ln, col, off, dash) => ov('trendSeg', [pt(ln, ln.i1, off), pt(ln, r.last + TR_EXT, off)], {color: col, size: dash ? 1 : 2, dash: !!dash});
-    const tag = (ln, col, text, off) => ov('trendTag', [pt(ln, r.last + TR_EXT, off)], {color: col, label: text});
-    const fill = (a, b, col) => ov('trendFill', [{dataIndex: abs(a.i1), value: a.p1}, {dataIndex: iEnd, value: a.p1 + a.slope * (r.last + TR_EXT - a.i1)},
-                                                  {dataIndex: abs(b.i1), value: b.p1 + (b.off || 0)}, {dataIndex: iEnd, value: b.p1 + b.slope * (r.last + TR_EXT - b.i1) + (b.off || 0)}], {color: col});
-    if(r.support && r.resistance && r.parallel){            // two independent lines that run together: a confirmed channel
-      fill(r.support, r.resistance, hexA(TR_COL.support, .07));
-      seg(r.support, TR_COL.support); seg(r.resistance, TR_COL.resistance);
-      tag(r.support, TR_COL.support, arrow(r.support) + ' channel low · ' + r.support.touches + ' touches'); tag(r.resistance, TR_COL.resistance, arrow(r.resistance) + ' channel high · ' + r.resistance.touches + ' touches');
-    }else if(r.channel){                                    // a line plus a parallel rail that two pivots also touch
-      const c = r.channel, ln = c.line, col = TR_COL[ln.kind], railCol = TR_COL[ln.kind === 'support' ? 'resistance' : 'support'], w = Math.round(c.rail.width * 100) / 100;
-      fill(ln, {i1: ln.i1, p1: ln.p1, slope: ln.slope, off: c.rail.offset}, hexA(col, .07));
-      seg(ln, col); seg(ln, railCol, c.rail.offset);
-      tag(ln, col, arrow(ln) + ' ' + ln.kind + ' · ' + ln.touches + ' touches'); tag(ln, railCol, 'rail · ' + c.rail.touches + ' touches · ' + w + ' pts wide', c.rail.offset);
-    }else{
-      for(const ln of [r.support, r.resistance]) if(ln){seg(ln, TR_COL[ln.kind]); tag(ln, TR_COL[ln.kind], arrow(ln) + ' ' + ln.kind + ' · ' + ln.touches + ' touches')}
+    let drew = here;
+    if(here){
+      const iEnd = n - 1 + TR_EXT, abs = i => r.offset + i;
+      const arrow = ln => Math.abs(ln.slope) < 0.03 * r.atr ? '▬' : ln.slope > 0 ? '▲' : '▼';
+      const pt = (ln, i, off) => ({dataIndex: abs(i), value: ln.p1 + ln.slope * (i - ln.i1) + (off || 0)});
+      const seg = (ln, col, off, dash) => ov('trendSeg', [pt(ln, ln.i1, off), pt(ln, r.last + TR_EXT, off)], {color: col, size: dash ? 1 : 2, dash: !!dash});
+      const tag = (ln, col, text, off) => ov('trendTag', [pt(ln, r.last + TR_EXT, off)], {color: col, label: text});
+      const fill = (a, b, col) => ov('trendFill', [{dataIndex: abs(a.i1), value: a.p1}, {dataIndex: iEnd, value: a.p1 + a.slope * (r.last + TR_EXT - a.i1)},
+                                                    {dataIndex: abs(b.i1), value: b.p1 + (b.off || 0)}, {dataIndex: iEnd, value: b.p1 + b.slope * (r.last + TR_EXT - b.i1) + (b.off || 0)}], {color: col});
+      if(r.support && r.resistance && r.parallel){            // two independent lines that run together: a confirmed channel
+        fill(r.support, r.resistance, hexA(TR_COL.support, .07));
+        seg(r.support, TR_COL.support); seg(r.resistance, TR_COL.resistance);
+        tag(r.support, TR_COL.support, arrow(r.support) + ' channel low · ' + r.support.touches + ' touches'); tag(r.resistance, TR_COL.resistance, arrow(r.resistance) + ' channel high · ' + r.resistance.touches + ' touches');
+      }else if(r.channel){                                    // a line plus a parallel rail that two pivots also touch
+        const c = r.channel, ln = c.line, col = TR_COL[ln.kind], railCol = TR_COL[ln.kind === 'support' ? 'resistance' : 'support'], w = Math.round(c.rail.width * 100) / 100;
+        fill(ln, {i1: ln.i1, p1: ln.p1, slope: ln.slope, off: c.rail.offset}, hexA(col, .07));
+        seg(ln, col); seg(ln, railCol, c.rail.offset);
+        tag(ln, col, arrow(ln) + ' ' + ln.kind + ' · ' + ln.touches + ' touches'); tag(ln, railCol, 'rail · ' + c.rail.touches + ' touches · ' + w + ' pts wide', c.rail.offset);
+      }else{
+        for(const ln of [r.support, r.resistance]) if(ln){seg(ln, TR_COL[ln.kind]); tag(ln, TR_COL[ln.kind], arrow(ln) + ' ' + ln.kind + ' · ' + ln.touches + ' touches')}
+      }
+      if(r.regression){
+        const g = r.regression, a = {i1: g.i1, p1: g.p1, slope: g.slope};
+        seg(a, TR_COL.reg, 0, true); seg(a, TR_COL.reg, g.bandWidth, true); seg(a, TR_COL.reg, -g.bandWidth, true);
+        tag(a, TR_COL.reg, 'REG ' + (g.slope >= 0 ? '▲' : '▼') + ' r² ' + g.r2.toFixed(2) + ' · ±2σ', 0);
+      }
     }
-    if(r.regression){
-      const g = r.regression, a = {i1: g.i1, p1: g.p1, slope: g.slope};
-      seg(a, TR_COL.reg, 0, true); seg(a, TR_COL.reg, g.bandWidth, true); seg(a, TR_COL.reg, -g.bandWidth, true);
-      tag(a, TR_COL.reg, 'REG ' + (g.slope >= 0 ? '▲' : '▼') + ' r² ' + g.r2.toFixed(2) + ' · ±2σ', 0);
+    if(B > 0){                                                 // the other timeframes' lines, in time, on this chart
+      const stamps = data.map(d => d.timestamp), tEnd = last.timestamp + TR_EXT * B;
+      for(const tf of ['1m', '5m', '15m']){
+        if(!TRX.tfs.has(tf) || TRX_MIN[tf] * 60000 === B) continue;
+        const bars = TRX.bars[tf]; if(!bars){trxFetch(tf); continue}
+        trxFetch(tf);                                          // refresh when its cache has expired (a no-op inside the TTL)
+        const fr = PXTrend.fit(bars), tl = fr && PXTrend.timeLines(fr, bars, TRX_MIN[tf] * 60000); if(!tl) continue;
+        for(const ln of [tl.support, tl.resistance]) if(ln){
+          const t0 = Math.max(ln.t1, stamps[0]), col = TR_COL[ln.kind], up = ln.slopeMs * 60000 > 0.03 * (tl.atr || 1) / TRX_MIN[tf];
+          ov('trendSeg', [{dataIndex: PXTrend.indexAt(stamps, t0, B), value: PXTrend.valueAt(ln, t0)}, {dataIndex: PXTrend.indexAt(stamps, tEnd, B), value: PXTrend.valueAt(ln, tEnd)}], {color: col, size: 1, dash: true, dots: tf === '1m'});
+          ov('trendTag', [{dataIndex: PXTrend.indexAt(stamps, tEnd, B), value: PXTrend.valueAt(ln, tEnd)}], {color: col, label: tf + ' ' + (Math.abs(ln.slopeMs * 60000) < 0.03 * (tl.atr || 1) / TRX_MIN[tf] ? '▬' : up ? '▲' : '▼') + ' ' + ln.kind + ' · ' + ln.touches});
+          drew = true;
+        }
+      }
     }
+    if(!drew){applyRoom(); return}
+    ROOM.trend = Math.round(TR_EXT * barPx() + 250); applyRoom();       // labels sit past the last candle: leave room for them
   }catch(e){err(e)}
 }
-$('tr-toggle').onclick = () => {TR.on = !TR.on; LS.set('px.trend', TR.on); $('tr-toggle').setAttribute('aria-pressed', String(TR.on)); drawTrend(true)};
+$('tr-toggle').onclick = () => {TR.on = !TR.on; LS.set('px.trend', TR.on); $('tr-toggle').setAttribute('aria-pressed', String(TR.on));
+for(const b of document.querySelectorAll('#tr-tfs button')){
+  b.setAttribute('aria-pressed', String(TRX.tfs.has(b.dataset.tf)));
+  b.onclick = () => {const t = b.dataset.tf; if(TRX.tfs.has(t)) TRX.tfs.delete(t); else TRX.tfs.add(t); LS.set('px.trendTfs', [...TRX.tfs]); b.setAttribute('aria-pressed', String(TRX.tfs.has(t))); TR.sig = ''; drawTrend(true)};
+} drawTrend(true)};
 $('tr-toggle').setAttribute('aria-pressed', String(TR.on));
 function syncDesk(){try{drawTrend(false)}catch(e){err(e)} try{tmapSync()}catch(e){err(e)}      // try/catch, not typeof: both read consts defined further down, so a call before they exist throws
   drawDesk(false); if(typeof drawAutoLevels === 'function' && I.sel) drawAutoLevels(indWanted().hz)}   // auto levels are side-coded against the last price: a cross recolours them within a poll

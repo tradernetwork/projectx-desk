@@ -69,3 +69,30 @@ def test_from_env(tmp_path, monkeypatch):
     assert G.GradeLog.from_env(tmp_path).path == tmp_path / "x.jsonl"
     monkeypatch.delenv("PX_GRADES_FILE")
     assert G.GradeLog.from_env(tmp_path).path == tmp_path / "data" / "indicator_grades.jsonl"
+
+
+def test_restart_does_not_relog_a_bar_already_on_disk(tmp_path):
+    p = tmp_path / "g.jsonl"
+    first = G.GradeLog(p)
+    assert first.log({"contract": CID, "tf": "bias", "bar_ts": 300_000, "v": 1}) is True
+    again = G.GradeLog(p)                                                  # a restart: new object, same file
+    assert again.log({"contract": CID, "tf": "bias", "bar_ts": 300_000, "v": 2}) is False
+    assert again.log({"contract": CID, "tf": "bias", "bar_ts": 600_000, "v": 3}) is True
+    assert len(p.read_text(encoding="utf-8").splitlines()) == 2
+
+
+def test_seeding_survives_a_missing_file_and_a_garbled_line(tmp_path):
+    assert G.GradeLog(tmp_path / "nope.jsonl").log({"contract": CID, "tf": "bias", "bar_ts": 1}) is True
+    p = tmp_path / "g.jsonl"
+    p.write_text('not json\n{"contract":"%s","tf":"bias","bar_ts":7}\n[1,2]\n' % CID, encoding="utf-8")
+    g = G.GradeLog(p)
+    assert g.seen(CID, "bias", 7) and g.log({"contract": CID, "tf": "bias", "bar_ts": 7}) is False
+
+
+def test_a_days_old_closed_bar_is_stale_for_the_bias_log():
+    from projectx_desk.app import bias_bar_is_stale
+    now = 1_000_000_000_000
+    assert bias_bar_is_stale(now - 300_000, now) is False             # the bar that just closed
+    assert bias_bar_is_stale(now - 900_000, now) is False             # a slow bars API
+    assert bias_bar_is_stale(now - 176_700_000, now) is True          # the Friday bar on Sunday
+    assert bias_bar_is_stale(None, now) is True and bias_bar_is_stale("x", now) is True

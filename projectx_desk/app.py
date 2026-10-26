@@ -831,6 +831,16 @@ async def _resolve_roots(app, roots, have):
         have[root] = cid
 
 
+BIAS_BAR_MAX_AGE_MS = 3 * 300_000      # the bar the loop logs closed seconds ago; three bars tolerates a slow bars API, not a weekend
+
+
+def bias_bar_is_stale(closed_ts, now_ms):
+    try:
+        return now_ms - float(closed_ts) > BIAS_BAR_MAX_AGE_MS
+    except (TypeError, ValueError):
+        return True
+
+
 async def _bias_snapshot(app, cid):
     """One BIAS log line for later grading, keyed to the last CLOSED 5m bar: the read is computed at that bar's close price and the line
     carries the inputs and the rule version, so it can be rebuilt and scored against what price did next. Numbers and enums only.
@@ -838,6 +848,8 @@ async def _bias_snapshot(app, cid):
     None when there is no usable indicator set, closed bar or bias."""
     ind = await px_digest.indicators(app, cid)
     if not ind or ind.get("closed_ts") is None or ind.get("closed_close") is None:
+        return None
+    if bias_bar_is_stale(ind["closed_ts"], time.time() * 1000):     # after a closure the last closed bar is days old: never file today's inputs under it
         return None
     live = app.state.live
     em = ind.get("ema") or {}

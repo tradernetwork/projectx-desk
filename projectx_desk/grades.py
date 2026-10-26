@@ -55,6 +55,25 @@ class GradeLog:
         self.max_bytes = int(max_bytes)
         self._seen = {}
         self._warned = False
+        self._seed()
+
+    def _seed(self):
+        """Remember the bars already on disk, so a restart inside a bar's window cannot log that bar a second time with a different read."""
+        try:
+            size = self.path.stat().st_size
+            with open(self.path, "rb") as f:
+                f.seek(max(0, size - 262_144))
+                tail = f.read().splitlines()[1:] if size > 262_144 else f.read().splitlines()      # the first line of a cut tail is partial
+            for line in tail:
+                try:
+                    r = json.loads(line)
+                    self._seen[(r.get("contract"), r.get("tf"), r.get("bar_ts"))] = True
+                except (ValueError, AttributeError):
+                    continue
+            while len(self._seen) > _SEEN_CAP:
+                self._seen.pop(next(iter(self._seen)))
+        except OSError:
+            pass
 
     @classmethod
     def from_env(cls, root):

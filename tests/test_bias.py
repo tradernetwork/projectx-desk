@@ -99,13 +99,15 @@ def test_bands():
 
 
 def test_bias_snapshot_is_numbers_and_enums_only():
-    import asyncio, types
+    import asyncio, time, types
     from projectx_desk import app as appmod
     from projectx_desk import digest
 
+    closed = int(time.time() // 300) * 300_000 - 300_000          # the bar that just closed (the loop logs it seconds later)
+
     async def fake_ind(app, cid):
         return {"atr": 5.0, "adx": 30.0, "atr_pctile": 50, "vwap": 100.0, "rsi": 45.0, "ema": {"state": "BEAR", "21": 99.0},
-                "closed_ts": 1792768200000, "closed_close": 95.0}
+                "closed_ts": closed, "closed_close": 95.0}
 
     live = types.SimpleNamespace(quotes={"CON.F.US.MES.Z26": {"lastPrice": 95.0}}, flow=None)
     app = types.SimpleNamespace(state=types.SimpleNamespace(live=live, respect_bars={}))
@@ -116,9 +118,17 @@ def test_bias_snapshot_is_numbers_and_enums_only():
         e = asyncio.run(appmod._bias_snapshot(app, "CON.F.US.MES.Z26"))
     finally:
         digest.indicators, appmod.px_flow.summary = old_i, old_s
-    assert e["tf"] == "bias" and e["contract"] == "CON.F.US.MES.Z26" and e["bar_ts"] == 1792768200000 and e["price"] == 95.0
+    assert e["tf"] == "bias" and e["contract"] == "CON.F.US.MES.Z26" and e["bar_ts"] == closed and e["price"] == 95.0
     assert e["rule"] == "v2.1" and e["rsi"] == 45.0 and "entry" in e
     assert e["direction"] in ("LONG", "SHORT", "NEUTRAL", "NA") and set(e) >= {"price", "atr", "grade", "votes", "flags"}
+
+    async def stale_ind(app, cid):                                 # the Friday bar on a Sunday: nothing is logged under it
+        return {**(await fake_ind(app, cid)), "closed_ts": closed - 176_700_000}
+    digest.indicators, appmod.px_flow.summary = stale_ind, lambda *a, **k: None
+    try:
+        assert asyncio.run(appmod._bias_snapshot(app, "CON.F.US.MES.Z26")) is None
+    finally:
+        digest.indicators, appmod.px_flow.summary = old_i, old_s
 
 
 def test_bias_log_loop_writes_one_line_per_tracked_contract_per_closed_bar(tmp_path, monkeypatch):

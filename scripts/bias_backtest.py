@@ -32,6 +32,11 @@ def main():
     print("\ngrade        n    win   mean R")
     for g, s in rep["by_grade"].items():
         print(f"{g:<10} {s['n']:>4}  {'' if s['win'] is None else format(s['win'], '.0%'):>5}  {'' if s['mean_r'] is None else format(s['mean_r'], '+.3f'):>7}")
+    print("\nBY REGIME (all leans; lean R vs the opposite side's R; n overlaps, about n/6 independent)")
+    for name, tab in rep["regimes"].items():
+        print(f"  {name}")
+        for x in tab:
+            print(f"    {x['label']:<28} n={x['n']:>4}  lean {x['lean']:+.3f}  opp {x['opp']:+.3f}")
     print(f"\ncoin-flip p (A+B): {rep['coin_flip_p_A_B']}   (chance a random direction does as well; small is good)")
     print("walk-forward folds (A+B):", "  ".join(f"[n={f['n']} win={f['win']:.0%} R={f['mean_r']:+.2f}]" for f in rep["folds_A_B"]) or "too few trades")
     mc = rep["monte_carlo_A_B"]

@@ -85,3 +85,30 @@ def test_verdict_says_insufficient_on_a_small_sample_and_report_runs_end_to_end(
     px = [100 + sum(rng.uniform(-1, 1) for _ in range(i % 7)) for i in range(120)]
     rep = B.report(rows(px), iters=200)
     assert rep["verdict"].startswith("INSUFFICIENT") and set(rep["by_grade"]) >= {"A", "B", "C", "D", "A+B", "all leans"}
+
+
+def test_session_buckets_in_central_time():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    ms = lambda y, mo, d, h, mi: int(datetime(y, mo, d, h, mi, tzinfo=ZoneInfo("America/Chicago")).timestamp() * 1000)
+    assert B.session(ms(2026, 10, 25, 17, 5)).startswith("1 sunday reopen")
+    assert B.session(ms(2026, 10, 26, 8, 35)).startswith("2 cash open")
+    assert B.session(ms(2026, 10, 26, 9, 45)).startswith("3 morning") and B.session(ms(2026, 10, 26, 12, 0)).startswith("4 midday")
+    assert B.session(ms(2026, 10, 26, 15, 30)).startswith("5 close") and B.session(ms(2026, 10, 26, 3, 0)).startswith("6 overnight")
+
+
+def test_regime_tables_skip_fields_the_log_does_not_have_and_read_the_lean_side_run():
+    rng = random.Random(9)
+    px = [100 + sum(rng.uniform(-1, 1) for _ in range(i % 9)) for i in range(160)]
+    rs = rows(px)
+    for i, r in enumerate(rs):
+        r.update({"direction": "SHORT" if i % 2 else "LONG", "vwap": 100.0, "adx": 15 + i % 20})
+        if i >= 80:                                   # only the newer half carries the new fields
+            r.update({"er5": (i % 10) / 10, "run_up": 1.0 + i % 5, "run_dn": 9.0})
+    tr = B.trades(B.series(rs, "v2.1"))
+    tabs = B.regime_tables(tr)
+    assert "session" in tabs and "5m ADX" in tabs and "5m efficiency (12 bars)" in tabs
+    assert "15m ADX" not in tabs and "1h ADX" not in tabs              # never logged here: no table, not a table of zeros
+    short = next(t for t in tr if t["row"]["direction"] == "SHORT" and "run_dn" in t["row"])
+    assert B.REGIME_FIELDS["run in lean direction, 24 bars (ATR)"](short["row"], -1) == 9.0     # a SHORT reads run_dn
+    assert all(x["n"] >= 1 for x in tabs["5m ADX"])

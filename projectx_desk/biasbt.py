@@ -15,6 +15,8 @@ Overlapping windows mean the effective sample is about n / horizon, not n. A ver
 import json
 import math
 import random
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 BAR_MS = 300_000
 LEANS = ("LONG", "SHORT")
@@ -119,9 +121,77 @@ def trades(ser, horizon=6, stop_k=1.5, rr=1.5):
             r_for, r_against = outcome(rs, i, sgn, horizon, stop_k, rr), outcome(rs, i, -sgn, horizon, stop_k, rr)
             if r_for is None or r_against is None:
                 continue
-            out.append({"contract": c, "t": r["bar_ts"], "grade": r.get("grade"), "r": r_for, "r_opp": r_against, "block": (c, i // horizon)})
+            out.append({"contract": c, "t": r["bar_ts"], "grade": r.get("grade"), "r": r_for, "r_opp": r_against, "block": (c, i // horizon), "row": r})
     out.sort(key=lambda x: x["t"])
     return out
+
+
+CT = ZoneInfo("America/Chicago")
+
+
+def session(bar_ts):
+    """CT session of a bar. The Sunday reopen and the 08:30 open are split out: that is where chop is claimed to live."""
+    d = datetime.fromtimestamp(bar_ts / 1000, CT)
+    m = d.hour * 60 + d.minute
+    if d.weekday() == 6 and 17 * 60 <= m < 17 * 60 + 30:
+        return "1 sunday reopen 17:00-17:30"
+    if 8 * 60 + 30 <= m < 9 * 60:
+        return "2 cash open 08:30-09:00"
+    if 9 * 60 <= m < 10 * 60 + 30:
+        return "3 morning 09:00-10:30"
+    if 10 * 60 + 30 <= m < 14 * 60 + 55:
+        return "4 midday 10:30-14:55"
+    if 14 * 60 + 55 <= m < 17 * 60:
+        return "5 close 14:55-17:00"
+    return "6 overnight"
+
+
+def _ext_vwap(r, sgn):
+    p, v, a = _num(r.get("price")), _num(r.get("vwap")), _num(r.get("atr"))
+    return None if p is None or v is None or not a or a <= 0 else sgn * (p - v) / a
+
+
+# name -> how to read it from a trade's log row. None = not logged (older rows), so the trade is left out of that table.
+REGIME_FIELDS = {
+    "5m ADX": lambda r, s: _num(r.get("adx")),
+    "5m efficiency (12 bars)": lambda r, s: _num(r.get("er5")),
+    "VWAP crosses (12 bars)": lambda r, s: _num(r.get("vwapx")),
+    "15m ADX": lambda r, s: _num(r.get("adx15")),
+    "1h ADX": lambda r, s: _num(r.get("adx1h")),
+    "VWAP extension, lean side (ATR)": lambda r, s: _ext_vwap(r, s),
+    "run in lean direction, 24 bars (ATR)": lambda r, s: _num(r.get("run_dn" if s < 0 else "run_up")),
+}
+
+
+def _line(label, v):
+    n = len(v)
+    return {"label": label, "n": n, "lean": round(sum(t["r"] for t in v) / n, 3), "opp": round(sum(t["r_opp"] for t in v) / n, 3)} if n else None
+
+
+def regime_tables(tr, parts=3):
+    """Lean R and opposite-side R by session, then by tercile of each regime measure. n counts overlapping windows (about n / horizon
+    independent). A measure the log does not carry yet simply has no table."""
+    tables = {}
+    sess = {}
+    for t in tr:
+        sess.setdefault(session(t["t"]), []).append(t)
+    tables["session"] = [x for k in sorted(sess) if (x := _line(k, sess[k]))]
+    for name, get in REGIME_FIELDS.items():
+        have = []
+        for t in tr:
+            v = get(t["row"], 1 if t["row"].get("direction") == "LONG" else -1)
+            if v is not None:
+                have.append((v, t))
+        if len(have) < parts * 10:
+            continue
+        have.sort(key=lambda x: x[0])
+        n = len(have)
+        rows_ = []
+        for i in range(parts):
+            seg = have[i * n // parts:(i + 1) * n // parts]
+            rows_.append(_line(f"{seg[0][0]:.2f} to {seg[-1][0]:.2f}", [t for _, t in seg]))
+        tables[name] = rows_
+    return tables
 
 
 def summary(rs_):
@@ -220,5 +290,5 @@ def report(rows, rule="v2.1", horizon=6, stop_k=1.5, rr=1.5, risk_pct=0.10, k=3,
     p = coin_flip_p(tr, GOOD, iters, seed)
     fs = folds(tr, GOOD, k)
     return {"params": {"rule": rule, "horizon_bars": horizon, "stop_atr": stop_k, "target_r": rr, "risk_pct": risk_pct, "folds": k, "seed": seed},
-            "audit": audit(rows, rule), "by_grade": by_grade(tr), "coin_flip_p_A_B": p, "folds_A_B": fs,
+            "audit": audit(rows, rule), "by_grade": by_grade(tr), "regimes": regime_tables(tr), "coin_flip_p_A_B": p, "folds_A_B": fs,
             "monte_carlo_A_B": monte_carlo(tr, GOOD, risk_pct, seed=seed), "verdict": verdict(tr, p, fs, GOOD, horizon)}

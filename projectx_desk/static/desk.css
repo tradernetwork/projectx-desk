@@ -469,6 +469,7 @@ body.acct-live .ribbon{border-top:2px solid var(--magenta)}
 .bz{font:700 var(--fs-2xs)/1 var(--sans);letter-spacing:.08em;padding:2px 5px;border-radius:3px;border:1px solid var(--border-strong);color:var(--text-2);white-space:nowrap}
 .bz-bullish{color:var(--green-ink);border-color:var(--green-line);background:var(--green-bg)} .bz-bearish{color:var(--mag-ink);border-color:var(--mag-line);background:var(--mag-bg)}
 .bz-na{color:var(--text-muted);border-style:dashed}
+.rg{font:600 var(--fs-xs)/1.3 var(--mono);white-space:nowrap;color:var(--text-2)} .rg-ranging,.rg-chop{color:var(--amber-ink)} .rg-unknown{color:var(--text-muted)}
 @media (min-width:700px) and (max-width:1099px){.mnbody{flex-direction:row}.mn{flex:1 1 0}}
 
 /* ---- EMA badge + toggle swatches ---- */

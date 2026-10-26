@@ -48,6 +48,7 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 | `projectx_desk/tradeday.py` | the one definition of the trading day (17:00 CT roll) |
 | `projectx_desk/sizing.py`, `projectx_desk/gex_futures.py` | pure sizing math; GEX levels converted to futures price space |
 | `projectx_desk/dev_gateway.py` | a mock ProjectX gateway (REST + SignalR) for offline development and end-to-end tests |
+| `projectx_desk/regime.py`, `static/regime.js` | chop and late-in-the-move measures (ADX per timeframe, 12-bar efficiency ratio, VWAP crossings, run off the 24-bar extreme in ATRs). Pure, display and logging only, never read by the guard or sizing. The JS twin draws the chip on the 15m and 1h minis; `tests/test_regime.py` runs both on the same bars. `_bias_snapshot` logs the numbers (`er5`, `vwapx`, `run_up`, `run_dn`, `adx15`, `er15`, `adx1h`, `er1h`) |
 | `projectx_desk/biasbt.py` | offline scorer for the BIAS rule from `data/bias_log.jsonl` (outcomes, coin-flip baseline, walk-forward folds, Monte Carlo streaks, audit). Pure; run it with `scripts/bias_backtest.py`. Never imported by the desk |
 | `projectx_desk/static/` | the desk UI (vanilla JS, no build step) |
 | `projectx_desk/static/layout.js` | Auto / Landscape / Portrait: sets `html[data-layout]` before first paint; the portrait grid lives at the end of `desk.css` (own footer row, full-width chart). Display only |

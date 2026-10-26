@@ -831,6 +831,13 @@ async def _resolve_roots(app, roots, have):
         have[root] = cid
 
 
+def _regime_fields(app, cid, ind):
+    """Chop and late-in-the-move measures for the bias log, so the grade can later be scored by regime. Numbers only; None when unknown."""
+    r5, htf = ind.get("reg5") or {}, px_digest.htf_regime(app, cid)
+    return {"er5": r5.get("er"), "vwapx": r5.get("vwapx"), "run_up": r5.get("run_up"), "run_dn": r5.get("run_dn"),
+            "adx15": htf["15m"]["adx"], "er15": htf["15m"]["er"], "adx1h": htf["1h"]["adx"], "er1h": htf["1h"]["er"]}
+
+
 BIAS_BAR_MAX_AGE_MS = 3 * 300_000      # the bar the loop logs closed seconds ago; three bars tolerates a slow bars API, not a weekend
 
 
@@ -857,7 +864,8 @@ async def _bias_snapshot(app, cid):
     return {"ts": int(time.time() * 1000), "contract": cid, "tf": "bias", "bar_ts": int(ind["closed_ts"]), "price": ind["closed_close"],
             "atr": ind.get("atr"), "adx": ind.get("adx"), "atr_pctile": ind.get("atr_pctile"), "rsi": ind.get("rsi"), "vwap": ind.get("vwap"),
             "ema21": em.get("21"), "rule": b.get("rule"), "direction": b["direction"], "grade": b["grade"], "score": b["score"], "max": b.get("max"),
-            "agree": b["agree"], "reads": b["reads"], "entry": b.get("entry"), "votes": b["votes"], "flags": b["flags"]}
+            "agree": b["agree"], "reads": b["reads"], "entry": b.get("entry"), "votes": b["votes"], "flags": b["flags"],
+            **_regime_fields(app, cid, ind)}
 
 
 async def _bias_log_loop(app):

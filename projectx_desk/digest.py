@@ -15,6 +15,7 @@ from projectx_desk import anchor as px_anchor
 from projectx_desk import bias as px_bias
 from projectx_desk import feed as px_feed
 from projectx_desk import gex as px_gex
+from projectx_desk import regime as px_regime
 from projectx_desk import flow as px_flow
 from projectx_desk import sizing
 from projectx_desk.indicators import rsi_series
@@ -98,7 +99,11 @@ async def indicators(app, contract_id):
                            "last_result": st_["last_result"], "last_bars_ago": st_["last_bars_ago"],
                            "events": [{"ms": e["t"], "price": e["price"], "kind": e["kind"], "result": e["result"]}
                                       for e in st_["events"][-8:]]})
-        out = {"atr": _n(a), "adx": _n(adx[0]) if adx else None, "vwap": _n(pv / vol) if vol else None,
+        cc = max(len(cl) - 1, 0)                                         # closed bars only: the last row is the forming bar
+        ru, rd = px_regime.run_extent(hi[:cc], lo[:cc], cl[:cc], atrs[cc - 1] if cc else None)
+        reg5 = {"er": px_regime.r2(px_regime.efficiency(cl[:cc])), "vwapx": px_regime.vwap_cross_count(cl[:cc], vwap_s[:cc]),
+                "run_up": px_regime.r2(ru), "run_dn": px_regime.r2(rd)}
+        out = {"atr": _n(a), "adx": _n(adx[0]) if adx else None, "reg5": reg5, "vwap": _n(pv / vol) if vol else None,
                "hi": _n(shi), "lo": _n(slo), "volume": _n(vol, 0), "tf": f"{BAR_N}m", "bars": len(bars),
                "atr_pctile": percentile_rank(a, atrs[-100:]), "rsi": _n(rsi_series(cl)[-1]) if cl else None,
                "closed_ts": tms[-2] if len(tms) > 1 else None, "closed_close": _n(cl[-2]) if len(cl) > 1 else None,
@@ -453,6 +458,16 @@ def htf_stacks(app, cid):
         hit = cache.get((cid, tf))
         closes = [b["close"] for b in (hit or {}).get("bars", [])]
         out[tf] = ema_stack(closes)["state"] if len(closes) >= 40 else "NA"
+    return out
+
+
+def htf_regime(app, cid):
+    """ADX and efficiency per higher timeframe from the closed bars the respect scan cached. Missing or short = None fields."""
+    cache = getattr(app.state, "respect_bars", None) or {}
+    out = {}
+    for tf in ("15m", "1h"):
+        r = px_regime.tf_regime((cache.get((cid, tf)) or {}).get("bars") or [])
+        out[tf] = {"adx": px_regime.r2(r["adx"], 1), "er": px_regime.r2(r["er"])}
     return out
 
 

@@ -1541,6 +1541,12 @@ function mnMeta(tf){
   kids[0].className = 'bz bz-' + bz.bias.toLowerCase();
   kids[1].textContent = bz.stack === 'NA' ? '' : MN_GLYPH[bz.stack] + ' ' + bz.note;
   kids[2].textContent = bz.pos === 'NA' ? '' : bz.pos;
+  if(kids[3] && typeof PXRegime !== 'undefined'){      // chop read of this timeframe's own closed bars: ADX lags, so efficiency sits beside it
+    const rg = PXRegime.tfRegime(all.slice(0, -1)), a = rg.adx == null ? null : rg.adx.toFixed(0), e = rg.er == null ? 'NA' : rg.er.toFixed(2).replace(/^0/, '');
+    kids[3].textContent = (a == null ? 'ADX NA' : rg.state + ' ADX ' + a) + ' · ER ' + e + (rg.choppy ? ' CHOPPY' : '');
+    kids[3].className = 'rg rg-' + rg.state.toLowerCase() + (rg.choppy ? ' rg-chop' : '');
+    kids[3].title = 'Trend or chop on this timeframe. ADX under 20 = RANGING (it lags: 29 bars to read). ER = efficiency of the last 12 closes, net move over distance travelled: under .20 = CHOPPY (a straight line is 1). Display only.';
+  }
   box.classList.toggle('cur', RSP_TF_OF[S.tf] === tf);
   if(RSP_TF_OF[S.tf] === tf) box.setAttribute('aria-current', 'true'); else box.removeAttribute('aria-current');
 }
@@ -1578,7 +1584,7 @@ for(const tf of MN.tfs){
   const box = mk('div', 'mn'); box.dataset.tf = tf; box.style.setProperty('--tfc', RSP_STYLE[tf].c);
   const mh = mk('div', 'mh'); mh.append(mk('b', '', tf), mk('span', 'mp', ''));
   const cv = mk('canvas'); cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', tf + ' candles with EMA 8, 13, 21, 34, 55, 89');
-  const mb = mk('div', 'mb'); mb.append(mk('span', 'bz bz-na', 'NA'), mk('span', 'bs', ''), mk('span', 'bp', ''));
+  const mb = mk('div', 'mb'); mb.append(mk('span', 'bz bz-na', 'NA'), mk('span', 'bs', ''), mk('span', 'bp', ''), mk('span', 'rg rg-unknown', ''));
   box.append(mh, cv, mb); $('mn-body').append(box); MN.cv[tf] = cv; MN.box[tf] = box;
 }
 function mnApplyOpen(){

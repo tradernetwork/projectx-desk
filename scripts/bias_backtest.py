@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Score the BIAS rule from data/bias_log.jsonl: did a B or better lean beat a coin flip, window by window?
 
-    python scripts/bias_backtest.py                      # ./data/bias_log.jsonl, rule v2.1, 30 minute horizon, 1.5 ATR stop, 1.5R target
+    python scripts/bias_backtest.py                      # ./data/bias_log.jsonl, rule v2.2 (v2.1 rows score with --rule v2.1), 30 minute horizon, 1.5 ATR stop, 1.5R target
     python scripts/bias_backtest.py --log copy.jsonl --horizon 12 --risk 0.10 --folds 3
 
 Offline: reads one file, prints a report, writes nothing. Read projectx_desk/biasbt.py for the method and its limits (close-only, no costs)."""
@@ -17,7 +17,7 @@ from projectx_desk import biasbt  # noqa: E402
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--log", default=str(ROOT / "data" / "bias_log.jsonl"))
-    ap.add_argument("--rule", default="v2.1")
+    ap.add_argument("--rule", default="v2.2")
     ap.add_argument("--horizon", type=int, default=6, help="5m bars to hold (6 = 30 minutes)")
     ap.add_argument("--stop-k", type=float, default=1.5, help="stop distance in ATR")
     ap.add_argument("--rr", type=float, default=1.5, help="target as a multiple of the risk")

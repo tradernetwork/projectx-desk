@@ -121,3 +121,34 @@ def test_ribbon_slopes_read_up_down_flat_and_a_ribbon_that_is_only_starting_to_t
     turning = _ribbon(bars)
     assert turning["dirs"][:3] == [1, 1, 1] and turning["turn"] == "up" and -1 in turning["dirs"][3:]
     assert _ribbon(walk(60, 4)) is None                                         # too few bars for the slowest EMA: no claim
+
+
+def _node(js, payload):
+    out = subprocess.run(["node", "-e", js, str(STATIC / "regime.js")], input=json.dumps(payload), capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+def _slope_py(bars):
+    return R.ema_slope([b["high"] for b in bars], [b["low"] for b in bars], [b["close"] for b in bars])
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_ema_slope_python_and_js_agree_on_many_random_walks():
+    js = "const R=require(process.argv[1]);const c=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(JSON.stringify(c.map(b=>R.emaSlope(b,21,5,0.03))))"
+    cases = [walk(n, s, drift=d, vol=v) for s, (n, d, v) in enumerate([(120, 0.4, 0.3), (120, -0.4, 0.3), (200, 0.0, 1.0), (60, 0.05, 0.5)] * 6)]
+    got = _node(js, cases)
+    assert got == [_slope_py(b) for b in cases]
+    assert set(got) >= {"UP", "DOWN", "FLAT"} or len(set(got)) >= 2
+    assert _slope_py(walk(20, 1)) is None
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_hma_edge_cases_and_a_ramp_stays_a_ramp():
+    js = "const R=require(process.argv[1]);const c=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(JSON.stringify(c.map(x=>R.hma(x,21))))"
+    ramp = [100 + 0.5 * i for i in range(80)]
+    out = _node(js, [ramp, [100.0] * 80, ramp[:10], ramp[:30] + [None] + ramp[31:]])
+    r = out[0]
+    assert r[:20 + 4] == [None] * 24 and all(abs(r[i] - ramp[i]) < 0.5 for i in range(len(ramp) - 20, len(ramp)))   # a ramp stays a ramp, off by under one bar (integer half and sqrt lengths)
+    assert all(abs(x - 100.0) < 1e-9 for x in out[1][24:])
+    assert out[2] is None and out[3] is None                       # too short, non-finite input: no line

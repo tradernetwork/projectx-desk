@@ -112,3 +112,17 @@ def test_regime_tables_skip_fields_the_log_does_not_have_and_read_the_lean_side_
     short = next(t for t in tr if t["row"]["direction"] == "SHORT" and "run_dn" in t["row"])
     assert B.REGIME_FIELDS["run in lean direction, 24 bars (ATR)"](short["row"], -1) == 9.0     # a SHORT reads run_dn
     assert all(x["n"] >= 1 for x in tabs["5m ADX"])
+
+
+def test_ema21_slope_table_groups_trades_by_slope_against_the_lean_and_skips_old_rows():
+    rng = random.Random(5)
+    px = [100 + sum(rng.uniform(-1, 1) for _ in range(i % 9)) for i in range(160)]
+    rs = rows(px)
+    for i, r in enumerate(rs):
+        r["direction"] = "SHORT" if i % 2 else "LONG"
+        if i >= 80:
+            r["s21"] = ("UP", "DOWN", "FLAT")[i % 3]
+    tabs = B.regime_tables(B.trades(B.series(rs, "v2.1")))
+    labels = {x["label"] for x in tabs["EMA21 slope vs lean"]}
+    assert labels <= {"with the lean", "flat", "against the lean"} and "against the lean" in labels
+    assert "EMA21 slope vs lean" not in B.regime_tables(B.trades(B.series(rows(px), "v2.1")))

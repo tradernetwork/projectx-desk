@@ -883,3 +883,6 @@ html[data-layout="portrait"][data-pos="1"] .col-right>#blotter{order:0}
 .level-alert{top:70px}
 .callout-alert.level-alert.down{background:linear-gradient(90deg,#fb3b64,#be123c);color:#fff;box-shadow:0 0 0 2px #fecdd3,0 0 26px 6px rgba(251,59,100,.6)}
 .callout-alert.level-alert.up{background:linear-gradient(90deg,#34d399,#16a34a);color:#052e16;box-shadow:0 0 0 2px #bbf7d0,0 0 26px 6px rgba(52,211,153,.55)}
+
+.ema-slope{margin-left:4px;font-weight:700}
+.ema-slope[data-warn="1"]{color:var(--amber-ink);text-shadow:0 0 6px var(--amber)}   /* the stack still says one way while the 21 EMA has turned the other */

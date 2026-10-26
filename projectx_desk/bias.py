@@ -14,7 +14,7 @@ has NOT been backtested. It is hand-set, not fitted, and says what it is looking
 Letters: A >= 3.0, B >= 2.25, C >= 1.5, else D ("-" = no lean). The trader decides; this is context."""
 import math
 
-RULE = "v2.1"
+RULE = "v2.2"
 MIN_READS = 3
 MAX_SCORE = 3.5
 W_STACK, W_VWAP, W_FLOW, W_ENTRY = 0.5, 0.5, 0.5, 1.0
@@ -22,7 +22,7 @@ PULLBACK_ATR, EXTEND_ATR = 0.75, 2.0
 OPEN_M, OPEN_CHOP_MIN = 8 * 60 + 30, 15
 BANDS = ((3.0, "A"), (2.25, "B"), (1.5, "C"), (0.0, "D"))
 ORDER = {"A": 0, "B": 1, "C": 2, "D": 3}
-CAUTION = frozenset({"VOL_EXTREME", "EXTENDED", "STRETCHED", "EXTENDED_RSI", "OPEN_CHOP", "THROUGH_EMA", "RANGING", "DISSENT"})
+CAUTION = frozenset({"VOL_EXTREME", "EXTENDED", "STRETCHED", "EXTENDED_RSI", "OPEN_CHOP", "THROUGH_EMA", "RANGING", "DISSENT", "EMA_TURN"})
 FLOW_MIN_SKEW = 0.05
 
 
@@ -67,9 +67,9 @@ def _cap(letter, cap):
     return cap if ORDER[cap] > ORDER[letter] else letter
 
 
-def bias_view(last, vwap, ema21, atr, atr_pctile, adx, stacks, flow, rsi=None, ct_minute=None, adx_chop=20.0):
+def bias_view(last, vwap, ema21, atr, atr_pctile, adx, stacks, flow, rsi=None, ct_minute=None, adx_chop=20.0, slope21=None):
     """stacks: {"5m": "BULL"|"BEAR"|"MIXED"|"NA", "15m": ..., "1h": ...}. rsi: 5m RSI(14). ct_minute: minutes since midnight CT.
-    Returns enums and numbers only."""
+    slope21: "UP"|"DOWN"|"FLAT"|None, the 5m EMA21 slope on the closed bars (regime.ema_slope). Returns enums and numbers only."""
     last, vwap, ema21, atr, rsi = _num(last), _num(vwap), _num(ema21), _num(atr), _num(rsi)
     reads = {}
     for tf in ("5m", "15m", "1h"):
@@ -104,6 +104,9 @@ def bias_view(last, vwap, ema21, atr, atr_pctile, adx, stacks, flow, rsi=None, c
     cap = "A"
     if any(v == -sgn for v in reads.values()):
         flags.append("DISSENT")
+        cap = _cap(cap, "B")
+    if (sgn > 0 and slope21 == "DOWN") or (sgn < 0 and slope21 == "UP"):   # v2.2: the 21 EMA is turning against the lean. Hand-set cap, not fitted
+        flags.append("EMA_TURN")
         cap = _cap(cap, "B")
     d = sgn * (last - ema21) / atr if (last is not None and ema21 is not None and atr and atr > 0) else None
     if d is None:

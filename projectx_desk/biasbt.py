@@ -176,6 +176,14 @@ def regime_tables(tr, parts=3):
     for t in tr:
         sess.setdefault(session(t["t"]), []).append(t)
     tables["session"] = [x for k in sorted(sess) if (x := _line(k, sess[k]))]
+    sl = {}                                    # EMA21 slope against the lean (rule v2.2 logs s21; older rows have none and are left out)
+    for t in tr:
+        s21 = t["row"].get("s21")
+        if s21 in ("UP", "DOWN", "FLAT"):
+            sgn = 1 if t["row"].get("direction") == "LONG" else -1
+            sl.setdefault("flat" if s21 == "FLAT" else "with the lean" if (s21 == "UP") == (sgn > 0) else "against the lean", []).append(t)
+    if sl:
+        tables["EMA21 slope vs lean"] = [x for k in ("with the lean", "flat", "against the lean") if k in sl and (x := _line(k, sl[k]))]
     for name, get in REGIME_FIELDS.items():
         have = []
         for t in tr:

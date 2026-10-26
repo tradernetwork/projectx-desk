@@ -13,7 +13,7 @@ def view(**kw):
 def test_clean_pullback_in_trend_is_an_a_and_the_max_is_printed():
     b = view()
     assert (b["direction"], b["grade"], b["entry"]) == ("SHORT", "A", "PULLBACK")
-    assert b["score"] == MAX_SCORE == b["max"] == 3.5 and not b["caution"] and b["rule"] == "v2.1"
+    assert b["score"] == MAX_SCORE == b["max"] == 3.5 and not b["caution"] and b["rule"] == "v2.2"
 
 
 def test_missing_tape_cannot_raise_the_grade():
@@ -119,7 +119,7 @@ def test_bias_snapshot_is_numbers_and_enums_only():
     finally:
         digest.indicators, appmod.px_flow.summary = old_i, old_s
     assert e["tf"] == "bias" and e["contract"] == "CON.F.US.MES.Z26" and e["bar_ts"] == closed and e["price"] == 95.0
-    assert e["rule"] == "v2.1" and e["rsi"] == 45.0 and "entry" in e
+    assert e["rule"] == "v2.2" and e["rsi"] == 45.0 and "entry" in e
     assert e["direction"] in ("LONG", "SHORT", "NEUTRAL", "NA") and set(e) >= {"price", "atr", "grade", "votes", "flags"}
 
     async def stale_ind(app, cid):                                 # the Friday bar on a Sunday: nothing is logged under it
@@ -156,3 +156,14 @@ def test_bias_log_loop_writes_one_line_per_tracked_contract_per_closed_bar(tmp_p
         pass
     lines = [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines()]
     assert [x["contract"] for x in lines] == ["CON.F.US.MES.Z26", "CON.F.US.MNQ.Z26"]
+
+
+def test_ema21_turning_against_the_lean_caps_a_clean_a_at_b_and_a_matching_slope_does_not():
+    assert view()["grade"] == "A"
+    turned = view(slope21="UP")                       # short lean, the 21 EMA curling up
+    assert "EMA_TURN" in turned["flags"] and turned["grade"] == "B" and turned["caution"]
+    assert view(slope21="DOWN")["grade"] == "A" and "EMA_TURN" not in view(slope21="DOWN")["flags"]
+    assert view(slope21=None)["grade"] == "A" and view(slope21="FLAT")["grade"] == "A"       # unreadable or flat: no claim
+    long_ = view(stacks={"5m": "BULL", "15m": "BULL", "1h": "BULL"}, last=100.5, ema21=100.4, flow={"w": {15: {"buy": 900, "sell": 400, "complete": True}}})
+    assert long_["direction"] == "LONG" and "EMA_TURN" in view(**{"stacks": {"5m": "BULL", "15m": "BULL", "1h": "BULL"}, "last": 100.5, "ema21": 100.4,
+                                                                  "flow": {"w": {15: {"buy": 900, "sell": 400, "complete": True}}}, "slope21": "DOWN"})["flags"]

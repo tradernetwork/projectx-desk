@@ -111,14 +111,16 @@ async def indicators(app, contract_id):
             a_c, adx_c, st_c = sizing.atr(hi[:cc], lo[:cc], cl[:cc], 14), sizing.adx(hi[:cc], lo[:cc], cl[:cc], 14), ema_stack(cl[:cc])
             closed = {"atr": _n(a_c), "adx": _n(adx_c[0]) if adx_c else None, "vwap": _n(vwap_s[cc - 1]) if vwap_s[cc - 1] else None,
                       "atr_pctile": percentile_rank(a_c, atrs[:cc][-100:]), "rsi": _n(rsi_series(cl[:cc])[-1]),
-                      "ema": {"state": st_c["state"], **{str(k): _n(v) for k, v in st_c["values"].items()}}}
+                      "ema": {"state": st_c["state"], "slope21": px_regime.ema_slope(hi[:cc], lo[:cc], cl[:cc]),
+                              **{str(k): _n(v) for k, v in st_c["values"].items()}}}
         reg5 = {"er": px_regime.r2(px_regime.efficiency(cl[:cc])), "vwapx": px_regime.vwap_cross_count(cl[:cc], vwap_s[:cc]),
                 "run_up": px_regime.r2(ru), "run_dn": px_regime.r2(rd)}
         out = {"atr": _n(a), "adx": _n(adx[0]) if adx else None, "reg5": reg5, "vwap": _n(pv / vol) if vol else None,
                "hi": _n(shi), "lo": _n(slo), "volume": _n(vol, 0), "tf": f"{BAR_N}m", "bars": len(bars),
                "atr_pctile": percentile_rank(a, atrs[-100:]), "rsi": _n(rsi_series(cl)[-1]) if cl else None,
                "closed_ts": tms[cc - 1] if cc else None, "closed_close": _n(cl[cc - 1]) if cc else None, "closed": closed,
-               "ema": {"state": stack["state"], **{str(k): _n(v) for k, v in stack["values"].items()}},
+               "ema": {"state": stack["state"], "slope21": px_regime.ema_slope(hi, lo, cl),
+                       **{str(k): _n(v) for k, v in stack["values"].items()}},
                "levels": levels}
     except Exception:  # noqa: BLE001 - indicators are advisory; the guard never depends on them
         out = {}
@@ -496,7 +498,8 @@ def bias_state(app, cid, ind, last, flow):
     stacks = {"5m": em.get("state")} | (htf_stacks(app, cid) if cid else {})
     ct = datetime.now(timezone.utc).astimezone(CT)
     return px_bias.bias_view(last, ind.get("vwap"), em.get("21"), ind.get("atr"), ind.get("atr_pctile"), ind.get("adx"),
-                             stacks, flow, rsi=ind.get("rsi"), ct_minute=ct.hour * 60 + ct.minute, adx_chop=float(sizing.ADX_CHOP))
+                             stacks, flow, rsi=ind.get("rsi"), ct_minute=ct.hour * 60 + ct.minute, adx_chop=float(sizing.ADX_CHOP),
+                             slope21=em.get("slope21"))
 
 
 DEFAULT_RISK_PCT = 0.10       # 1R as a share of the live drawdown room; the one default for the UI, /ai/*, and the MCP tools (the UI stepper tops out here)
@@ -879,7 +882,7 @@ def format_digest(s) -> str:
     else:
         L.append("BIAS: NA (fewer than 3 reads available)")
     em = i.get("ema") or {}
-    L.append(f"EMA: stack={_f(em.get('state'))} 8={_f(em.get('8'))} 21={_f(em.get('21'))} 34={_f(em.get('34'))}")
+    L.append(f"EMA: stack={_f(em.get('state'))} 8={_f(em.get('8'))} 21={_f(em.get('21'))} 34={_f(em.get('34'))} slope21={_f(em.get('slope21'))}")
     for lv in s.get("levels", []) or []:
         tag = " SMALL_SAMPLE" if lv.get("small_sample") else ""
         L.append(f"LEVEL: {lv['name']} {_f(lv['price'])} {lv['dist_pt']:+.2f}pt {lv['pos']} tested={lv['n']} held={lv['bounced']} "

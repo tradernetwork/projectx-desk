@@ -55,5 +55,24 @@ def tf_regime(rows):
     return {"adx": a, "er": er, "state": state, "choppy": None if er is None else er < CHOP_ER}
 
 
+def ema_slope(highs, lows, closes, period=21, k=5, dead=0.03):
+    """UP / DOWN / FLAT for one EMA over the last k bars, judged against ATR so noise is not a slope; None when it cannot be read.
+    The same arithmetic as static/regime.js `emaSlope` (tests/test_regime.py compares them): the EMA is seeded with the first close and
+    the ATR is the plain mean of the last 14 true ranges, NOT Wilder's, so do not swap in levels.ema_series or sizing.atr."""
+    n = len(closes)
+    if n < period + k + 1 or not all(_fin(x) for x in (*highs, *lows, *closes)):
+        return None
+    tr = [max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1])) for i in range(1, n)][-14:]
+    a = sum(tr) / len(tr) if tr else None
+    if not a or a <= 0:
+        return None
+    e, prev = [], None
+    for c in closes:
+        prev = c if prev is None else (2 * c + (period - 1) * prev) / (period + 1)
+        e.append(prev)
+    d = (e[-1] - e[-1 - k]) / a
+    return "UP" if d > dead else "DOWN" if d < -dead else "FLAT"
+
+
 def r2(v, nd=2):
     return round(v, nd) if _fin(v) else None

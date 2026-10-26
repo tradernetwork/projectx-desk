@@ -630,6 +630,8 @@ function renderEma(){
   bd.hidden = false;
   bd.dataset.state = st || 'NA';
   fill(bd, S.ai);
+  const sl = $('ema-slope'), s21 = e && ['UP', 'DOWN', 'FLAT'].includes(e.slope21) ? e.slope21 : null;   // 21 EMA slope over 5 bars vs ATR: the stack can say BULL while the 21 has already curled down
+  if(sl){sl.textContent = s21 === 'UP' ? '\u2197' : s21 === 'DOWN' ? '\u2198' : s21 === 'FLAT' ? '\u2192' : ''; sl.dataset.slope = s21 || ''; sl.dataset.warn = (st === 'BULL' && s21 === 'DOWN') || (st === 'BEAR' && s21 === 'UP') ? '1' : ''; sl.title = s21 ? '21 EMA slope: ' + s21.toLowerCase() + ' (5 bars vs ATR). Descriptive, not a signal.' : ''}
 }
 
 /* ================= regime chip: advisory only, never disables a button ================= */
@@ -1098,6 +1100,18 @@ klinecharts.registerIndicator({
       pv += (b.high + b.low + b.close) / 3 * (b.volume || 0); v += b.volume || 0;
       return v ? {vwap: pv / v} : {};
     });
+  }});
+
+/* Hull MA 21 (opt-in pin). Display only: it turns about a bar sooner than the EMA 21 and flips about twice as often in chop, so it is a second
+   opinion on slope, not a signal. The maths lives in regime.js (PXRegime.hma) so a test can pin it. */
+klinecharts.registerIndicator({
+  name: 'HMA', shortName: 'HMA', series: 'price', precision: 2,
+  calcParams: [21],
+  styles: {lines: [{color: '#F2B6FF', size: 1.5, style: 'dashed', dashedValue: [5, 3], smooth: false}]},
+  figures: [{key: 'hma', title: 'HMA: ', type: 'line'}],
+  calc: (list, ind) => {
+    const h = window.PXRegime ? PXRegime.hma(list.map(b => b.close), (ind.calcParams && ind.calcParams[0]) || 21) : null;
+    return list.map((_, i) => h && typeof h[i] === 'number' ? {hma: h[i]} : {});
   }});
 
 /* ---- real buy/sell volume (GET /api/flow): green up = buyers hit the ask, red down = sellers hit the bid, line = delta.
@@ -2166,7 +2180,7 @@ addEventListener('keydown', e => {
    (what price is respecting on the timeframe shown) or from a pin. The server picks; the page only draws the diff. ---- */
 const indOn = {BSV: true, EMA: true};   // always on; renderEma and the flow poll read these
 const ALWAYS = [['ema21', 'EMA 21', 'The 21 EMA, always on'], ['vwap', 'VWAP', 'Session VWAP, always on'], ['vol', 'Volume', 'Real buy/sell volume pane, always on']];
-const PINS = [['EMA8', 'EMA 8 (fast)'], ['SMA50', 'SMA 50'], ['EMA34', 'EMA 34'], ['BOLL', 'BOLL'], ['RSI', 'RSI'], ['MACD', 'MACD'], ['VOL', 'VOL (candle colour)']];
+const PINS = [['EMA8', 'EMA 8 (fast)'], ['SMA50', 'SMA 50'], ['EMA34', 'EMA 34'], ['HMA21', 'HMA 21 (Hull, turns sooner, noisier)'], ['BOLL', 'BOLL'], ['RSI', 'RSI'], ['MACD', 'MACD'], ['VOL', 'VOL (candle colour)']];
 const PIN = {...LS.get('px.ind.pin', {})};
 const IND_TF = {'second,15': '5m', 'minute,1': '5m', 'minute,5': '5m', 'minute,15': '15m', 'minute,30': '15m', 'hour,1': '1h', 'hour,4': '4h', 'day,1': '1d'};
 const IND_POLL_MS = 60000, IND_KEEP_MS = 600000;
@@ -2192,7 +2206,7 @@ function indWanted(){
   for(const o of sel.oscillators) osc.add(o.id);
   if(PIN.RSI) osc.add('rsi');
   if(PIN.MACD) osc.add('macd');
-  return {ema: [...ema].sort((a, b) => a - b), ma: [...ma].sort((a, b) => a - b), boll, rsi: osc.has('rsi'), macd: osc.has('macd'), vol: !!PIN.VOL, hz};
+  return {ema: [...ema].sort((a, b) => a - b), ma: [...ma].sort((a, b) => a - b), hma: !!PIN.HMA21, boll, rsi: osc.has('rsi'), macd: osc.has('macd'), vol: !!PIN.VOL, hz};
 }
 function maStyles(ps){return {lines: ps.map((p, i) => ({color: p === 8 ? EMA_COL[0] : p === 21 ? EMA_COL[1] : p === 34 ? EMA_COL[2] : MA_COL[3 + (i % 3)], size: 1.5, style: 'solid', smooth: false}))}}
 function fitPanes(){   // klinecharts gives every indicator pane 100px, which leaves price a sliver on a short window; keep price >= ~60%
@@ -2208,7 +2222,7 @@ function fitSoon(){clearTimeout(fitT); fitT = setTimeout(fitPanes, 120)}
 function indHave(n){try{return chart.getIndicators({name: n}).length > 0}catch{return false}}
 function indSync(){   // diff the wanted set against what is drawn; only touch what changed
   try{
-    const w = indWanted(), a = I.applied ? JSON.parse(I.applied) : {ema: [], ma: [], boll: false, rsi: false, macd: false, vol: false};
+    const w = indWanted(), a = I.applied ? JSON.parse(I.applied) : {ema: [], ma: [], hma: false, boll: false, rsi: false, macd: false, vol: false};
     const sameArr = (x, y) => x.join() === y.join();
     if(!indHave('VWAP')) chart.createIndicator({name: 'VWAP', paneId: 'candle_pane'}, true);
     if(!indHave('BSV')) chart.createIndicator({name: 'BSV'}, false);
@@ -2217,12 +2231,12 @@ function indSync(){   // diff the wanted set against what is drawn; only touch w
       chart.removeIndicator({name: 'MA'});
       if(w.ma.length) chart.createIndicator({name: 'MA', paneId: 'candle_pane', calcParams: w.ma, styles: {lines: w.ma.map((p, i) => ({color: MA_COL[3 + (i % 3)], size: 1.5, style: 'solid', smooth: false}))}}, true);
     }
-    for(const [k, n, main] of [['boll', 'BOLL', true], ['rsi', 'RSI', false], ['macd', 'MACD', false], ['vol', 'VOL', false]]){
+    for(const [k, n, main] of [['hma', 'HMA', true], ['boll', 'BOLL', true], ['rsi', 'RSI', false], ['macd', 'MACD', false], ['vol', 'VOL', false]]){
       if(w[k] === indHave(n) && (w[k] === a[k] || indHave(n))) continue;
       if(w[k]) chart.createIndicator(main ? {name: n, paneId: 'candle_pane'} : {name: n}, main); else chart.removeIndicator({name: n});
     }
     fitSoon();
-    I.applied = JSON.stringify({ema: w.ema, ma: w.ma, boll: w.boll, rsi: w.rsi, macd: w.macd, vol: w.vol});
+    I.applied = JSON.stringify({ema: w.ema, ma: w.ma, hma: w.hma, boll: w.boll, rsi: w.rsi, macd: w.macd, vol: w.vol});
     drawAutoLevels(w.hz);
   }catch(e){err(e)}
   indChips();

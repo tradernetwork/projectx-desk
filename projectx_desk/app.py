@@ -896,7 +896,7 @@ async def _bias_snapshot(app, cid):
     b = px_digest.bias_state(app, cid, ind, ind["closed_close"], px_flow.summary(live.flow, cid, time.time() * 1000))
     return {"ts": int(time.time() * 1000), "contract": cid, "tf": "bias", "bar_ts": int(ind["closed_ts"]), "price": ind["closed_close"],
             "atr": ind.get("atr"), "adx": ind.get("adx"), "atr_pctile": ind.get("atr_pctile"), "rsi": ind.get("rsi"), "vwap": ind.get("vwap"),
-            "ema21": em.get("21"), "rule": b.get("rule"), "direction": b["direction"], "grade": b["grade"], "score": b["score"], "max": b.get("max"),
+            "ema21": em.get("21"), "s21": em.get("slope21"), "rule": b.get("rule"), "direction": b["direction"], "grade": b["grade"], "score": b["score"], "max": b.get("max"),
             "agree": b["agree"], "reads": b["reads"], "entry": b.get("entry"), "votes": b["votes"], "flags": b["flags"],
             **_regime_fields(app, cid, ind)}
 

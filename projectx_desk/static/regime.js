@@ -56,6 +56,29 @@
     const turn = fast.every(x => x > 0) && slow.some(x => x <= 0) ? 'up' : fast.every(x => x < 0) && slow.some(x => x >= 0) ? 'down' : null;
     return {dirs, arrows: dirs.map(d => d > 0 ? '\u25B2' : d < 0 ? '\u25BC' : '\u25AC').join(''), rising: dirs.filter(d => d > 0).length, falling: dirs.filter(d => d < 0).length, turn};
   }
-  root.PXRegime = {adx, efficiency, tfRegime, ribbonSlopes};
+  /* One EMA's slope as 'UP' / 'DOWN' / 'FLAT' (Python twin: regime.ema_slope). */
+  function emaSlope(bars, period, k, dead){
+    period = period || 21; const r = ribbonSlopes(bars, [period], k, dead);
+    return r ? (r.dirs[0] > 0 ? 'UP' : r.dirs[0] < 0 ? 'DOWN' : 'FLAT') : null;
+  }
+  /* Hull MA: WMA(2 * WMA(n/2) - WMA(n), round(sqrt(n))). Display only. Returns an array aligned to `cl` (null until defined), or null on bad input.
+     Turns about a bar sooner than the EMA of the same length and flips about twice as often in chop (docs/DECISIONS.md Round 22): a line, not a signal. */
+  function wma(a, n){
+    const o = new Array(a.length).fill(null), den = n * (n + 1) / 2;
+    for(let i = n - 1; i < a.length; i++){
+      let s = 0, ok = true;
+      for(let j = 0; j < n; j++){const v = a[i - j]; if(v == null) {ok = false; break} s += v * (n - j)}
+      if(ok) o[i] = s / den;
+    }
+    return o;
+  }
+  function hma(cl, n){
+    n = n || 21;
+    if(!Array.isArray(cl) || cl.length < n || !cl.every(fin)) return null;
+    const h = Math.max(1, Math.floor(n / 2)), s = Math.max(1, Math.round(Math.sqrt(n)));
+    const a = wma(cl, h), b = wma(cl, n), d = cl.map((_, i) => a[i] == null || b[i] == null ? null : 2 * a[i] - b[i]);
+    return wma(d, s);
+  }
+  root.PXRegime = {adx, efficiency, tfRegime, ribbonSlopes, emaSlope, wma, hma};
   if(typeof module !== 'undefined') module.exports = root.PXRegime;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -464,7 +464,7 @@ body.acct-live .ribbon{border-top:2px solid var(--magenta)}
 .mn .mh b{color:var(--tfc,var(--text));font-size:var(--fs-sm)}
 .mn.cur .mh b::after{content:" (viewing)";font:500 var(--fs-2xs)/1 var(--sans);color:var(--text-muted)}
 .mn .mh .mp{margin-left:auto;font-weight:500;color:var(--text-muted)}
-.mn canvas{display:block;width:100%;height:92px}
+.mn canvas{display:block;width:100%;height:var(--mini-h,92px)}
 .mn .mb{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;min-height:18px;font:500 var(--fs-xs)/1.3 var(--mono);color:var(--text-2)}
 .bz{font:700 var(--fs-2xs)/1 var(--sans);letter-spacing:.08em;padding:2px 5px;border-radius:3px;border:1px solid var(--border-strong);color:var(--text-2);white-space:nowrap}
 .bz-bullish{color:var(--green-ink);border-color:var(--green-line);background:var(--green-bg)} .bz-bearish{color:var(--mag-ink);border-color:var(--mag-line);background:var(--mag-bg)}
@@ -755,7 +755,7 @@ body.alarm .kpis .kpi{border-color:var(--border)}
 .chartwrap>#ticks .phead,.chartwrap>#ticks .lvlegend{display:none}
 .chartwrap>#ticks .mnbody{flex-direction:row;gap:6px}
 .chartwrap>#ticks .mn{flex:1 1 0}
-.chartwrap>#ticks .mn canvas{height:76px}
+.chartwrap>#ticks .mn canvas{height:var(--tick-h,76px)}
 
 /* ---- indicator row: locked always-on chips, auto chips the server chose, and a collapsed pin box ---- */
 .ind{align-items:center}
@@ -844,3 +844,14 @@ button.mini{min-height:24px;padding:0 8px}
 .tm-rule{font:500 var(--fs-xs)/1.4 var(--sans);color:var(--text-2)}
 .tm-foot{font:500 var(--fs-2xs)/1.4 var(--sans);color:var(--text-muted)}
 .tm-dead{font:500 var(--fs-xs)/1.4 var(--sans);color:var(--text-muted)}
+
+.tm-pro{font:500 var(--fs-2xs)/1.4 var(--sans);color:var(--text-muted)} .tm-pro summary{cursor:pointer;width:max-content}
+.tm-key{border-top:1px solid var(--border);padding-top:6px} .tm-key>summary{cursor:pointer;font:700 var(--fs-xs)/1.4 var(--sans);color:var(--text-2);letter-spacing:.04em}
+.tm-k{display:flex;flex-direction:column;gap:1px;margin:6px 0;padding-left:8px;border-left:3px solid var(--tmc,var(--border-strong))}
+.tm-k.up{--tmc:#ff9340} .tm-k.dn{--tmc:#35e690} .tm-k.el{--tmc:#9db4ff} .tm-k.now{--tmc:#ffb000}
+.tm-k b{font:700 var(--fs-xs)/1.3 var(--mono);color:var(--text)} .tm-k span{font:500 var(--fs-xs)/1.4 var(--sans);color:var(--text-2)}
+
+/* ---- taller timeframe and tick charts on big screens: heights follow the screen, not a fixed 92 / 76 px ---- */
+@media (min-width:1100px) and (min-height:900px){:root{--mini-h:clamp(132px,15vh,300px);--tick-h:clamp(120px,14vh,260px)}}
+@media (min-width:1100px){.col.col-right{overflow-y:auto;scrollbar-width:thin}}      /* taller minis must scroll the rail, never push a panel out of reach */
+html[data-layout="portrait"] .col-right>#tmap{grid-column:1/-1}     /* the map text is long: give it the full width of the bottom band */

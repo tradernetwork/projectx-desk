@@ -275,6 +275,43 @@ def build_tomorrow_map(spot, flip, net_gex, ladder, bars, expiring_share, regime
                   else f"chop around the {P(pin)} pin. it knifes both edges." if regime == "negative"
                   else f"quiet drift into the {P(pin)} pin.")
 
+    # ── PLAIN (not part of the parity-tested text): what each road means in ordinary words, from the same levels and converted numbers ──
+    if thin:
+        up_plain, down_plain = "Not enough gamma data to say anything about the upside.", "Not enough gamma data to say anything about the downside."
+    else:
+        bits = []
+        if flip is not None and flip <= spot:
+            bits.append("Price is already above the flip, so dealers are braking moves, not chasing them.")
+        if accel:
+            bits.append(f"{P(accel['strike'])} is an accelerant: dealers are short gamma there, so once price pushes through they have to buy into the rise and the move speeds up.")
+        if brake:
+            bits.append(f"Around {P(brake['strike'])} dealers sell into strength, so rallies tend to stall. A wick over is normal; closing over is the real test.")
+        if gate:
+            bits.append(f"{P(gate['strike'])} is the ceiling, the heaviest long-gamma strike above. The move tends to die there.")
+        if flip_up:
+            bits.append(f"At {P(flip)} (the flip) dealers stop chasing price and start braking it, so the move loses its fuel.")
+        if not brake and not gate:
+            bits.append("Nothing above price is heavy enough to slow it down.")
+        up_plain = " ".join(bits)
+        bits = []
+        if shelf:
+            bits.append(f"{P(shelf['strike'])} is the last support: dealers buy dips there. Lose it and there is little underneath." if shelf["netGex"] >= 0
+                        else f"{P(shelf['strike'])} is a trapdoor, a breakdown point (not a buy level): dealers are short gamma there and sell into weakness, so if price falls through it the drop can speed up.")
+        if pin_under:
+            bits.append(f"On the way down price passes the {P(pin_under['strike'])} pin.")
+        if cushion:
+            bits.append(f"After that the only real buyer is a small one near {P(cushion['strike'])}.")
+        elif pocket:
+            bits.append(f"{P(pocket['lo'])} to {P(pocket['hi'])} has no dealer positioning at all: nothing holds price there, so it can slide fast.")
+        if floor:
+            bits.append(f"{P(floor['strike'])} is the put wall: heavy put positioning. It is a crowd, not a floor, so expect a fight there, and it can give way.")
+        if not bits:
+            bits.append("Nothing readable below price.")
+        down_plain = " ".join(bits)
+    range_plain = ("There is no pin near price, so nothing is holding it between the two triggers." if pin is None
+                   else f"Price is hovering around the {P(pin)} pin. Dealers are short gamma, so it whips both ways instead of settling." if regime == "negative"
+                   else f"Price is hovering around the {P(pin)} pin. Dealers are long gamma, so it tends to settle and drift toward it.")
+
     shown = None if not _fin(expiring_share) else _jsround(expiring_share * 100) / 100
     return {
         "version": VERSION, "regime": regime, "spot": cv(spot), "flip": cv(flip) if flip is not None else None, "pin": cv(pin) if pin is not None else None,
@@ -282,9 +319,9 @@ def build_tomorrow_map(spot, flip, net_gex, ladder, bars, expiring_share, regime
         "regime_includes_expiring": regime_counts_unlisted_expiry is True or (shown is not None and shown > EXPIRING_REGIME_LABEL_SHARE),
         "thin_book": thin, "flip_on_price": flip_on_price,
         "roads": [
-            {"key": "UP", "cond": up_cond, "rule": up_rule, "waypoints": up_pts},
-            {"key": "DOWN", "cond": down_cond, "rule": down_rule, "waypoints": down_pts},
-            {"key": "RANGE", "cond": f"between {P(range_lo)} and {P(range_hi)}", "rule": range_rule, "waypoints": range_pts,
+            {"key": "UP", "cond": up_cond, "rule": up_rule, "plain": up_plain, "waypoints": up_pts},
+            {"key": "DOWN", "cond": down_cond, "rule": down_rule, "plain": down_plain, "waypoints": down_pts},
+            {"key": "RANGE", "cond": f"between {P(range_lo)} and {P(range_hi)}", "rule": range_rule, "plain": range_plain, "waypoints": range_pts,
              "band": {"lo": cv(range_lo), "hi": cv(range_hi)}},
         ],
     }

@@ -20,6 +20,7 @@ import httpx
 from projectx_desk import gex, gex_futures, sizing
 from projectx_desk import tomorrow as T
 from projectx_desk.client import live_data
+from projectx_desk.tradeday import CT
 
 NY = ZoneInfo("America/New_York")
 TTL_S = 600.0
@@ -200,3 +201,93 @@ async def _compute(app, contract_id, spec, sym, nominal, base, key, fetch, now_t
         return _res("UNAVAILABLE", "NO_MAP")
     return _res("OK", None, source=sym, root=spec.root, ratio=round(ratio, 6), tick=spec.tick_size, snapshot_epoch=int(c["snap"]),
                 age_s=int(max(0.0, age)), today=today, source_spot=c["spot"], source_flip=c["flip"], map=mp)
+
+
+MIN_SESSION_BARS = 60                      # 78 five-minute bars in 08:30 to 15:00; fewer means the session is not all there yet
+
+
+async def session_bar(app, contract_id, session_date):
+    """Regular-session {o, h, l, c} of the futures contract for a CT date (08:30 to 15:00 CT), or None until all of it is readable."""
+    open_ = datetime(session_date.year, session_date.month, session_date.day, 8, 30, tzinfo=CT)
+    close = open_.replace(hour=15, minute=0)
+    raw = await app.state.client.bars({"contractId": contract_id, "live": live_data(), "unit": 2, "unitNumber": 5, "limit": 100,
+                                       "startTime": open_.astimezone(timezone.utc).isoformat(), "endTime": close.astimezone(timezone.utc).isoformat(),
+                                       "includePartialBar": False})
+    rows = []
+    for b in raw or []:
+        try:
+            ts = datetime.fromisoformat(str(b["t"]).replace("Z", "+00:00")).timestamp()
+            o, h, l, c = (float(b[k]) for k in ("o", "h", "l", "c"))
+        except (KeyError, ValueError, TypeError):
+            continue
+        if all(math.isfinite(x) and x > 0 for x in (o, h, l, c)) and open_.timestamp() <= ts < close.timestamp():
+            rows.append((ts, o, h, l, c))
+    if len(rows) < MIN_SESSION_BARS:
+        return None
+    rows.sort()
+    return {"o": rows[0][1], "h": max(r[2] for r in rows), "l": min(r[3] for r in rows), "c": rows[-1][4]}
+
+
+async def ai_block(app, contract_id):
+    """The compact map for /ai/state and the digest: ours alone (numbers, enums, our own sentences). Never blocks the state: it reads the
+    cache, or starts one background load and says LOADING until it lands (the desk's own /api/tomorrow call usually got there first)."""
+    st = app.state
+    hit = getattr(st, "tmap_cache", {}).get(contract_id)
+    if hit and time.monotonic() - hit[0] < (TTL_S if hit[1].get("status") == "OK" else ERR_TTL_S):
+        res = hit[1]
+    else:
+        kicks = getattr(st, "tmap_kicks", None)
+        if kicks is None:
+            kicks = st.tmap_kicks = set()
+        if contract_id not in kicks:
+            kicks.add(contract_id)
+
+            async def go():
+                try:
+                    await tomorrow_result(app, contract_id)
+                finally:
+                    kicks.discard(contract_id)
+            st.tmap_kick_task = asyncio.create_task(go())
+        return {"status": "UNAVAILABLE", "code": "LOADING"}
+    m = res.get("map")
+    if res.get("status") != "OK" or not isinstance(m, dict):
+        return {"status": res.get("status"), "code": res.get("code")}
+    return {"status": "OK", "code": None, "source": res.get("source"), "root": res.get("root"), "age_s": res.get("age_s"), "regime": m["regime"],
+            "spot": m["spot"], "flip": m["flip"], "pin": m["pin"], "typical_move": m["typical_move"], "expiring_share": m["expiring_share"],
+            "regime_includes_expiring": m["regime_includes_expiring"], "thin_book": m["thin_book"], "flip_on_price": m["flip_on_price"],
+            "roads": [{"key": r["key"], "cond": r["cond"], "rule": r["rule"], "plain": r.get("plain"), "band": r.get("band"),
+                       "waypoints": [{"price": w["price"], "tag": w["tag"], "tail": w["tail"], "open": bool(w.get("open"))} for w in r["waypoints"]]}
+                      for r in m["roads"]],
+            "record": None}
+
+
+def tomorrow_lines(t):
+    """Digest lines for the AI surface. Positioning, not targets; never a rate until the record is publishable."""
+    if not isinstance(t, dict):
+        return []
+    if t.get("status") != "OK":
+        return [f"MAP: NA ({t.get('code') or t.get('status') or 'NA'})"]
+    age = t.get("age_s") or 0
+    out = [f"MAP: {t['source']}->{t['root']} age={age // 60}min regime={t['regime'].upper()} spot={t['spot']:g} flip={'NA' if t['flip'] is None else format(t['flip'], 'g')} "
+           f"pin={'NA' if t['pin'] is None else format(t['pin'], 'g')} typical_move={t['typical_move']:g}pt"
+           + (" thin_book=YES" if t.get("thin_book") else "")
+           + (f" regime_counts_expiring_gamma={t['expiring_share']:g}" if t.get("regime_includes_expiring") and t.get("expiring_share") is not None else "")]
+    verbs = {"UP": ("IF", "it goes"), "DOWN": ("IF", "it goes"), "RANGE": ("ELSE", "it holds")}
+    for r in t["roads"]:
+        kind, verb = verbs[r["key"]]
+        out.append(f"MAP_{r['key'] if r['key'] != 'RANGE' else 'ELSE'}: {kind} {verb} {r['cond']} -> {r['rule']}")
+        if r["waypoints"]:
+            out.append(f"MAP_{r['key'] if r['key'] != 'RANGE' else 'ELSE'}_STOPS: " + "; ".join(
+                w["tag"] + (" (tail)" if w["tail"] else "") + (" (thin)" if w["open"] else "") for w in r["waypoints"]))
+    rec = t.get("record")
+    if isinstance(rec, dict) and isinstance(rec.get("record"), dict):
+        r = rec["record"]
+        if r["publishable"]:
+            out.append(f"MAP_RECORD: {r['sessions']} sessions graded; levels held {r['hits']}/{r['total']} vs round numbers {r['null_hits']}/{r['null_total']}")
+        else:
+            out.append(f"MAP_RECORD: {r['sessions']} of {r['min_sessions']} sessions graded (no rate shown until then)")
+        lc = rec.get("last_call")
+        if lc:
+            out.append(f"MAP_LAST_CALL: {lc['session']} {lc['branch']} {lc['hits']}/{lc['total']} tested: {lc['summary']}")
+    out.append("MAP_NOTE: positioning not targets; the map has no proven edge")
+    return out

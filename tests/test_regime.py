@@ -95,3 +95,29 @@ def test_bias_log_line_carries_the_regime_fields(monkeypatch):
     st.respect_bars = {}
     e2 = asyncio.run(appmod._bias_snapshot(types.SimpleNamespace(state=st), "CON.F.US.MES.Z26"))
     assert e2["adx15"] is None and e2["er1h"] is None                     # nothing cached yet: unknown, never zero
+
+
+def _ribbon(bars):
+    js = ("const R=require(process.argv[1]);const b=JSON.parse(require('fs').readFileSync(0,'utf8'));"
+          "console.log(JSON.stringify(R.ribbonSlopes(b,[8,13,21,34,55,89],5,0.03)))")
+    out = subprocess.run(["node", "-e", js, str(STATIC / "regime.js")], input=json.dumps(bars), capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_ribbon_slopes_read_up_down_flat_and_a_ribbon_that_is_only_starting_to_turn():
+    up = _ribbon(walk(200, 1, drift=0.8, vol=0.3))
+    assert up["dirs"] == [1] * 6 and up["arrows"] == "▲" * 6 and up["turn"] is None
+    down = _ribbon(walk(200, 2, drift=-0.3, vol=0.15))
+    assert down["dirs"] == [-1] * 6 and down["falling"] == 6
+    flat = _ribbon([{"timestamp": i, "open": 100, "high": 100.4, "low": 99.6, "close": 100.0, "volume": 1} for i in range(200)])
+    assert flat["dirs"] == [0] * 6 and flat["turn"] is None
+    bars = walk(150, 3, drift=-0.4, vol=0.2)                                    # a long fall, then a sharp turn up in the last 8 bars
+    last = bars[-1]["close"]
+    for i in range(8):
+        c = last + (i + 1) * 1.6
+        bars.append({"timestamp": 150 + i, "open": c - 1.0, "high": c + 0.3, "low": c - 1.2, "close": c, "volume": 1})
+    turning = _ribbon(bars)
+    assert turning["dirs"][:3] == [1, 1, 1] and turning["turn"] == "up" and -1 in turning["dirs"][3:]
+    assert _ribbon(walk(60, 4)) is None                                         # too few bars for the slowest EMA: no claim

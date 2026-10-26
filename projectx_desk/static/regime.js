@@ -37,6 +37,25 @@
     const a = ok && cl.length >= 29 ? adx(hi, lo, cl, 14) : null, er = ok ? efficiency(cl, 12) : null;
     return {adx: a, er: er, state: a == null ? 'UNKNOWN' : a < chop ? 'RANGING' : 'TRENDING', choppy: er == null ? null : er < 0.20};
   }
-  root.PXRegime = {adx, efficiency, tfRegime};
+  /* Ribbon slope: is each EMA rising, falling or flat over the last k bars, judged against ATR so noise is not a slope. Same EMA recurrence as the
+     mini charts (seeded with the first close). dirs are +1 / -1 / 0 in period order (fast first). `turn` is 'up' when the three fastest are all
+     rising while at least one slow EMA is not, 'down' for the mirror: a ribbon that is not stacked yet but is starting to line up. */
+  function ema(cl, p){const o = []; let prev = null; for(const c of cl){prev = prev == null ? c : (2 * c + (p - 1) * prev) / (p + 1); o.push(prev)} return o}
+  function atrOf(hi, lo, cl, n){
+    n = n || 14; const tr = [];
+    for(let i = 1; i < cl.length; i++) tr.push(Math.max(hi[i] - lo[i], Math.abs(hi[i] - cl[i - 1]), Math.abs(lo[i] - cl[i - 1])));
+    const t = tr.slice(-n); return t.length ? t.reduce((a, b) => a + b, 0) / t.length : null;
+  }
+  function ribbonSlopes(bars, periods, k, dead){
+    k = k || 5; dead = dead == null ? 0.03 : dead;
+    const hi = bars.map(b => b.high), lo = bars.map(b => b.low), cl = bars.map(b => b.close);
+    if(![...hi, ...lo, ...cl].every(fin) || cl.length < Math.max(...periods) + k + 1) return null;
+    const a = atrOf(hi, lo, cl, 14); if(!a || a <= 0) return null;
+    const dirs = periods.map(p => {const e = ema(cl, p), d = (e[e.length - 1] - e[e.length - 1 - k]) / a; return d > dead ? 1 : d < -dead ? -1 : 0});
+    const fast = dirs.slice(0, 3), slow = dirs.slice(3);
+    const turn = fast.every(x => x > 0) && slow.some(x => x <= 0) ? 'up' : fast.every(x => x < 0) && slow.some(x => x >= 0) ? 'down' : null;
+    return {dirs, arrows: dirs.map(d => d > 0 ? '\u25B2' : d < 0 ? '\u25BC' : '\u25AC').join(''), rising: dirs.filter(d => d > 0).length, falling: dirs.filter(d => d < 0).length, turn};
+  }
+  root.PXRegime = {adx, efficiency, tfRegime, ribbonSlopes};
   if(typeof module !== 'undefined') module.exports = root.PXRegime;
 })(typeof window !== 'undefined' ? window : globalThis);

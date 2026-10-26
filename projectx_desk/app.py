@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from projectx_desk import digest as px_digest
 from projectx_desk import tomorrow_feed as px_tomorrow
+from projectx_desk import tomorrow_ledger as px_tledger
 from projectx_desk import grades as px_grades
 from projectx_desk import indicators as px_ind
 from projectx_desk import respect as px_respect
@@ -145,9 +146,11 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             roots = px_ind.parse_roots(os.getenv("PX_TRACK_ROOTS")) if connect else []
             app.state.track_task = asyncio.create_task(_track_loop(app, roots)) if roots else None
             app.state.bias_task = asyncio.create_task(_bias_log_loop(app)) if roots else None
+            app.state.tledger_task = asyncio.create_task(_tomorrow_ledger_loop(app)) if roots else None
             yield
-            if getattr(app.state, "bias_task", None) is not None:
-                app.state.bias_task.cancel()
+            for name in ("bias_task", "tledger_task"):
+                if getattr(app.state, name, None) is not None:
+                    getattr(app.state, name).cancel()
             if notifier_task is not None:
                 notifier_task.cancel()
             if app.state.track_task is not None:
@@ -282,7 +285,13 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
     async def tomorrow_map(request: Request, contract: str):
         """Read-only Tomorrow's Map for the chart's contract, in futures space. Display only; a fixed status when it cannot be built."""
         contract_arg(contract)
-        return await px_tomorrow.tomorrow_result(request.app, contract)
+        res = await px_tomorrow.tomorrow_result(request.app, contract)
+        if res.get("status") == "OK" and res.get("root"):
+            try:
+                res = {**res, "record": px_tledger.summarize(px_tledger.load(px_tledger.path_from_env(ROOT)), res["root"])}
+            except Exception:  # noqa: BLE001 - the record is advisory
+                pass
+        return res
 
     @app.get("/api/bias_board")
     async def bias_board(request: Request):
@@ -896,6 +905,22 @@ async def _bias_log_loop(app):
             except Exception as e:  # noqa: BLE001 - logging must never break the desk
                 print(f"bias log failed {root} {type(e).__name__}", flush=True)
             await asyncio.sleep(1.0)
+
+
+async def _tomorrow_ledger_loop(app):
+    """Record tonight's Tomorrow's Map for each tracked contract after the cash close, and grade finished sessions. Reads and a local file only."""
+    path = px_tledger.path_from_env(ROOT)
+    while True:
+        now = time.time()
+        await asyncio.sleep(300 - (now % 300) + 20)
+        if _quiet(app):
+            continue
+        try:
+            await px_tledger.tick(app, path, time.time())
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 - the record must never break the desk
+            print(f"tomorrow ledger failed {type(e).__name__}", flush=True)
 
 
 async def _track_loop(app, roots):

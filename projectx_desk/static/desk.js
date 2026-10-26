@@ -1269,12 +1269,38 @@ function drawDesk(force){
    /api/tomorrow is the server's map already in futures space (SPY gamma that survives tonight, ratio-converted, every printed number
    regenerated from the converted prices). Up road hot, down road green, the ELSE band neutral blue, the flip purple. A waypoint past a
    typical day is dashed (a tail, not a plan), a thin one is hollow, one price has already gone through is dimmed. Positioning, not targets. */
-const TM = {on: LS.get('px.tmap', true) !== false, panel: LS.get('px.tmapPanel', true) !== false, cid: null, res: null, at: 0, busy: false, sig: '', off: 40};
+const TM = {emoji: LS.get('px.tmapEmoji', true) !== false, on: LS.get('px.tmap', true) !== false, panel: LS.get('px.tmapPanel', true) !== false, cid: null, res: null, at: 0, busy: false, sig: '', off: 40};
 const TM_COL = {UP: E.hot, DOWN: E.sup, RANGE: '#9db4ff', FLIP: '#d8b4fe'};
 const TM_WHY = {NO_KEY: 'No TraderDaddy key on this desk.', UNSUPPORTED: 'No map for this contract.', CONTRACT: 'No map for this contract.',
   NO_REF: 'No futures price at the snapshot time to scale with.', CONVERT: 'Source and futures prices do not line up, so nothing is drawn.',
   STALE: 'The latest gamma is more than five days old.', NO_MAP: 'The book is too thin to map.', AUTH: 'The GEX key was rejected.',
   UPSTREAM_ERROR: 'The GEX source is unavailable.', RATE_LIMIT: 'The GEX source is rate-limited right now (30 a minute); it retries by itself.', BAD_PAYLOAD: 'The GEX payload failed validation.', INTERNAL: 'The map failed.', CONFIG: 'The GEX URL is unsafe.'};
+/* What each level means in ordinary words. The chart chip carries the short gloss; the panel's key carries the sentence. Description, never advice. */
+const TM_ROLES = {
+  'PIN': ['magnet', 'The biggest gamma strike right near price. Price gravitates to it and wrestles around it, like a magnet. Expect chop around it.'],
+  'FLIP': ['chasing ends', 'Where dealers flip from net short gamma to net long. Under it they chase price, so moves speed up. Over it they brake price, so moves slow down.'],
+  'ACCELERANT': ['speeds up', 'A short-gamma strike above price. Once price pushes through it, dealers have to buy into the rise, so the move speeds up. It is not a wall.'],
+  'BRAKE': ['stalls', 'A long-gamma strike above price. Dealers sell into strength here, so rallies tend to stall. A wick over is normal; closing over is the real test.'],
+  'CEILING': ['move dies', 'The heaviest long-gamma strike above. The move tends to die here.'],
+  'TRAPDOOR': ['breakdown point', 'A breakdown point, not a buy level. Dealers are short gamma here, so if price falls through it they sell into the drop and it speeds up. Holding above it means nothing special.'],
+  'LAST SHELF': ['last support', 'The last long-gamma strike below. Dealers buy dips here, so it is the last thing to lean on. Lose it and there is little underneath.'],
+  'THIN CUSHION': ['small support', 'A small pocket of dealer buying below. Some support, but small.'],
+  'EMPTY': ['no support', 'A stretch with no gamma at all. Nothing holds price here, so it can slide fast.'],
+  'PUT WALL': ['fight, not floor', 'Heavy put positioning. A crowd, not a floor: lots of action here, and it can give way.'],
+};
+const TM_PAIRS = {   // two roles on the same strike: say what the COMBINATION means
+  'ACCELERANT+PIN': 'Price is sitting on the biggest gamma strike, and dealers are short gamma there. Expect whippy chop around it, then a fast move once it breaks away, because dealers chase instead of fading.',
+  'TRAPDOOR+PIN': 'Price is sitting on the biggest gamma strike, and it is also a breakdown point. Expect chop around it; if it gives way below, selling feeds on itself and the drop speeds up. It is not a buy level.',
+  'LAST SHELF+PIN': 'Price is sitting on the biggest gamma strike, and it is also the last support below. Dealers defend it, so it tends to hold and settle. If it breaks there is little underneath.',
+  'PUT WALL+PIN': 'Price is sitting on the biggest gamma strike, and it is the put wall: a crowd, not a floor. Expect a fight here, and it can give way.',
+  'BRAKE+PIN': 'Price is sitting on the biggest gamma strike, and dealers sell rallies into it. Expect it to stall and chop here.',
+  'CEILING+PIN': 'Price is sitting on the biggest gamma strike, and it is the ceiling above. The move tends to die here.',
+};
+const TM_EMO = {'PIN': '\u{1F9F2}', 'FLIP': '\u{1F504}', 'ACCELERANT': '\u{1F680}', 'BRAKE': '\u{1F6D1}', 'CEILING': '\u{1F9F1}', 'TRAPDOOR': '\u{1F6AA}',
+  'LAST SHELF': '\u{1F6E1}\uFE0F', 'THIN CUSHION': '\u{1FAA3}', 'EMPTY': '\u{1F573}\uFE0F', 'PUT WALL': '\u{1F94A}'};      // magnet, flip, rocket, stop, brick wall, door, shield, bucket, hole, glove
+const tmEmoji = (tag, withPin) => TM.emoji ? (TM_EMO[tmRole(tag)] || '') + (withPin ? TM_EMO.PIN : '') : '';
+const tmRole = tag => String(tag || '').replace(/^[0-9.]+\s*/, '');
+const tmGloss = (tag, withPin) => { const r = TM_ROLES[tmRole(tag)]; return r ? r[0] + (withPin ? ' + magnet' : '') : ''; };
 const hexA = (h, a) => `rgba(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)},${a})`;
 const finPt = cs => cs.length > 0 && cs.every(c => isFinite(c.x) && isFinite(c.y));
 const TM_EDGE = 13;       // the price axis autoscales to candles only: a waypoint beyond the visible range is pinned to the edge with an arrow, never lost
@@ -1335,12 +1361,12 @@ function drawTmap(force){
         const at = {dataIndex: i0 + X0 + STEP * k, value: w.price}, flipW = /FLIP$/.test(w.tag);
         const passed = key === 'UP' ? w.price < lp : w.price > lp, col = flipW ? TM_COL.FLIP : TM_COL[key];
         ov('tmapSeg', [prev, at], {color: passed ? hexA(col, .4) : col, dash: !!w.tail || passed, size: flipW ? 3 : 2});
-        ov('tmapDot', [at], {color: col, label: w.tag + (pinAt.has(w.price) ? ' + PIN' : '') + (passed ? ' (through)' : ''), hollow: !!w.open, bold: flipW, dim: passed || !!w.tail});
+        ov('tmapDot', [at], {color: col, label: (tmEmoji(w.tag, pinAt.has(w.price)) ? tmEmoji(w.tag, pinAt.has(w.price)) + ' ' : '') + w.tag + (pinAt.has(w.price) ? ' + PIN' : '') + (tmGloss(w.tag, pinAt.has(w.price)) ? ' \u00b7 ' + tmGloss(w.tag, pinAt.has(w.price)) : '') + (passed ? ' (through)' : ''), hollow: !!w.open, bold: flipW, dim: passed || !!w.tail});
         prev = at;
       });
     }
     const onRoad = new Set([...road('UP').waypoints, ...road('DOWN').waypoints].map(w => w.price));
-    for(const w of (rg.waypoints || []).filter(w => !onRoad.has(w.price))) ov('tmapDot', [{dataIndex: i0 + X0, value: w.price}], {color: TM_COL.RANGE, label: w.tag, bold: false, dim: false});
+    for(const w of (rg.waypoints || []).filter(w => !onRoad.has(w.price))) ov('tmapDot', [{dataIndex: i0 + X0, value: w.price}], {color: TM_COL.RANGE, label: tmEmoji(w.tag, false) + ' ' + w.tag + ' \u00b7 ' + tmGloss(w.tag, false), bold: false, dim: false});
   }catch(e){err(e)}
 }
 const ctClock = new Intl.DateTimeFormat('en-US', {timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', weekday: 'short'});
@@ -1348,7 +1374,7 @@ function renderTmap(){
   const host = $('tm-body'), sub = $('tm-sub'); if(!host || !sub) return;
   host.hidden = !TM.panel;
   const hb = $('tm-hide'); hb.textContent = TM.panel ? 'Hide' : 'Show'; hb.setAttribute('aria-expanded', String(TM.panel));
-  const tg = $('tm-toggle'); tg.setAttribute('aria-pressed', String(TM.on));
+  const tg = $('tm-toggle'); tg.setAttribute('aria-pressed', String(TM.on)); $('tm-emo').setAttribute('aria-pressed', String(TM.emoji));
   const r = TM.res; host.replaceChildren(); sub.textContent = '';
   if(!r){host.append(mk('div', 'tm-dead', 'loading')); return}
   const m = r.status === 'OK' && r.map ? r.map : null;
@@ -1356,7 +1382,7 @@ function renderTmap(){
   const age = r.age_s < 5400 ? Math.round(r.age_s / 60) + ' min old' : (r.age_s / 3600).toFixed(1) + ' h old';
   sub.textContent = `${r.source} to ${r.root} · ${ctClock.format(new Date(r.snapshot_epoch * 1000))} CT · ${age}`;
   const neg = m.regime === 'negative', d = mk('div', 'tm-dealers ' + (neg ? 'neg' : 'pos'));
-  d.append(mk('b', null, neg ? 'SHORT GAMMA' : 'LONG GAMMA'), document.createTextNode(neg ? ': dealers chase price, so moves extend.' : ': dealers lean against price, so moves get damped.'));
+  d.append(mk('b', null, (TM.emoji ? (neg ? '\u{1F525} ' : '\u{1F9CA} ') : '') + (neg ? 'SHORT GAMMA' : 'LONG GAMMA')), document.createTextNode(neg ? ': dealers chase price, so moves extend.' : ': dealers lean against price, so moves get damped.'));
   host.append(d);
   if(m.flip != null){
     const f = mk('div', 'tm-flip'), b = mk('b', null, String(m.flip));
@@ -1366,15 +1392,38 @@ function renderTmap(){
     host.append(f);
   }
   const byKey = k => m.roads.find(x => x.key === k) || {cond: '', rule: ''};
-  for(const [cls, kind, k, verb] of [['up', 'IF', 'UP', 'it goes '], ['dn', 'IF', 'DOWN', 'it goes '], ['el', 'ELSE', 'RANGE', 'it holds ']]){
+  for(const [cls, kind, k, verb] of [['up', (TM.emoji ? '\u2B06\uFE0F ' : '') + 'IF', 'UP', 'it goes '], ['dn', (TM.emoji ? '\u2B07\uFE0F ' : '') + 'IF', 'DOWN', 'it goes '], ['el', (TM.emoji ? '\u2194\uFE0F ' : '') + 'ELSE', 'RANGE', 'it holds ']]){
     const rd = byKey(k), row = mk('div', 'tm-row ' + cls), c = mk('div', 'tm-cond');
     c.append(mk('i', null, kind), document.createTextNode(verb + rd.cond));
-    row.append(c, mk('div', 'tm-rule', rd.rule)); host.append(row);
+    row.append(c, mk('div', 'tm-rule', rd.plain || rd.rule));
+    if(rd.plain){const pro = mk('details', 'tm-pro'); pro.append(mk('summary', null, 'technical wording'), mk('div', null, rd.rule)); row.append(pro)}
+    host.append(row);
   }
+  tmapKey(host, m);
   let foot = 'Positioning, not targets. Gamma that survives tonight; a level past a typical day (' + m.typical_move + ' pts) is a tail.';
   if(m.regime_includes_expiring) foot += ' The regime and flip still count tonight\'s expiries' + (m.expiring_share != null ? ' (' + Math.round(m.expiring_share * 100) + '% of gamma)' : '') + '.';
   if(m.thin_book) foot += ' Thin book.';
   host.append(mk('div', 'tm-foot', foot));
+}
+function tmapKey(host, m){      // "what these mean": only the levels on THIS map, top to bottom like the chart, same-strike pairs explained as a pair
+  const byPrice = new Map();
+  for(const rd of m.roads) for(const w of rd.waypoints){const e = byPrice.get(w.price) || {price: w.price, tags: [], road: rd.key}; e.tags.push(w.tag); byPrice.set(w.price, e)}
+  const items = [...byPrice.values()].sort((a, b) => b.price - a.price);
+  if(!items.length) return;
+  const det = mk('details', 'tm-key'); det.open = LS.get('px.tmapKey', false) === true;       // collapsed until asked for: the chart labels already carry the short gloss
+  det.addEventListener('toggle', () => LS.set('px.tmapKey', det.open));
+  det.append(mk('summary', null, 'What these levels mean'));
+  let nowDone = false;
+  const nowRow = () => {const r = mk('div', 'tm-k now'); r.append(mk('b', null, 'price now'), mk('span', null, 'where the chart is trading')); return r};
+  for(const it of items){
+    if(!nowDone && num(gexLast()) && it.price < gexLast()){det.append(nowRow()); nowDone = true}
+    const roles = [...new Set(it.tags.map(tmRole))], pairKey = roles.slice().sort((a, b) => (a === 'PIN') - (b === 'PIN') || a.localeCompare(b)).join('+');
+    const row = mk('div', 'tm-k ' + (it.road === 'UP' ? 'up' : it.road === 'DOWN' ? 'dn' : 'el')), head = mk('b', null, (TM.emoji ? roles.map(r => TM_EMO[r] || '').join('') + ' ' : '') + it.price + ' ' + roles.join(' + '));
+    const text = roles.length > 1 ? (TM_PAIRS[pairKey] || roles.map(r => (TM_ROLES[r] || ['', ''])[1]).join(' Also: ')) : ((TM_ROLES[roles[0]] || ['', ''])[1]);
+    row.append(head, mk('span', null, text)); det.append(row);
+  }
+  if(!nowDone && num(gexLast())) det.append(nowRow());
+  host.append(det);
 }
 async function tmapFetch(cid){
   TM.busy = true; TM.at = Date.now();
@@ -1391,6 +1440,7 @@ function tmapSync(){
   drawTmap(false);
 }
 $('tm-toggle').onclick = () => {TM.on = !TM.on; LS.set('px.tmap', TM.on); renderTmap(); drawTmap(true)};
+$('tm-emo').onclick = () => {TM.emoji = !TM.emoji; LS.set('px.tmapEmoji', TM.emoji); renderTmap(); drawTmap(true)};
 $('tm-hide').onclick = () => {TM.panel = !TM.panel; LS.set('px.tmapPanel', TM.panel); renderTmap()};
 renderTmap();
 function syncDesk(){if(typeof tmapSync === 'function') tmapSync(); drawDesk(false); if(typeof drawAutoLevels === 'function' && I.sel) drawAutoLevels(indWanted().hz)}   // auto levels are side-coded against the last price: a cross recolours them within a poll
@@ -1675,6 +1725,8 @@ function mnBias(tf){   // client-side read of the timeframe's own bars (full 8/1
     r.ribbon = String(n);
     r.stack = n === 5 ? 'BULL' : n === 0 ? 'BEAR' : 'MIXED';
     r.note = `ribbon ${n}/5 ${r.stack}` + (r.stack === 'MIXED' ? `, broke at ${broke}` : '');
+    const sl = typeof PXRegime !== 'undefined' ? PXRegime.ribbonSlopes(all, MN_PER, 5, 0.03) : null;      // direction of each EMA over the last 5 bars: a ribbon not stacked yet can still be lining up
+    if(sl){r.slope = sl.arrows; r.note += ' \u00b7 ' + sl.arrows + (sl.turn ? (sl.turn === 'up' ? ' turning up' : ' turning down') : '')}
     const ab = MN_PER.filter((p, i) => c > e[i]);
     r.pos = ab.length === 6 ? 'above all' : ab.length === 0 ? 'below all' : ab.length === 1 ? `above ${ab[0]} only` : 'above ' + ab.join(', ');
     r.bias = n === 5 && ab.length === 6 ? 'BULLISH' : n === 0 && ab.length === 0 ? 'BEARISH' : 'NEUTRAL';
@@ -1692,6 +1744,7 @@ function mnMeta(tf){
   kids[0].textContent = bz.bias === 'NA' ? 'NA' : MN_GLYPH[bz.bias] + ' ' + bz.bias;
   kids[0].className = 'bz bz-' + bz.bias.toLowerCase();
   kids[1].textContent = bz.stack === 'NA' ? '' : MN_GLYPH[bz.stack] + ' ' + bz.note;
+  kids[1].title = 'The six EMAs (8, 13, 21, 34, 55, 89). Arrows: each one rising \u25B2, falling \u25BC or flat \u25AC over the last 5 bars, fastest first. "turning up" = the fast three are rising while a slow one is not yet.';
   kids[2].textContent = bz.pos === 'NA' ? '' : bz.pos;
   if(kids[3] && typeof PXRegime !== 'undefined'){      // chop read of this timeframe's own closed bars: ADX lags, so efficiency sits beside it
     const rg = PXRegime.tfRegime(all.slice(0, -1)), a = rg.adx == null ? null : rg.adx.toFixed(0), e = rg.er == null ? 'NA' : rg.er.toFixed(2).replace(/^0/, '');

@@ -6,6 +6,7 @@ is fixed-key, `KEY: k=v`, one idea per line, absent = NA, so it reads cleanly al
 """
 import asyncio
 import math
+import pathlib
 from decimal import Decimal
 import re
 import time
@@ -16,6 +17,8 @@ from projectx_desk import bias as px_bias
 from projectx_desk import feed as px_feed
 from projectx_desk import gex as px_gex
 from projectx_desk import regime as px_regime
+from projectx_desk import tomorrow_feed as px_tomorrow
+from projectx_desk import tomorrow_ledger as px_tledger
 from projectx_desk import flow as px_flow
 from projectx_desk import sizing
 from projectx_desk.indicators import rsi_series
@@ -735,6 +738,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
         "manage": manage_block(guard, live, contract_id, rec, q, ind) if q else None,
         "trade": active_trade(guard),
         "gex": gex,
+        "tomorrow": await _tomorrow_state(app, contract_id),
         "respect": respect,
         "callouts": callouts,
         "flow": flow,
@@ -746,6 +750,19 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
     if not stream and isinstance(state.get("size"), dict):
         state["size"].pop("why_stream", None)
     return redact_stream(state) if stream else state
+
+
+async def _tomorrow_state(app, contract_id):
+    """Tomorrow's Map for the AI surface, with its record from the ledger. None without a contract. Display only."""
+    if not contract_id:
+        return None
+    blk = await px_tomorrow.ai_block(app, contract_id)
+    if blk.get("status") == "OK" and blk.get("root"):
+        try:
+            blk["record"] = px_tledger.summarize(px_tledger.load(px_tledger.path_from_env(pathlib.Path(__file__).resolve().parent.parent)), blk["root"])
+        except Exception:  # noqa: BLE001 - the record is advisory
+            blk["record"] = None
+    return blk
 
 
 def redact_stream(s):
@@ -916,6 +933,7 @@ def format_digest(s) -> str:
                  + "".join(f" {k}={_f(lv[k])}" for k in ("kind", "wall_type", "rel", "src_strike") if lv.get(k) is not None))
     L.extend(px_gex.near_lines(g))
     L.append("GEX_NOTE: positioning not targets; flip is regime boundary")
+    L.extend(px_tomorrow.tomorrow_lines(s.get("tomorrow")))
     L.append("POS: " + ("; ".join(f"{p['side']} {_f(p['size'])} {_f(p['contract'])} @ {_f(p['avg_price'])}" for p in s["positions"]) or "NONE"))
     L.append("ORD: " + ("; ".join(f"{o['side']} {o['type']} {_f(o['size'])} {_f(o['contract'])} stop={_f(o['stop'])} limit={_f(o['limit'])} tag={_f(o['tag'])}"
                                   for o in s["orders"]) or "NONE"))

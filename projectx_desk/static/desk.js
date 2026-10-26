@@ -950,7 +950,7 @@ const MONO = '"JetBrains Mono", ui-monospace, monospace';
 // marks, an amber last-price tag with dark ink, and every level drawn as a full-width line with a solid colour chip. Only the
 // candles keep the TraderMatrix gold and steel above: a colour that means "price went up" stays the desk's own.
 const E = {grid: '#161c27', axis: '#2a3140', text: '#8b97a8', ink: '#e7edf5', cross: '#3a4456', crossBg: '#1a212e', last: '#ffb000',
-           dark: '#07090e', hot: '#ff7a18', sup: '#26d07c'};
+           dark: '#07090e', hot: '#ff9340', sup: '#35e690'};   // levels: lifted a step so they read at a glance (was #ff7a18 / #26d07c)
 const axis = {axisLine: {color: E.axis}, tickLine: {color: E.axis}, tickText: {color: E.text, size: 10, family: MONO}};
 const chs = {line: {color: E.cross, style: 'solid'}, text: {backgroundColor: E.crossBg, borderColor: E.axis, color: E.ink, family: MONO, size: 11}};
 const legendTxt = {size: 11, family: MONO, color: E.text};
@@ -969,7 +969,7 @@ const STYLES = {
 };
 /* ember's level label: a solid chip in the level's colour with dark ink, not coloured text on a dark box. Also the hover tag on the
    y axis (klinecharts only draws that tag while the line is hovered), so pass it as the overlay's text style too. */
-const chip = (color, bold) => ({color: E.dark, backgroundColor: color, borderSize: 0, borderRadius: 2, size: 11, family: MONO, weight: bold ? '700' : '600',
+const chip = (color, bold) => ({color: E.dark, backgroundColor: color, borderSize: 0, borderRadius: 2, size: 12, family: MONO, weight: bold ? '700' : '600',
                                 paddingLeft: 5, paddingRight: 5, paddingTop: 2, paddingBottom: 2, style: 'fill'});
 const LEGEND_H = 80;   // the OHLC and indicator legends own the top-left corner: a chip that high goes to the right edge instead
 function levelFigs(cs, bounding, ed, line){
@@ -1180,7 +1180,7 @@ let deskSig = '';
 /* GEX levels, as the ember chart draws walls: the pin (the magnet) and the flip (the regime boundary) stay purple; every other wall is
    side-coded against the last price, hot orange above (resistance side) and green below (support side), heavier and with a wider shaded
    band the bigger it is (rel = size against the biggest wall in the payload). A cross recolours it within a poll. Positioning, not targets. */
-const GEX_COL = {flip: '#c084fc', pin: '#a855f7'}, GEX_HOT = '255,122,24', GEX_SUP = '38,208,124', GEX_PIN = '168,85,247';
+const GEX_COL = {flip: '#d8b4fe', pin: '#c77dff'}, GEX_HOT = '255,147,64', GEX_SUP = '53,230,144', GEX_PIN = '199,125,255';
 const gexLast = () => S.ai && S.ai.quote && num(S.ai.quote.last) ? S.ai.quote.last : lastPx;
 const gexRel = lv => typeof lv.rel === 'number' && isFinite(lv.rel) ? Math.max(0, Math.min(1, lv.rel)) : null;
 function gexBands(){      // translucent bands behind the lines: half-height 0.10 to 0.40 ATR by size; small walls get none
@@ -1194,7 +1194,7 @@ function gexBands(){      // translucent bands behind the lines: half-height 0.1
     const rel = nm === 'pin' ? 1 : gexRel(lv) ?? 0.3;
     if(rel < 0.25) continue;
     const h = atr * (0.10 + 0.30 * rel), rgb = nm === 'pin' ? GEX_PIN : lp != null && lv.price > lp ? GEX_HOT : GEX_SUP;
-    out.push({band: true, price: lv.price - h, price2: lv.price + h, color: `rgba(${rgb},${(0.05 + 0.11 * rel).toFixed(3)})`});
+    out.push({band: true, price: lv.price - h, price2: lv.price + h, color: `rgba(${rgb},${(0.08 + 0.17 * rel).toFixed(3)})`});
   }
   return out;
 }
@@ -1209,7 +1209,7 @@ function deskLines(){
     const sz = typeof lv.rel === 'number' ? ' ' + Math.round(lv.rel * 100) + '%' : '';   // size against the biggest wall in the payload
     const ref = /^flip/.test(nm), pin = nm === 'pin', rel = gexRel(lv);
     const color = ref ? GEX_COL.flip : pin ? GEX_COL.pin : lastP == null ? C.purple : lv.price > lastP ? E.hot : E.sup;
-    out.push({price: lv.price, label: 'GEX ' + kd + nm + ' ' + lv.price + sz, color, dash: !pin, size: pin ? 2 : rel == null ? 1 : rel >= 0.66 ? 3 : rel >= 0.33 ? 2 : 1});
+    out.push({price: lv.price, label: 'GEX ' + kd + nm + ' ' + lv.price + sz, color, dash: !pin, size: pin ? 3 : rel == null ? 2 : rel >= 0.66 ? 4 : rel >= 0.33 ? 3 : 2});
   }
   const cl = CALL.live;       // the analyst's own entry, stop and first target, while it is recent and this is its chart
   if(cl && cl.root === curRoot() && cl.age0 + (performance.now() - cl.at) / 1000 < 5400){

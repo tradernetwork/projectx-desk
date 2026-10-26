@@ -70,8 +70,34 @@ class Callouts(BaseHTTPRequestHandler):
         pass
 
 
+FX = json.loads((ROOT / "tests" / "fixtures" / "tomorrow" / "spy-2026-10-17.json").read_text(encoding="utf-8"))
+
+
+def spy_book(path):
+    """The captured SPY book from the test fixtures, rescaled so SPY x 10 lands on the mock MES price and dated to this week, for the dealer map.
+    Pure fake data: the fixtures are public market structure, never an account. Returns the parsed body for /gex/SPY, /matrix or /historical."""
+    k = (Shared.mes / 10.0) / FX["gex"]["spotPrice"]
+    today = datetime.now(timezone.utc).date()
+    days = (today - datetime.fromisoformat(FX["today"]).date()).days // 7 * 7          # whole weeks keep the weekday pattern of the expirations
+    shift = lambda iso: (datetime.fromisoformat(iso.replace("Z", "+00:00")) + timedelta(days=days)).isoformat().replace("+00:00", "Z")
+    snap = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat().replace("+00:00", "Z")
+    if path.endswith("/matrix"):
+        m = FX["matrix"]
+        return {"snapshotTime": snap, "spotPrice": round(FX["gex"]["spotPrice"] * k, 2), "expirations": [shift(e + "T00:00:00Z")[:10] for e in m["expirations"]],
+                "rows": [{"strike": round(r["strike"] * k, 2), "gex": r["gex"]} for r in m["rows"]]}
+    if "/historical" in path:
+        return [{"snapshotTime": shift(h["snapshotTime"]), "spotPrice": round(h["spotPrice"] * k, 2)} for h in FX["historical"]]
+    g = FX["gex"]
+    return {"spotPrice": round(g["spotPrice"] * k, 2), "totalGEX": g["totalGEX"], "gammaFlipLevel": round(g["gammaFlipLevel"] * k, 2), "lastUpdated": snap}
+
+
 class Gex(BaseHTTPRequestHandler):
     def do_GET(self):
+        if any(f"/gex/{s}" in self.path for s in ("SPY", "QQQ", "GLD")):       # the dealer map's three reads
+            body = json.dumps({"success": True, "data": spy_book(self.path), "cached": False}).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(body))); self.end_headers()
+            shutil.copyfileobj(io.BytesIO(body), self.wfile)
+            return
         s = Shared.mes - 1.0       # SPX-like spot one point under the futures price (additive basis)
         lvl = lambda off, net, typ: {"strike": round(s + off, 2), "netGEX": net, "type": typ}
         data = {"symbol": "SPX", "spotPrice": s, "gammaFlipLevel": round(s + 4.0, 2), "maxGammaStrike": round(s - 1.5),
@@ -144,6 +170,12 @@ def main():
             shot("desk-idle.png")
             shot("ui-size-box.png", "#size")
             shot("ui-chart-gex.png", "#chart")
+            try:
+                page.wait_for_selector("#tm-body :text('RIGHT NOW')", timeout=20000)      # the dealer map loads on its own timer
+                time.sleep(1)
+                shot("ui-dealer-map.png", "#tmap")
+            except Exception as e:      # the map is optional on a mock run; say so rather than ship a stale picture
+                print("dealer map not drawn:", str(e)[:80])
             # the analyst posts an ENTRY: banner, chart switch, callout lines, STAGE button
             Shared.mnq = ask(MNQ)
             Shared.alert = True

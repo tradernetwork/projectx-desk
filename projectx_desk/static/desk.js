@@ -1370,7 +1370,8 @@ klinecharts.registerOverlay({
 const ROOM = {map: 0, trend: 0};       // right-hand room each overlay needs for its labels; the chart takes the larger, never less than the stock 40 px
 function applyRoom(){const d = Math.max(40, ROOM.map, ROOM.trend); if(Math.abs(d - TM.off) > 4){chart.setOffsetRightDistance(d); TM.off = d}}
 const barPx = () => {let bs = 8; try{bs = chart.getBarSpace().bar || 8}catch(e){} return bs};
-function tmapOffset(spanBars){ROOM.map = spanBars ? Math.round(spanBars * barPx() + 200) : 0; applyRoom()}
+// labels carry an emoji and a gloss now: the longest chip needs about 320 px of room past the last candle
+function tmapOffset(spanBars){ROOM.map = spanBars ? Math.round(spanBars * barPx() + 330) : 0; applyRoom()}
 function drawTmap(force){
   const r = TM.res, m = r && r.status === 'OK' && r.map ? r.map : null, data = chart.getDataList(), lastBar = data[data.length - 1];
   const lp = num(gexLast()) ? gexLast() : lastBar && num(lastBar.close) ? lastBar.close : null;

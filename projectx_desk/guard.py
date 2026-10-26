@@ -15,6 +15,7 @@ import math
 import os
 import re
 import time
+import types
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -193,6 +194,15 @@ class Guard:
         if isinstance(rec, dict):
             self._contracts[contract_id] = (self.clock(), rec)
         return rec
+
+    last_auto = None       # the desk's own last protective close: {"kind", "at", "clock"} (see _note_auto)
+
+    def auto_action(self) -> Optional[dict]:
+        """The desk's last automatic close as an allowlisted dict ({kind, age_s}) for the screen and digest, or None. Fixed words only."""
+        a = self.last_auto
+        if not a or self.clock() - a["clock"] > 6 * 3600:
+            return None
+        return {"kind": a["kind"], "age_s": int(max(0, self.clock() - a["clock"]))}
 
     def halted(self) -> bool:
         try:
@@ -391,6 +401,7 @@ class Guard:
         if not has_pos and not self.live.orders:
             return None
         self._audit("flatten", origin="deadline", state="DEADLINE")
+        self._note_auto("flat_by")
         return await self.flatten(origin="deadline")
 
     # ---- shared budget and stop helpers (one definition, used by the UI, MCP and digest) -----------
@@ -1110,6 +1121,7 @@ class Guard:
                     continue
                 if not self._stop_filled(owner):
                     self._audit("halt", code="owned_position_stop_missing")
+                    self._note_auto("owned_position_stop_missing")
                     res = None
                     try:
                         res = await self.flatten(contract_id=cid, origin="ui")
@@ -1141,6 +1153,7 @@ class Guard:
                        and rec.get("contract") == cid for tag, rec in self._intents.items())
             if mine:
                 self._audit("halt", code="unprotected_position")
+                self._note_auto("unprotected_position")
                 try:
                     await self.flatten(contract_id=cid, origin="ui")
                 finally:
@@ -1313,8 +1326,17 @@ class Guard:
         if t.stop_state != "ACKED" and not t.abandoned and t.state != "CLOSED":
             await self._naked(t, "stop_timeout")
 
+    AUTO_KINDS = {"stop_timeout", "stop_resize_failed", "stop_lost_after_modify", "owned_position_not_protected", "owned_position_stop_missing",
+                  "unprotected_position", "flat_by"}
+
+    def _note_auto(self, kind: str) -> None:
+        """Remember that the DESK closed a position on its own (not a stop-out, not you). The closing fill looks like any other, so
+        without this a protective flatten reads as the trade having lost. Memory only: a halt already persists its own cause."""
+        self.last_auto = {"kind": kind if kind in self.AUTO_KINDS else "auto", "at": self.wall().isoformat(timespec="seconds"), "clock": self.clock()}
+
     async def _naked(self, t: Ticket, code: str) -> None:
         """A position without a confirmed stop: flatten, then freeze everything for a human."""
+        self._note_auto(code)
         t.abandoned = True
         self._audit("halt", ticket=t.hash8, code=code)
         try:
@@ -1477,7 +1499,26 @@ class Guard:
         """The ticket that owns the open position in this contract, if its stop is live."""
         cands = [t for t in self.tickets.values() if t.contract_id == contract_id and t.state == PLACED
                  and t.filled_size and t.stop_state == "ACKED" and t.stop_order_id]
-        return max(cands, key=lambda t: t.created) if cands else None
+        return max(cands, key=lambda t: t.created) if cands else self._adopted_trade(contract_id)
+
+    def _adopted_trade(self, contract_id: str):
+        """A position with NO ticket in memory (the desk restarted after the fill) that exactly ONE working broker stop covers. Tickets are
+        not persisted, so without this the stop could not be tightened from the desk after a restart. Read-only view built from the
+        hub-fed book: the same tighten-only, clear-of-the-market, sim-only rules in move_stop apply to it. None when the picture is not
+        unambiguous (no stop, two stops, a stop smaller than the position, an unreadable side): then nothing is adopted and nothing is moved."""
+        pos = [p for p in self.live.positions.values() if p.get("contractId") == contract_id and abs(p.get("size") or 0)]
+        if len(pos) != 1:
+            return None
+        side, size = self._pos_side(pos[0]), abs(pos[0]["size"])
+        stops = [o for o in self.live.orders.values() if o.get("contractId") == contract_id and o.get("type") == 4
+                 and o.get("side") == (1 if side == "long" else 0)]
+        if side is None or len(stops) != 1 or abs(stops[0].get("size") or 0) < size or not _finite_pos(stops[0].get("stopPrice")) \
+                or not isinstance(stops[0].get("id"), int):
+            return None
+        o = stops[0]
+        return types.SimpleNamespace(side=side, contract_id=contract_id, stop_order_id=o["id"], stop_size=int(abs(o["size"])),
+                                     stop_current=float(o["stopPrice"]), stop_price=None, hash8="adopted", ticket_id=None,
+                                     abandoned=False, adopted=True)
 
     async def move_stop(self, contract_id: str, new_price, *, origin: str = "ui") -> MoveResult:
         """Move the working stop TOWARD price. Never wider, never into the market, never above the position.

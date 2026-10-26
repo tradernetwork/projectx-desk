@@ -595,7 +595,7 @@ def manage_block(guard, live, contract_id, rec, q, ind):
     bid, ask = q.get("bestBid"), q.get("bestAsk")
     if not all(isinstance(v, (int, float)) for v in (avg, last, bid, ask)):
         return None
-    init_risk = abs(avg - t.stop_price) or None
+    init_risk = (abs(avg - t.stop_price) or None) if t.stop_price else None          # an adopted trade (desk restarted) has no initial stop: no open R is claimed
     open_r = round(((last - avg) if long_ else (avg - last)) / init_risk, 2) if init_risk else None
     atr_v, ema21 = ind.get("atr"), (ind.get("ema") or {}).get("21")
 
@@ -617,7 +617,8 @@ def manage_block(guard, live, contract_id, rec, q, ind):
         out.append({"name": name, "price": _n(px, 4), "why": why, "valid": bool(tightens and clear),
                     "recommended": bool(tightens and clear and rec_ok)})
     return {"side": t.side.upper(), "size": abs(pos.get("size") or 0), "avg": _n(avg, 4), "last": _n(last, 4),
-            "stop": _n(t.stop_current, 4), "initial_stop": _n(t.stop_price, 4), "open_r": open_r, "suggestions": out,
+            "stop": _n(t.stop_current, 4), "initial_stop": _n(t.stop_price, 4) if t.stop_price else None, "open_r": open_r, "suggestions": out,
+            "adopted": bool(getattr(t, "adopted", False)),
             "rule": "stops only move toward price, never away; recommended = valid and the trade has earned it (hypothesis)"}
 
 
@@ -729,7 +730,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
     state = {
         "v": V, "asof": now.astimezone(CT).strftime("%H:%M:%S") + "CT",
         "mode": {"max_entry_dev_ticks": int(lim.max_entry_dev_ticks), "trading": bool(lim.trading), "mcp_place": bool(lim.mcp_place), "halt": guard.halted(),
-                 "unknown_order": guard.unreconciled(), "halt_cause": guard.halt_cause(),
+                 "unknown_order": guard.unreconciled(), "halt_cause": guard.halt_cause(), "auto": guard.auto_action(),
                  "windows": guard.windows(now),
                  "account_kind": lim.account_kind.upper(), "bracket_mode": lim.bracket_mode.upper()},
         "feed": {"market": "UP" if st.market.up else "DOWN", "user": "UP" if st.user.up else "DOWN",

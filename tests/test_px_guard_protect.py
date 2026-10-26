@@ -256,3 +256,53 @@ async def test_cancel_is_sim_only_and_never_calls_the_api_on_live(tmp_path):
     assert gw2.writes == []
     with pytest.raises(GuardError):
         await g.cancel("900; DROP")
+
+
+async def test_after_a_restart_the_one_covering_broker_stop_is_adopted_and_can_still_be_tightened(tmp_path):
+    from test_px_guard_place import build
+    g, live, clock, gw = build(tmp_path)
+    live.positions = {1: {"id": 1, "contractId": CID, "type": 1, "size": 1, "averagePrice": 5000.0}}
+    live.orders = {900: {"id": 900, "contractId": CID, "type": 4, "side": 1, "size": 1, "stopPrice": 4990.0, "status": 1}}
+    assert not g.tickets
+    t = g.open_trade(CID)
+    assert t is not None and t.adopted and t.stop_current == 4990.0 and t.stop_order_id == 900 and t.stop_price is None
+    clock_t = live.quotes[CID]
+    clock_t["_rx"] = clock()
+    gw.reply = {"success": True}
+    r = await g.move_stop(CID, 4995.0)
+    assert r.ok and r.stop_price == 4995.0
+    assert gw.writes == [("/api/Order/modify", {"accountId": 7, "orderId": 900, "size": 1, "limitPrice": None, "stopPrice": 4995.0, "trailPrice": None})]
+    r = await g.move_stop(CID, 4980.0)                                    # never wider, even for an adopted stop
+    assert not r.ok and len(gw.writes) == 1
+
+
+async def test_nothing_is_adopted_when_the_picture_is_ambiguous(tmp_path):
+    from test_px_guard_place import build
+    g, live, clock, gw = build(tmp_path)
+    live.positions = {1: {"id": 1, "contractId": CID, "type": 1, "size": 2, "averagePrice": 5000.0}}
+    one = {"id": 900, "contractId": CID, "type": 4, "side": 1, "size": 1, "stopPrice": 4990.0}
+    live.orders = {900: one}
+    assert g.open_trade(CID) is None                                      # a stop smaller than the position: not covered
+    live.orders = {900: {**one, "size": 2}, 901: {**one, "id": 901, "size": 2, "stopPrice": 4985.0}}
+    assert g.open_trade(CID) is None                                      # two stops: which one? none
+    live.orders = {900: {**one, "size": 2, "side": 0}}
+    assert g.open_trade(CID) is None                                      # a buy stop does not protect a long
+    live.positions = {1: {"id": 1, "contractId": CID, "type": 9, "size": 1}}
+    live.orders = {900: one}
+    assert g.open_trade(CID) is None                                      # unreadable position side
+
+
+async def test_a_protective_flatten_is_remembered_as_the_desks_own_action_with_a_fixed_word(tmp_path):
+    from datetime import datetime
+    from projectx_desk.guard import CT
+    g, live, clock, gw = build(tmp_path, flat_by="15:08")
+    assert g.auto_action() is None
+    live.positions = {1: {"id": 1, "contractId": CID, "type": 1, "size": 1, "averagePrice": 5000.0}}
+    gw.positions = [{"id": 1, "contractId": CID, "type": 1, "size": 1}]
+    await g.enforce_flat_by(datetime(2026, 10, 26, 15, 9, tzinfo=CT))
+    a = g.auto_action()
+    assert a["kind"] == "flat_by" and a["age_s"] == 0 and set(a) == {"kind", "age_s"}
+    clock.t += 7 * 3600
+    assert g.auto_action() is None                                              # a stale note is not shown
+    g._note_auto("something free text with spaces")
+    assert g.auto_action()["kind"] == "auto"                                    # an unknown kind never leaks as text

@@ -503,6 +503,10 @@ function renderBlotter(){
   const unknown = !!(a && a.mode && a.mode.unknown_order) || (S.placed && S.placed.state === 'UNKNOWN');
   $('halt-banner').hidden = !(halted || unknown);
   $('halt-title').textContent = unknown ? 'UNKNOWN OUTCOME, HALTED' : 'HALTED';
+  const AUTO_SAY = {flat_by: 'the flat-by deadline', stop_timeout: 'the stop was never confirmed', stop_resize_failed: 'a stop resize failed', stop_lost_after_modify: 'the stop could not be confirmed after a modify',
+                    owned_position_not_protected: 'the position had no stop', owned_position_stop_missing: 'the stop went missing', unprotected_position: 'the position had no stop', auto: 'a protective rule'};
+  const au = a && a.mode && a.mode.auto, ab = $('auto-banner');
+  if(ab){ab.hidden = !au; if(au) ab.textContent = 'THE DESK CLOSED A POSITION ON ITS OWN ' + (au.age_s < 90 ? au.age_s + 's' : Math.round(au.age_s / 60) + 'm') + ' ago: ' + (AUTO_SAY[au.kind] || AUTO_SAY.auto) + '. That fill is not a stop-out and not your exit.'}
   const cause = a && a.mode && a.mode.halt_cause;
   $('halt-title').textContent = unknown ? 'UNKNOWN OUTCOME, HALTED' : 'HALTED' + (cause ? ': ' + String(cause).replace(/_/g, ' ').toUpperCase() : '');
   $('halt-sub').textContent = unknown ? 'An order write got no definitive reply. Reconcile before anything else.' : 'New orders are refused until a human clears the halt.';

@@ -1,10 +1,30 @@
 """projectx tests: the `projectx_desk` package lives one directory up, so put the checkout root on sys.path."""
+import os
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import pytest
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _hermetic_env():
+    """No test may read the operator's .env.projectx or an exported PX_* shell variable.
+
+    `app.main()` calls `env.load_env_file()`, which writes the real file into `os.environ` for the rest of the
+    process. Run from a checkout that has one (the machine that trades does), the bind and MCP refusal tests then
+    inherit PX_OPEN_LAN / PX_HOST / PX_MCP_TOKEN and fail, and a genuinely red test hides in that noise.
+    PX_NO_ENV_FILE=1 stops the load; the scrub covers an exported variable. A test that wants a value sets it
+    itself with monkeypatch.setenv, which runs later and still wins.
+    """
+    saved = {k: os.environ.pop(k) for k in list(os.environ) if k.startswith("PX_")}
+    os.environ["PX_NO_ENV_FILE"] = "1"
+    try:
+        yield
+    finally:
+        os.environ.pop("PX_NO_ENV_FILE", None)
+        os.environ.update(saved)
 
 
 @pytest.fixture(autouse=True)

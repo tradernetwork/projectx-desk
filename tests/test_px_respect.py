@@ -9,6 +9,13 @@ from projectx_desk import respect as R
 T0 = 1_700_000_000_000
 
 
+def _timed(fn, *a, **kw):
+    """Seconds fn took to run. Used by the timing test, which takes the best of a few samples."""
+    t = time.perf_counter()
+    fn(*a, **kw)
+    return time.perf_counter() - t
+
+
 def walk(n, seed, step=900_000):
     rng = random.Random(seed)
     p, out = 100.0, []
@@ -224,6 +231,7 @@ def test_deterministic():
 
 def test_speed_five_timeframes_of_1000_bars():
     d = {tf: walk(1000, i) for i, tf in enumerate(R.TIMEFRAMES)}
-    t = time.perf_counter()
-    R.scan(d)
-    assert time.perf_counter() - t < 2.0
+    # Best of 3: a single sample tripped the 2.0 s bar on a loaded home server (2.13 s) and passed on the rerun.
+    # The bar stays where it is; only the load noise goes away. A real slowdown misses it three times.
+    best = min(_timed(R.scan, d) for _ in range(3))
+    assert best < 2.0

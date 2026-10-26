@@ -341,11 +341,11 @@ body.acct-live .ribbon{border-top:2px solid var(--magenta)}
 .legend{display:inline-flex;gap:12px;font:600 9px/1 var(--sans);letter-spacing:.1em;color:var(--text-muted)}
 .lg{display:inline-flex;align-items:center;gap:5px}
 .lg::before{content:"";width:14px;height:0;border-top:2px solid}
-.lg.entry::before{border-color:var(--cyan)} .lg.stop::before{border-color:var(--magenta)} .lg.vwap::before{border-color:var(--amber)} .lg.gex::before{border-top-style:dashed;border-image:linear-gradient(90deg,#c77dff 34%,#ff9340 34% 67%,#35e690 67%) 1}
+.lg.entry::before{border-color:var(--cyan)} .lg.stop::before{border-color:var(--magenta)} .lg.vwap::before{border-color:var(--amber)} .lg.gex::before{border-top-style:dashed;border-image:linear-gradient(90deg,#a63cff 34%,#ff8000 34% 67%,#00e070 67%) 1}
 /* the chart key, as on the WheelForge chart: a filled swatch for a shaded zone, a line for a level */
 .lg.zrisk::before,.lg.ztgt::before{height:8px;border:0;border-radius:1px} .lg.zrisk::before{background:rgba(244,63,94,.35)} .lg.ztgt::before{background:rgba(34,197,94,.3)}
 .lg.rsp::before{border-image:linear-gradient(90deg,#56b4e9,#f0e442,#cc79a7,#ff8a3d,#e6ebf2) 1}
-.lg.wall::before{border-top-style:dashed;border-image:linear-gradient(90deg,#ff9340 50%,#35e690 50%) 1}
+.lg.wall::before{border-top-style:dashed;border-image:linear-gradient(90deg,#ff8000 50%,#00e070 50%) 1}
 .dot-wrap{margin-left:auto;flex:none;white-space:nowrap;font:500 var(--fs-2xs)/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);display:inline-flex;align-items:center;gap:6px}
 #dot{width:7px;height:7px;border-radius:50%;background:var(--text-dim);display:inline-block}
 #dot.live{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s ease-in-out infinite} #dot.warn{background:var(--amber)}
@@ -813,7 +813,7 @@ button.mini{min-height:24px;padding:0 8px}
 .layoutseg{padding:1px;gap:1px}
 .layoutseg button{min-height:16px;padding:0 8px;font:600 var(--fs-2xs)/1 var(--sans);letter-spacing:.05em;text-transform:uppercase}
 @media (min-width:1100px){
-  html[data-layout="portrait"] .desk{grid-template-columns:minmax(340px,.9fr) minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto auto minmax(0,11fr) minmax(0,9fr) auto}
+  html[data-layout="portrait"] .desk{grid-template-columns:minmax(340px,.9fr) minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto auto minmax(0,9fr) minmax(0,9fr) auto}
   html[data-layout="portrait"] .chartwrap{grid-column:1/-1;grid-row:3}
   html[data-layout="portrait"] .col-left{grid-column:1;grid-row:4}
   html[data-layout="portrait"] .strip{grid-row:5}
@@ -835,10 +835,10 @@ button.mini{min-height:24px;padding:0 8px}
 #tm-body[hidden]{display:none}
 .tm-dealers{font:600 var(--fs-sm)/1.35 var(--sans);padding:6px 8px;border-radius:var(--r-sm);border:1px solid var(--border-strong);background:var(--bg-sub);color:var(--text)}
 .tm-dealers b{font-family:var(--mono);letter-spacing:.04em}
-.tm-dealers.neg b{color:#ff9340} .tm-dealers.pos b{color:#35e690}
-.tm-flip{font:500 var(--fs-xs)/1.4 var(--sans);color:var(--text-2)} .tm-flip b{color:#d8b4fe;font-family:var(--mono)}
+.tm-dealers.neg b{color:#ff8000} .tm-dealers.pos b{color:#00e070}
+.tm-flip{font:500 var(--fs-xs)/1.4 var(--sans);color:var(--text-2)} .tm-flip b{color:#b45bff;font-family:var(--mono)}
 .tm-row{border-left:3px solid var(--tmc,var(--border-strong));padding:2px 0 2px 8px}
-.tm-row.up{--tmc:#ff9340} .tm-row.dn{--tmc:#35e690} .tm-row.el{--tmc:#9db4ff}
+.tm-row.up{--tmc:#ff8000} .tm-row.dn{--tmc:#00e070} .tm-row.el{--tmc:#4f86ff}
 .tm-cond{font:700 var(--fs-sm)/1.3 var(--mono);color:var(--tmc)}
 .tm-cond i{font-style:normal;font-family:var(--sans);letter-spacing:.08em;font-size:var(--fs-2xs);margin-right:6px;color:var(--text-muted)}
 .tm-rule{font:500 var(--fs-xs)/1.4 var(--sans);color:var(--text-2)}
@@ -848,7 +848,7 @@ button.mini{min-height:24px;padding:0 8px}
 .tm-pro{font:500 var(--fs-2xs)/1.4 var(--sans);color:var(--text-muted)} .tm-pro summary{cursor:pointer;width:max-content}
 .tm-key{border-top:1px solid var(--border);padding-top:6px} .tm-key>summary{cursor:pointer;font:700 var(--fs-xs)/1.4 var(--sans);color:var(--text-2);letter-spacing:.04em}
 .tm-k{display:flex;flex-direction:column;gap:1px;margin:6px 0;padding-left:8px;border-left:3px solid var(--tmc,var(--border-strong))}
-.tm-k.up{--tmc:#ff9340} .tm-k.dn{--tmc:#35e690} .tm-k.el{--tmc:#9db4ff} .tm-k.now{--tmc:#ffb000}
+.tm-k.up{--tmc:#ff8000} .tm-k.dn{--tmc:#00e070} .tm-k.el{--tmc:#4f86ff} .tm-k.now{--tmc:#ffb000}
 .tm-k b{font:700 var(--fs-xs)/1.3 var(--mono);color:var(--text)} .tm-k span{font:500 var(--fs-xs)/1.4 var(--sans);color:var(--text-2)}
 
 /* ---- taller timeframe and tick charts on big screens: heights follow the screen, not a fixed 92 / 76 px ---- */
@@ -857,3 +857,19 @@ button.mini{min-height:24px;padding:0 8px}
 html[data-layout="portrait"] .col-right>#tmap{grid-column:1/-1}     /* the map text is long: give it the full width of the bottom band */
 .tm-now{border:1px solid #ffb000;border-radius:var(--r-sm);padding:6px 8px;background:rgba(255,176,0,.07);display:flex;flex-direction:column;gap:3px}
 .tm-now i{font:700 var(--fs-2xs)/1 var(--sans);font-style:normal;letter-spacing:.12em;color:#ffb000} .tm-now span{font:500 var(--fs-sm)/1.4 var(--sans);color:var(--text)}
+html[data-layout="portrait"] .col-right>#tmplan{grid-column:1/-1;order:1}
+
+/* ---- wide landscape (2560x1440): a wider right rail with the 15m and 1h side by side, so the map, timeframes, plan, risk, callouts and blotter fit without scrolling ---- */
+@media (min-width:2200px){
+  html[data-layout="landscape"] .desk{grid-template-columns:clamp(330px,20vw,392px) minmax(0,1fr) 520px}
+  html[data-layout="landscape"] #minis .mnbody{flex-direction:row}
+  html[data-layout="landscape"] #minis .mn{flex:1 1 0}
+  html[data-layout="landscape"]{--mini-h:clamp(120px,9vh,190px)}
+}
+html[data-layout="portrait"]{--mini-h:clamp(110px,6.5vh,170px)}      /* the portrait bottom band holds the map, timeframes, plan and risk: keep them all in view */
+#tm-body{gap:5px} .tm-rule{line-height:1.3} .tm-row{padding:1px 0 1px 8px} .tm-now span{line-height:1.35} .tm-dealers{padding:5px 8px}
+html[data-layout="portrait"] .col-right>#blotter{min-height:90px;max-height:300px}
+html[data-layout="portrait"] .col-right{gap:6px}
+html[data-layout="portrait"] #tm-body{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:start}
+html[data-layout="portrait"] #tm-body>.tm-key,html[data-layout="portrait"] #tm-body>.tm-foot{grid-column:1/-1}
+@media (min-width:2200px){html[data-layout="landscape"] .col.col-right{gap:6px}}

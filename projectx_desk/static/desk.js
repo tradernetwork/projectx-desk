@@ -950,7 +950,7 @@ const MONO = '"JetBrains Mono", ui-monospace, monospace';
 // marks, an amber last-price tag with dark ink, and every level drawn as a full-width line with a solid colour chip. Only the
 // candles keep the TraderMatrix gold and steel above: a colour that means "price went up" stays the desk's own.
 const E = {grid: '#161c27', axis: '#2a3140', text: '#8b97a8', ink: '#e7edf5', cross: '#3a4456', crossBg: '#1a212e', last: '#ffb000',
-           dark: '#07090e', hot: '#ff9340', sup: '#35e690'};   // levels: lifted a step so they read at a glance (was #ff7a18 / #26d07c)
+           dark: '#07090e', hot: '#ff8000', sup: '#00e070'};   // levels: lifted a step so they read at a glance (was #ff7a18 / #26d07c)
 const axis = {axisLine: {color: E.axis}, tickLine: {color: E.axis}, tickText: {color: E.text, size: 10, family: MONO}};
 const chs = {line: {color: E.cross, style: 'solid'}, text: {backgroundColor: E.crossBg, borderColor: E.axis, color: E.ink, family: MONO, size: 11}};
 const legendTxt = {size: 11, family: MONO, color: E.text};
@@ -1180,7 +1180,7 @@ let deskSig = '';
 /* GEX levels, as the ember chart draws walls: the pin (the magnet) and the flip (the regime boundary) stay purple; every other wall is
    side-coded against the last price, hot orange above (resistance side) and green below (support side), heavier and with a wider shaded
    band the bigger it is (rel = size against the biggest wall in the payload). A cross recolours it within a poll. Positioning, not targets. */
-const GEX_COL = {flip: '#d8b4fe', pin: '#c77dff'}, GEX_HOT = '255,147,64', GEX_SUP = '53,230,144', GEX_PIN = '199,125,255';
+const GEX_COL = {flip: '#b45bff', pin: '#a63cff'}, GEX_HOT = '255,128,0', GEX_SUP = '0,224,112', GEX_PIN = '166,60,255';
 const gexLast = () => S.ai && S.ai.quote && num(S.ai.quote.last) ? S.ai.quote.last : lastPx;
 const gexRel = lv => typeof lv.rel === 'number' && isFinite(lv.rel) ? Math.max(0, Math.min(1, lv.rel)) : null;
 function gexBands(){      // translucent bands behind the lines: half-height 0.10 to 0.40 ATR by size; small walls get none
@@ -1194,7 +1194,7 @@ function gexBands(){      // translucent bands behind the lines: half-height 0.1
     const rel = nm === 'pin' ? 1 : gexRel(lv) ?? 0.3;
     if(rel < 0.25) continue;
     const h = atr * (0.10 + 0.30 * rel), rgb = nm === 'pin' ? GEX_PIN : lp != null && lv.price > lp ? GEX_HOT : GEX_SUP;
-    out.push({band: true, price: lv.price - h, price2: lv.price + h, color: `rgba(${rgb},${(0.08 + 0.17 * rel).toFixed(3)})`});
+    out.push({band: true, price: lv.price - h, price2: lv.price + h, color: `rgba(${rgb},${(0.10 + 0.20 * rel).toFixed(3)})`});
   }
   return out;
 }
@@ -1272,7 +1272,7 @@ function drawDesk(force){
    regenerated from the converted prices). Up road hot, down road green, the ELSE band neutral blue, the flip purple. A waypoint past a
    typical day is dashed (a tail, not a plan), a thin one is hollow, one price has already gone through is dimmed. Positioning, not targets. */
 const TM = {emoji: LS.get('px.tmapEmoji', true) !== false, on: LS.get('px.tmap', true) !== false, panel: LS.get('px.tmapPanel', true) !== false, cid: null, res: null, at: 0, busy: false, sig: '', off: 40};
-const TM_COL = {UP: E.hot, DOWN: E.sup, RANGE: '#9db4ff', FLIP: '#d8b4fe'};
+const TM_COL = {UP: E.hot, DOWN: E.sup, RANGE: '#4f86ff', FLIP: '#b45bff'};
 const TM_WHY = {NO_KEY: 'No TraderDaddy key on this desk.', UNSUPPORTED: 'No map for this contract.', CONTRACT: 'No map for this contract.',
   NO_REF: 'No futures price at the snapshot time to scale with.', CONVERT: 'Source and futures prices do not line up, so nothing is drawn.',
   STALE: 'The latest gamma is more than five days old.', NO_MAP: 'The book is too thin to map.', AUTH: 'The GEX key was rejected.',
@@ -1363,15 +1363,14 @@ klinecharts.registerOverlay({
     if(Math.max(cs[0].y, cs[1].y) < 0 || Math.min(cs[0].y, cs[1].y) > bounding.height) return [];      // the whole band is off-screen
     const ed = overlay.extendData || {}, x0 = Math.min(cs[0].x, cs[1].x), x1 = Math.max(cs[0].x, cs[1].x), y0 = Math.min(cs[0].y, cs[1].y), y1 = Math.max(cs[0].y, cs[1].y);
     const edge = y => ({type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x0, y}, {x: x1, y}]}, styles: {style: 'dashed', color: TM_COL.RANGE, size: 1, dashedValue: [5, 4]}});
-    return [{type: 'polygon', ignoreEvent: true, attrs: {coordinates: [{x: x0, y: y0}, {x: x1, y: y0}, {x: x1, y: y1}, {x: x0, y: y1}]}, styles: {style: 'fill', color: hexA(TM_COL.RANGE, .13)}},
+    return [{type: 'polygon', ignoreEvent: true, attrs: {coordinates: [{x: x0, y: y0}, {x: x1, y: y0}, {x: x1, y: y1}, {x: x0, y: y1}]}, styles: {style: 'fill', color: hexA(TM_COL.RANGE, .2)}},
             edge(y0), edge(y1),
             {type: 'text', ignoreEvent: true, attrs: {x: x1 + 11, y: (y0 + y1) / 2, text: ed.label || '', align: 'left', baseline: 'middle'}, styles: chip(TM_COL.RANGE, true)}];
   }});
-function tmapOffset(spanBars){      // leave room right of the last candle for the roads and their labels; restore the stock margin when off
-  let d = 40;
-  if(spanBars){let bs = 8; try{bs = chart.getBarSpace().bar || 8}catch(e){} d = Math.round(spanBars * bs + 200)}
-  if(Math.abs(d - TM.off) > 4){chart.setOffsetRightDistance(d); TM.off = d}
-}
+const ROOM = {map: 0, trend: 0};       // right-hand room each overlay needs for its labels; the chart takes the larger, never less than the stock 40 px
+function applyRoom(){const d = Math.max(40, ROOM.map, ROOM.trend); if(Math.abs(d - TM.off) > 4){chart.setOffsetRightDistance(d); TM.off = d}}
+const barPx = () => {let bs = 8; try{bs = chart.getBarSpace().bar || 8}catch(e){} return bs};
+function tmapOffset(spanBars){ROOM.map = spanBars ? Math.round(spanBars * barPx() + 200) : 0; applyRoom()}
 function drawTmap(force){
   const r = TM.res, m = r && r.status === 'OK' && r.map ? r.map : null, data = chart.getDataList(), lastBar = data[data.length - 1];
   const lp = num(gexLast()) ? gexLast() : lastBar && num(lastBar.close) ? lastBar.close : null;
@@ -1404,26 +1403,27 @@ function drawTmap(force){
 }
 const ctClock = new Intl.DateTimeFormat('en-US', {timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', weekday: 'short'});
 function renderTmap(){
-  const host = $('tm-body'), sub = $('tm-sub'); if(!host || !sub) return;
-  host.hidden = !TM.panel;
+  const head = $('tm-head'), host = $('tm-body'), planSec = $('tmplan'), sub = $('tm-sub'); if(!head || !host || !planSec || !sub) return;
+  host.hidden = !TM.panel; planSec.hidden = true;
   const hb = $('tm-hide'); hb.textContent = TM.panel ? 'Hide' : 'Show'; hb.setAttribute('aria-expanded', String(TM.panel));
   const tg = $('tm-toggle'); tg.setAttribute('aria-pressed', String(TM.on)); $('tm-emo').setAttribute('aria-pressed', String(TM.emoji));
-  const r = TM.res; host.replaceChildren(); sub.textContent = '';
-  if(!r){host.append(mk('div', 'tm-dead', 'loading')); return}
+  const r = TM.res; head.replaceChildren(); host.replaceChildren(); sub.textContent = '';
+  if(!r){head.append(mk('div', 'tm-dead', 'loading')); return}
   const m = r.status === 'OK' && r.map ? r.map : null;
-  if(!m){host.append(mk('div', 'tm-dead', TM_WHY[r.code] || TM_WHY[r.status] || 'Not available right now.')); return}
+  if(!m){head.append(mk('div', 'tm-dead', TM_WHY[r.code] || TM_WHY[r.status] || 'Not available right now.')); return}
+  planSec.hidden = false;
   const age = r.age_s < 5400 ? Math.round(r.age_s / 60) + ' min old' : (r.age_s / 3600).toFixed(1) + ' h old';
   sub.textContent = `${r.source} to ${r.root} · ${ctClock.format(new Date(r.snapshot_epoch * 1000))} CT · ${age}`;
-  const now = mk('div', 'tm-now'); now.id = 'tm-now'; now.append(mk('i', null, 'RIGHT NOW'), mk('span', null, tmapNowText(m))); host.append(now);
+  const now = mk('div', 'tm-now'); now.id = 'tm-now'; now.append(mk('i', null, 'RIGHT NOW'), mk('span', null, tmapNowText(m))); head.append(now);
   const neg = m.regime === 'negative', d = mk('div', 'tm-dealers ' + (neg ? 'neg' : 'pos'));
   d.append(mk('b', null, (TM.emoji ? (neg ? '\u{1F525} ' : '\u{1F9CA} ') : '') + (neg ? 'SHORT GAMMA' : 'LONG GAMMA')), document.createTextNode(neg ? ': dealers chase price, so moves extend.' : ': dealers lean against price, so moves get damped.'));
-  host.append(d);
+  head.append(d);
   if(m.flip != null){
     const f = mk('div', 'tm-flip'), b = mk('b', null, String(m.flip));
     if(m.flip_on_price) f.append(document.createTextNode('The flip ('), b, document.createTextNode(') sits on top of price, so it says nothing.'));
     else if(m.flip > m.spot) f.append(document.createTextNode('Under the flip ('), b, document.createTextNode('): chasing. Through it dealers stop chasing and start braking.'));
     else f.append(document.createTextNode('Above the flip ('), b, document.createTextNode('): dealers are braking, not chasing.'));
-    host.append(f);
+    head.append(f);
   }
   const byKey = k => m.roads.find(x => x.key === k) || {cond: '', rule: ''};
   for(const [cls, kind, k, verb] of [['up', (TM.emoji ? '\u2B06\uFE0F ' : '') + 'IF', 'UP', 'it goes '], ['dn', (TM.emoji ? '\u2B07\uFE0F ' : '') + 'IF', 'DOWN', 'it goes '], ['el', (TM.emoji ? '\u2194\uFE0F ' : '') + 'ELSE', 'RANGE', 'it holds ']]){
@@ -1434,7 +1434,7 @@ function renderTmap(){
     host.append(row);
   }
   tmapKey(host, m);
-  let foot = 'Positioning, not targets. Gamma that survives tonight; a level past a typical day (' + m.typical_move + ' pts) is a tail.';
+  let foot = 'Positioning, not targets. Past ' + m.typical_move + ' pts is a tail.';
   if(m.regime_includes_expiring) foot += ' The regime and flip still count tonight\'s expiries' + (m.expiring_share != null ? ' (' + Math.round(m.expiring_share * 100) + '% of gamma)' : '') + '.';
   if(m.thin_book) foot += ' Thin book.';
   host.append(mk('div', 'tm-foot', foot));
@@ -1477,7 +1477,75 @@ $('tm-toggle').onclick = () => {TM.on = !TM.on; LS.set('px.tmap', TM.on); render
 $('tm-emo').onclick = () => {TM.emoji = !TM.emoji; LS.set('px.tmapEmoji', TM.emoji); renderTmap(); drawTmap(true)};
 $('tm-hide').onclick = () => {TM.panel = !TM.panel; LS.set('px.tmapPanel', TM.panel); renderTmap()};
 renderTmap();
-function syncDesk(){if(typeof tmapSync === 'function') tmapSync(); drawDesk(false); if(typeof drawAutoLevels === 'function' && I.sel) drawAutoLevels(indWanted().hz)}   // auto levels are side-coded against the last price: a cross recolours them within a poll
+
+/* ================= Automatic trendlines and channels (static/trend.js): drawn from the candles on screen, display only =================
+   A line needs three pivot touches and no close through it; the label says how many. Support cyan, resistance pink, a channel is shaded,
+   a regression channel (yellow, dotted) appears only when no pivot line fits and it explains at least half the move. Projected 6 bars past the
+   last candle. Never saved as a user drawing (group 'trend' is in NONUSER). */
+const TR = {on: LS.get('px.trend', true) !== false, sig: ''};
+const TR_COL = {support: '#00c8ff', resistance: '#ff3da6', reg: '#ffd400'}, TR_EXT = 6;
+klinecharts.registerOverlay({
+  name: 'trendSeg', totalStep: 3, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
+  createPointFigures: ({coordinates: cs, overlay}) => {
+    if(cs.length < 2 || !finPt(cs)) return [];
+    const ed = overlay.extendData || {};
+    return [{type: 'line', ignoreEvent: true, attrs: {coordinates: [cs[0], cs[1]]}, styles: {style: ed.dash ? 'dashed' : 'solid', color: ed.color, size: ed.size || 2, dashedValue: ed.dots ? [2, 4] : [7, 4]}}];
+  }});
+klinecharts.registerOverlay({
+  name: 'trendFill', totalStep: 5, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
+  createPointFigures: ({coordinates: cs, overlay}) => {
+    if(cs.length < 4 || !finPt(cs)) return [];
+    return [{type: 'polygon', ignoreEvent: true, attrs: {coordinates: [cs[0], cs[1], cs[3], cs[2]]}, styles: {style: 'fill', color: (overlay.extendData || {}).color}}];
+  }});
+klinecharts.registerOverlay({
+  name: 'trendTag', totalStep: 2, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
+  createPointFigures: ({coordinates: cs, bounding, overlay}) => {
+    if(!finPt(cs)) return [];
+    const ed = overlay.extendData || {}, y = clampY(cs[0].y, bounding);
+    return [{type: 'text', ignoreEvent: true, attrs: {x: cs[0].x + 8, y, text: ed.label || '', align: 'left', baseline: 'middle'}, styles: chip(ed.color, false)}];
+  }});
+function drawTrend(force){
+  const data = chart.getDataList(), last = data[data.length - 1], lp = last ? last.close : null;
+  const sig = JSON.stringify([TR.on, data.length, last && last.timestamp, lp != null ? Math.round(lp * 4) / 4 : null, TM.on]);
+  if(sig === TR.sig && !force) return;
+  TR.sig = sig;
+  try{
+    chart.removeOverlay({groupId: 'trend'});
+    ROOM.trend = 0;
+    if(!TR.on || !last || typeof PXTrend === 'undefined'){applyRoom(); return}
+    const r = PXTrend.fit(data);
+    if(!r || (!r.support && !r.resistance && !r.channel && !r.regression)){applyRoom(); return}
+    ROOM.trend = Math.round(TR_EXT * barPx() + 250); applyRoom();       // labels sit past the last candle: leave room for them
+    const n = data.length, iEnd = n - 1 + TR_EXT, abs = i => r.offset + i;
+    const ov = (name, points, ed) => chart.createOverlay({name, groupId: 'trend', lock: true, points, extendData: ed});
+    const arrow = ln => Math.abs(ln.slope) < 0.03 * r.atr ? '▬' : ln.slope > 0 ? '▲' : '▼';
+    const pt = (ln, i, off) => ({dataIndex: abs(i), value: ln.p1 + ln.slope * (i - ln.i1) + (off || 0)});
+    const seg = (ln, col, off, dash) => ov('trendSeg', [pt(ln, ln.i1, off), pt(ln, r.last + TR_EXT, off)], {color: col, size: dash ? 1 : 2, dash: !!dash});
+    const tag = (ln, col, text, off) => ov('trendTag', [pt(ln, r.last + TR_EXT, off)], {color: col, label: text});
+    const fill = (a, b, col) => ov('trendFill', [{dataIndex: abs(a.i1), value: a.p1}, {dataIndex: iEnd, value: a.p1 + a.slope * (r.last + TR_EXT - a.i1)},
+                                                  {dataIndex: abs(b.i1), value: b.p1 + (b.off || 0)}, {dataIndex: iEnd, value: b.p1 + b.slope * (r.last + TR_EXT - b.i1) + (b.off || 0)}], {color: col});
+    if(r.support && r.resistance && r.parallel){            // two independent lines that run together: a confirmed channel
+      fill(r.support, r.resistance, hexA(TR_COL.support, .07));
+      seg(r.support, TR_COL.support); seg(r.resistance, TR_COL.resistance);
+      tag(r.support, TR_COL.support, arrow(r.support) + ' channel low · ' + r.support.touches + ' touches'); tag(r.resistance, TR_COL.resistance, arrow(r.resistance) + ' channel high · ' + r.resistance.touches + ' touches');
+    }else if(r.channel){                                    // a line plus a parallel rail that two pivots also touch
+      const c = r.channel, ln = c.line, col = TR_COL[ln.kind], railCol = TR_COL[ln.kind === 'support' ? 'resistance' : 'support'], w = Math.round(c.rail.width * 100) / 100;
+      fill(ln, {i1: ln.i1, p1: ln.p1, slope: ln.slope, off: c.rail.offset}, hexA(col, .07));
+      seg(ln, col); seg(ln, railCol, c.rail.offset);
+      tag(ln, col, arrow(ln) + ' ' + ln.kind + ' · ' + ln.touches + ' touches'); tag(ln, railCol, 'rail · ' + c.rail.touches + ' touches · ' + w + ' pts wide', c.rail.offset);
+    }else{
+      for(const ln of [r.support, r.resistance]) if(ln){seg(ln, TR_COL[ln.kind]); tag(ln, TR_COL[ln.kind], arrow(ln) + ' ' + ln.kind + ' · ' + ln.touches + ' touches')}
+    }
+    if(r.regression){
+      const g = r.regression, a = {i1: g.i1, p1: g.p1, slope: g.slope};
+      seg(a, TR_COL.reg, 0, true); seg(a, TR_COL.reg, g.bandWidth, true); seg(a, TR_COL.reg, -g.bandWidth, true);
+      tag(a, TR_COL.reg, 'REG ' + (g.slope >= 0 ? '▲' : '▼') + ' r² ' + g.r2.toFixed(2) + ' · ±2σ', 0);
+    }
+  }catch(e){err(e)}
+}
+$('tr-toggle').onclick = () => {TR.on = !TR.on; LS.set('px.trend', TR.on); $('tr-toggle').setAttribute('aria-pressed', String(TR.on)); drawTrend(true)};
+$('tr-toggle').setAttribute('aria-pressed', String(TR.on));
+function syncDesk(){if(typeof drawTrend === 'function') drawTrend(false); if(typeof tmapSync === 'function') tmapSync(); drawDesk(false); if(typeof drawAutoLevels === 'function' && I.sel) drawAutoLevels(indWanted().hz)}   // auto levels are side-coded against the last price: a cross recolours them within a poll
 
 /* ---- level reaction markers (group 'react': never saved with the user's drawings) ---- */
 let reactSig = '';
@@ -1893,7 +1961,7 @@ const tkAll = () => {for(const n of TK.sizes) tkFetch(n)};
 /* ---- drawing toolbar ---- */
 const TOOLS = [['Trend', 'segment'], ['Ray', 'rayLine'], ['H-line', 'horizontalStraightLine'], ['V-line', 'verticalStraightLine'],
   ['Chan', 'parallelStraightLine'], ['Fib', 'fibonacciLine'], ['Zone', 'zoneBand'], ['Meas', 'measure'], ['Note', 'simpleAnnotation']];
-const NONUSER = ['desk', 'react', 'respect', 'autolvl', 'orb'];   // overlay groups that are never saved as user drawings
+const NONUSER = ['desk', 'react', 'respect', 'autolvl', 'orb', 'tmap', 'trend'];   // overlay groups that are never saved as user drawings
 let magnet = LS.get('px.magnet', 0), locked = false, hidden = false;
 const MODES = ['normal', 'weak_magnet', 'strong_magnet'];
 function snapOv(e){   // a drawn or dragged price lands on a real tick, not 7666.37

@@ -9,7 +9,7 @@ HTML = (STATIC / "index.html").read_text(encoding="utf-8")
 
 def test_panel_and_toggle_exist_and_the_poll_loop_drives_the_map():
     assert 'id="tmap"' in HTML and 'id="tm-body"' in HTML and 'id="tm-toggle"' in HTML
-    assert "function syncDesk(){if(typeof tmapSync === 'function') tmapSync();" in JS         # every AI-state poll syncs the map
+    assert "if(typeof tmapSync === 'function') tmapSync();" in JS.split("function syncDesk(){")[1].split("}")[0]         # every AI-state poll syncs the map
     assert "'/api/tomorrow?contract=' + encodeURIComponent(cid)" in JS
 
 

@@ -11,7 +11,7 @@ from test_px_guard_preview import CID
 from test_px_guard_place import GW, build
 from test_px_guard_protect import Broker
 
-EXPECTED_POSTS = {"/api/preview", "/api/place", "/api/flatten", "/api/halt", "/api/halt/clear", "/api/reconcile", "/api/stop", "/api/intent/resolve"}
+EXPECTED_POSTS = {"/api/preview", "/api/readiness", "/api/place", "/api/flatten", "/api/halt", "/api/halt/clear", "/api/reconcile", "/api/stop", "/api/intent/resolve"}
 
 
 # Phone-alert routes (Web Push): same Origin + JSON + CSRF gate, no money path. Covered in tests/test_px_push.py.
@@ -253,3 +253,34 @@ def test_drawdown_base_fails_closed_on_an_unreadable_balance(tmp_path):
         assert g.risk_dollars_for(0.05) == 0.0
     g.live.account.pop("balance", None)
     assert g.risk_dollars_for(0.05) == 0.0
+
+
+def test_readiness_names_the_blocker_and_stages_nothing(tmp_path):
+    """The BUY/SELL pre-check runs the same evaluation as preview, writes nothing and leaves no ticket behind."""
+    app, g, live, gw = make_app(tmp_path)
+    with TestClient(app) as c:
+        app.state.live = g.live
+        tok = c.get("/api/csrf").json()["token"]
+        ok = post(c, "/api/readiness", tok, {"contract": CID, "side": "long", "stop_ticks": 25, "qty": 1}).json()
+        assert ok["ready"] is True and ok["blockers"] == [] and ok["max_stop_ticks"] == g.limits.max_stop_ticks
+        wide = post(c, "/api/readiness", tok, {"contract": CID, "side": "long", "stop_ticks": g.limits.max_stop_ticks + 50, "qty": 1}).json()
+        assert wide["ready"] is False and wide["blockers"][0]["check"] == "stop_distance"
+        assert gw.writes == [] and not g.tickets
+        assert post(c, "/api/readiness", tok, {"contract": CID, "side": "long", "qty": True}).status_code == 400
+
+
+def test_halt_cause_is_a_fixed_word_and_the_flat_by_wording_changes_after_the_deadline(tmp_path):
+    from datetime import datetime
+    from projectx_desk.guard import CT
+    app, g, live, gw = make_app(tmp_path)
+    assert g.halt_cause() is None
+    g.trip_halt("naked_position")
+    assert g.halt_cause() == "naked_position"
+    g.limits.halt_path.write_text("evil text with spaces\n", encoding="utf-8")
+    assert g.halt_cause() == "unknown"
+    g.clear_halt()
+    g.limits = dataclasses.replace(g.limits, flat_by="15:10")
+    late = g._flat_by_window(datetime(2026, 10, 26, 15, 40, tzinfo=CT))
+    assert "past the 15:10 CT flat-by" in late and "last 2 minutes" not in late
+    assert "last 2 minutes" in g._flat_by_window(datetime(2026, 10, 26, 15, 8, 30, tzinfo=CT))
+    assert g.windows(datetime(2026, 10, 26, 15, 40, tzinfo=CT))["flat_by_due"] is True

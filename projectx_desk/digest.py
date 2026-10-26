@@ -436,7 +436,7 @@ def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pc
                  "drawdown_left": _n(proj["drawdown_left"]), "daily_left": _n(proj["daily_left"]),
                  "heat_usd": _n(heat["total_usd"]), "heat_pct": _n(heat["pct"], 1)} | tgt | cost
         return extra | {"status": "OK", "root": root, "allowed": allowed, "side": side, "entry": _n(ref), "stop": _n(stop_px),
-                "stop_ticks": stop_t, "stop_points": _n(stop_pts), "budget_usd": _n(budget),
+                "stop_ticks": stop_t, "stop_max": int(limits.max_stop_ticks), "stop_points": _n(stop_pts), "budget_usd": _n(budget),
                 "budget_chosen_usd": _n(chosen), "risk_pct": risk_pct, "stop_atr_k": stop_k,
                 "contracts": 0 if too_wide else d["contracts"], "contracts_by_risk": by_risk, "cap": cap, "capped": by_risk > cap and not d["refused"],
                 "risk_usd": _n(d["total_risk_dollars"]), "rpc": _n(rpc), "pct_budget": _n(d["pct_of_risk_budget_used"], 1),
@@ -671,7 +671,7 @@ def active_trade(guard):
             "filled": t.filled_size or 0, "entry_ref": _n(t.readback.get("entry_ref")),
             "stop_price": _n(t.stop_current or t.stop_price), "stop_mode": t.stop_plan["mode"].upper(),
             "stop_state": t.stop_state or ("ATOMIC" if t.stop_plan["mode"] == "oco" else "PENDING"),
-            "risk_usd": _n(t.readback.get("risk_usd")), "id8": t.hash8}
+            "risk_usd": _n(t.readback.get("risk_usd")), "id8": t.hash8, "entry_status": guard.entry_status(t)}
 
 
 async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK_PCT, stop_k=1.5, stream=False):
@@ -726,7 +726,8 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
     state = {
         "v": V, "asof": now.astimezone(CT).strftime("%H:%M:%S") + "CT",
         "mode": {"max_entry_dev_ticks": int(lim.max_entry_dev_ticks), "trading": bool(lim.trading), "mcp_place": bool(lim.mcp_place), "halt": guard.halted(),
-                 "unknown_order": guard.unreconciled(),
+                 "unknown_order": guard.unreconciled(), "halt_cause": guard.halt_cause(),
+                 "windows": guard.windows(now),
                  "account_kind": lim.account_kind.upper(), "bracket_mode": lim.bracket_mode.upper()},
         "feed": {"market": "UP" if st.market.up else "DOWN", "user": "UP" if st.user.up else "DOWN",
                  "market_age_s": st.market.feed_age_s(), "user_age_s": st.user.feed_age_s(),

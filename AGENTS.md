@@ -93,6 +93,7 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 - **Size is the ATR stop only.** ADX is an advisory regime (`regime` in the state, `REGIME:` in the digest: RANGING below 20), never a sizing input and never a guard check. **The ADX/ATR scalers default OFF** (`PX_SIZE_SCALERS=1` to enable): the ATR stop already prices volatility. The one-click STAGE on analyst
   callouts defaults OFF (`PX_FEED_STAGE=1`); when used, the ticket is audited as `stage_source=callout`. The cost line needs
   `PX_COST_RT_USD`; unknown cost prints NA, never 0.
+- **Readiness is the same evaluation, read-only.** `Guard.readiness()` (POST `/api/readiness`, same Origin + JSON + CSRF gate) runs `_evaluate` and stops: no ticket, no audit line, no write. The manual stop box defaults to min(ATR stop, `PX_MAX_STOP_TICKS`). The desk's own ensure-quote waits use the guard's `max_quote_age_s` (2 s), so a quote the UI called fresh is never refused as stale. A halt shows its cause (`halt_cause`, a fixed word or `unknown`, never file free text), and a PLACED entry that is neither working nor filled after the 10 s grace shows `entry_status: gone`.
 - **Manual BUY/SELL is the same order path.** `qty` on `/api/preview` (UI only, never MCP) makes the guard derive the risk from the trader's
   contracts and stop and run every check unchanged; `manual_qty` refuses with the number the room and caps allow, never sizes down silently.
   Do not add a check bypass for manual orders; the rails have their own `0` switches.

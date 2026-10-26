@@ -197,6 +197,17 @@ class Guard:
         except OSError:
             return True  # unreadable halt file is treated as halted
 
+    def halt_cause(self) -> Optional[str]:
+        """Why the desk is halted: the code trip_halt wrote (a fixed word such as manual, naked_position, stop_timeout), or None
+        when not halted. Anything unreadable or odd reads as "unknown", never as free text."""
+        if not self.halted():
+            return None
+        try:
+            txt = self.limits.halt_path.read_text(encoding="utf-8").strip()
+        except (OSError, ValueError):
+            return "unknown"
+        return txt if txt and SAFE_AUDIT.match(txt) else "unknown"
+
     def trip_halt(self, code: str) -> None:
         """Freeze all opens. Survives restart. Only a human clears it (clear_halt, UI-only)."""
         p = self.limits.halt_path
@@ -355,6 +366,8 @@ class Guard:
             return None
         start = (datetime.combine(now_ct.date(), fb) - self.FLAT_LEAD).time()
         t = now_ct.time()
+        if fb <= t < SESSION_OPEN:
+            return f"past the {fb.strftime('%H:%M')} CT flat-by deadline: no opens until the 17:00 CT session open"
         if start <= t < SESSION_OPEN:
             return f"inside the last 2 minutes before the {fb.strftime('%H:%M')} CT flat-by deadline"
         return None
@@ -429,7 +442,7 @@ class Guard:
             except Exception:  # noqa: BLE001
                 pass
             if hasattr(self.live, "ensure_quote"):
-                await self.live.ensure_quote(cid, wait=0.5)
+                await self.live.ensure_quote(cid, wait=0.5, max_age=self.limits.max_quote_age_s)
 
     def draw(self) -> Optional[float]:
         """Dollars already spoken for against the loss room: the WORSE of the stop risk committed by our live tickets and the
@@ -486,6 +499,37 @@ class Guard:
             return float(px) if px > 0 else None
         except Exception:  # noqa: BLE001
             return None
+
+    def windows(self, now=None) -> dict:
+        """The clock the trader trades against, as plain HH:MM strings (CT) and which window is open now. Read-only."""
+        now_ct = (now or self.wall()).astimezone(CT)
+        fb = self._flat_by_time(now_ct)
+        why = self._past_cutoff(now_ct)
+        return {"now_ct": now_ct.strftime("%H:%M:%S"), "no_new_after": self.limits.no_new_after or None,
+                "flat_by": fb.strftime("%H:%M") if fb else None, "opens_refused": why,
+                "flat_by_due": self.flat_by_due(now)}
+
+    def entry_status(self, t) -> Optional[str]:
+        """What became of a PLACED entry, judged from broker-fed state: working (resting or just ACKed), filled (it made a
+        position), or gone (not working, no fill: the broker cancelled it or it never rested). Read-only; None if not placed."""
+        if t.state != PLACED:
+            return None
+        if getattr(t, "filled_size", 0):
+            return "filled"
+        if getattr(t, "broker_order_id", None) is not None and t.broker_order_id in self.live.orders:
+            return "working"
+        return "working" if self.clock() - getattr(t, "acked_at", 0.0) < self.IN_FLIGHT_S else "gone"
+
+    async def readiness(self, *, contract_id, side, stop_price, qty) -> dict:
+        """Would a manual order be staged right now? Runs the SAME `_evaluate` that preview() runs and stops there: no ticket,
+        no audit line, no write. Names the blockers so the trader sees the refusal before pressing BUY or SELL."""
+        if isinstance(contract_id, str) and CONTRACT_RE.match(contract_id) and hasattr(self.live, "ensure_quote"):
+            await self.live.ensure_quote(contract_id, max_age=self.limits.max_quote_age_s)
+        ev = await self._evaluate(contract_id=contract_id, side=side, stop_price=stop_price, risk_dollars=None,
+                                  order_type="market", entry=None, origin="ui", qty=qty)
+        bad = [{"check": n, "detail": (d or "")[:120]} for n, ok, d in ev.verdict if not ok]
+        return {"ready": not bad, "blockers": bad[:4], "min_stop_ticks": int(self.limits.min_stop_ticks),
+                "max_stop_ticks": int(self.limits.max_stop_ticks)}
 
     def unreconciled(self) -> bool:
         """True while any write is UNKNOWN or an intent is unresolved (the desk shows this loudly)."""
@@ -676,7 +720,7 @@ class Guard:
                                    for t in self.tickets.values()):
             return self._refuse([("ui_ticket_pending", False, "a ticket staged at the desk is waiting; the desk owns it")], origin)
         if isinstance(contract_id, str) and CONTRACT_RE.match(contract_id) and hasattr(self.live, "ensure_quote"):
-            await self.live.ensure_quote(contract_id)
+            await self.live.ensure_quote(contract_id, max_age=self.limits.max_quote_age_s)
         ev = await self._evaluate(contract_id=contract_id, side=side, stop_price=stop_price, risk_dollars=risk_dollars,
                                   order_type=order_type, entry=entry, origin=origin, qty=qty)
         if not ev.ok:

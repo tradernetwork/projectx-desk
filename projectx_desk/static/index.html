@@ -161,8 +161,10 @@
         <span class="step" title="contracts"><button id="mq-dec" aria-label="One contract fewer">-</button><output id="mq-val" class="val">1</output><button id="mq-inc" aria-label="One contract more">+</button></span>
         <span id="mq-cap" class="dim sub"></span>
         <label class="mq-stop">stop <input id="mq-stop" type="number" min="1" step="1" inputmode="numeric" aria-label="Stop distance in ticks">t</label>
+        <span id="mq-max" class="dim sub"></span>
         <button id="mq-atr" class="mini" title="Follow the ATR stop from the size box again">ATR</button>
         <button id="buy-btn" class="buy" disabled>BUY</button><button id="sell-btn" class="sell" disabled>SELL</button>
+        <span id="mq-ready" class="mq-ready dim" role="status" aria-live="polite"></span>
       </div>
       <div id="tk-refused" class="banner bad" hidden></div>
       <ul id="tk-checks" class="checks" hidden></ul>

@@ -378,6 +378,7 @@ function renderTree(){
     if(st === 'UNKNOWN') setState('tr-e-state', 'UNKNOWN', 'bad');
     else if(st === 'PLACING') setState('tr-e-state', 'SENDING', 'warn');
     else if(filled) setState('tr-e-state', 'FILLED', 'ok');
+    else if(tr.entry_status === 'gone') setState('tr-e-state', 'GONE: NOT WORKING, NOT FILLED', 'bad');
     else if(tr.acked) setState('tr-e-state', 'ACCEPTED, NOT FILLED', 'info');
     else setState('tr-e-state', 'PLACED', 'info');
     const ss2 = String(tr.stop_state || 'PENDING');
@@ -501,6 +502,8 @@ function renderBlotter(){
   const unknown = !!(a && a.mode && a.mode.unknown_order) || (S.placed && S.placed.state === 'UNKNOWN');
   $('halt-banner').hidden = !(halted || unknown);
   $('halt-title').textContent = unknown ? 'UNKNOWN OUTCOME, HALTED' : 'HALTED';
+  const cause = a && a.mode && a.mode.halt_cause;
+  $('halt-title').textContent = unknown ? 'UNKNOWN OUTCOME, HALTED' : 'HALTED' + (cause ? ': ' + String(cause).replace(/_/g, ' ').toUpperCase() : '');
   $('halt-sub').textContent = unknown ? 'An order write got no definitive reply. Reconcile before anything else.' : 'New orders are refused until a human clears the halt.';
 }
 
@@ -830,12 +833,32 @@ function renderManual(){
   if(cap !== null && MQ.qty > cap) MQ.qty = cap;
   $('mq-val').textContent = String(MQ.qty);
   const st = $('mq-stop');
-  if(!MQ.stopTouched && ok && typeof z.stop_ticks === 'number') st.value = String(z.stop_ticks);   // mirrors the ATR stop until you type your own
+  if(!MQ.stopTouched && ok && typeof z.stop_ticks === 'number') st.value = String(typeof z.stop_max === 'number' ? Math.min(z.stop_ticks, z.stop_max) : z.stop_ticks);   // mirrors the ATR stop (never past the cap) until you type your own
+  $('mq-max').textContent = ok && typeof z.stop_max === 'number' ? 'max ' + z.stop_max + 't' + (z.stop_ticks > z.stop_max ? ' (ATR wants ' + z.stop_ticks + 't)' : '') : '';
+  mqReadySoon();
   const can = !!(a && S.contractId) && !staging && parseInt(st.value, 10) >= 1;
   for(const id of ['buy-btn', 'sell-btn']) $(id).disabled = !can;
   $('mq-dec').disabled = MQ.qty <= 1; $('mq-inc').disabled = cap !== null && MQ.qty >= cap;
   $('mq-cap').textContent = cap !== null ? 'cap ' + cap : '';
 }
+/* Ready / blocked line beside BUY and SELL: asks the server to run the same checks as a preview (read-only, stages nothing) */
+let mqT = null, mqSeq = 0;
+function mqReadySoon(){clearTimeout(mqT); mqT = setTimeout(mqReady, 400)}
+async function mqReady(){
+  const el = $('mq-ready'), t = parseInt($('mq-stop').value, 10), cid = S.contractId;
+  if(!cid || !(t >= 1) || !S.ai){el.textContent = ''; el.className = 'mq-ready dim'; return}
+  const my = ++mqSeq, out = [];
+  for(const side of ['long', 'short']){
+    const r = await post('/api/readiness', {contract: cid, side, stop_ticks: t, qty: MQ.qty});
+    if(my !== mqSeq) return;
+    out.push(r.ok ? r.data : null);
+  }
+  const bad = out.find(d => d && !d.ready), unk = out.some(d => !d);
+  const first = bad && bad.blockers && bad.blockers[0];
+  el.className = 'mq-ready ' + (bad ? 'bad' : unk ? 'dim' : 'ok');
+  el.textContent = bad ? 'BLOCKED: ' + (first ? first.check + (first.detail ? ' (' + first.detail + ')' : '') : 'a check fails') : unk ? 'readiness unknown' : 'ready';
+}
+setInterval(() => {if(!document.hidden) mqReadySoon()}, 4000);
 $('mq-dec').onclick = () => {MQ.qty = Math.max(1, MQ.qty - 1); LS.set('px.mq', MQ.qty); renderManual()};
 $('mq-inc').onclick = () => {MQ.qty += 1; LS.set('px.mq', MQ.qty); renderManual()};
 $('mq-stop').oninput = () => {MQ.stopTouched = true; renderManual()};

@@ -421,7 +421,8 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             "seeded": {"positions": live.positions_seeded, "trades": live.trades_seeded},
             "account": {"can_trade": live.account.get("canTrade")} if stream else
                        {"can_trade": live.account.get("canTrade"), "simulated": live.account.get("simulated")},
-            "halted": st.guard.halted(), "unknown_order": st.guard.unreconciled(),
+            "halted": st.guard.halted(), "halt_cause": st.guard.halt_cause(), "unknown_order": st.guard.unreconciled(),
+            "windows": st.guard.windows(),
             "quote": ({k: q.get(k) for k in keep} if q else None),
             "positions": [position_view(p) for p in live.positions.values()],
             "orders": [order_view(o) for o in live.orders.values()],
@@ -484,7 +485,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         return {"ticket_id": t.ticket_id, "hash8": t.hash8, "state": t.state,
                 "ttl_s": max(0, round(t.expires - g.clock())), "readback": dict(t.readback),
                 "stop_plan": t.stop_plan["mode"], "account_suffix": t.account_suffix,
-                "acked": t.acked, "stop_state": t.stop_state}
+                "acked": t.acked, "stop_state": t.stop_state, "entry_status": g.entry_status(t)}
 
     @app.post("/api/preview")
     async def api_preview(request: Request):
@@ -514,6 +515,19 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
                 "verdict": [{"check": n, "ok": ok, "detail": d} for n, ok, d in p.verdict],
                 "sizing": p.sizing, "ticket": ticket_view(p.ticket, g) if p.ticket else None,
                 "scale": ({"multiplier": scale["multiplier"], "reasons": scale["reasons"]} if scale else None)}
+
+    @app.post("/api/readiness")
+    async def api_readiness(request: Request):
+        """Read-only: the same checks as /api/preview, no ticket staged. Lets the manual BUY/SELL say why it would refuse."""
+        b = await body(request)
+        g = request.app.state.guard
+        qty, side = b.get("qty"), str(b.get("side") or "").lower()
+        if isinstance(qty, bool) or not isinstance(qty, int) or side not in ("long", "short"):
+            raise HTTPException(400, "qty (whole number) and side (long|short) required")
+        c = b.get("contract")
+        contract_arg(c)
+        sp = await g.stop_from_ticks(c, side, b.get("stop_ticks")) if isinstance(b.get("stop_ticks"), int) else None
+        return await g.readiness(contract_id=c, side=side, stop_price=sp, qty=qty)
 
     @app.post("/api/place")
     async def api_place(request: Request):

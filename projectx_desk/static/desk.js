@@ -1264,7 +1264,136 @@ function drawDesk(force){
     for(const l of lines) chart.createOverlay({name: 'deskLevel', groupId: 'desk', lock: true, points: [{timestamp: last.timestamp, value: l.price}], extendData: l, styles: {text: chip(l.color || C.purple, true)}});
   }catch(e){err(e)}
 }
-function syncDesk(){drawDesk(false); if(typeof drawAutoLevels === 'function' && I.sel) drawAutoLevels(indWanted().hz)}   // auto levels are side-coded against the last price: a cross recolours them within a poll
+
+/* ================= Tomorrow's map: the roads out of price, drawn into the bars to come. Display only. =================
+   /api/tomorrow is the server's map already in futures space (SPY gamma that survives tonight, ratio-converted, every printed number
+   regenerated from the converted prices). Up road hot, down road green, the ELSE band neutral blue, the flip purple. A waypoint past a
+   typical day is dashed (a tail, not a plan), a thin one is hollow, one price has already gone through is dimmed. Positioning, not targets. */
+const TM = {on: LS.get('px.tmap', true) !== false, panel: LS.get('px.tmapPanel', true) !== false, cid: null, res: null, at: 0, busy: false, sig: '', off: 40};
+const TM_COL = {UP: E.hot, DOWN: E.sup, RANGE: '#9db4ff', FLIP: '#d8b4fe'};
+const TM_WHY = {NO_KEY: 'No TraderDaddy key on this desk.', UNSUPPORTED: 'No map for this contract.', CONTRACT: 'No map for this contract.',
+  NO_REF: 'No futures price at the snapshot time to scale with.', CONVERT: 'Source and futures prices do not line up, so nothing is drawn.',
+  STALE: 'The latest gamma is more than five days old.', NO_MAP: 'The book is too thin to map.', AUTH: 'The GEX key was rejected.',
+  UPSTREAM_ERROR: 'The GEX source is unavailable.', BAD_PAYLOAD: 'The GEX payload failed validation.', INTERNAL: 'The map failed.', CONFIG: 'The GEX URL is unsafe.'};
+const hexA = (h, a) => `rgba(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)},${a})`;
+const finPt = cs => cs.length > 0 && cs.every(c => isFinite(c.x) && isFinite(c.y));
+const TM_EDGE = 13;       // the price axis autoscales to candles only: a waypoint beyond the visible range is pinned to the edge with an arrow, never lost
+const clampY = (y, b) => Math.max(TM_EDGE, Math.min(b.height - TM_EDGE, y));
+const offSide = (y, b) => y < TM_EDGE ? '\u25B2 ' : y > b.height - TM_EDGE ? '\u25BC ' : '';
+klinecharts.registerOverlay({
+  name: 'tmapSeg', totalStep: 3, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
+  createPointFigures: ({coordinates: cs, bounding, overlay}) => {
+    if(cs.length < 2 || !finPt(cs)) return [];
+    const ed = overlay.extendData || {};
+    return [{type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: cs[0].x, y: clampY(cs[0].y, bounding)}, {x: cs[1].x, y: clampY(cs[1].y, bounding)}]}, styles: {style: ed.dash ? 'dashed' : 'solid', color: ed.color, size: ed.size || 2, dashedValue: [6, 4]}}];
+  }});
+klinecharts.registerOverlay({
+  name: 'tmapDot', totalStep: 2, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
+  createPointFigures: ({coordinates: cs, bounding, overlay}) => {
+    if(!finPt(cs)) return [];
+    const x = cs[0].x, ed = overlay.extendData || {}, arrow = offSide(cs[0].y, bounding), y = clampY(cs[0].y, bounding);
+    const out = [{type: 'circle', ignoreEvent: true, attrs: {x, y, r: ed.bold ? 7 : 5}, styles: {style: 'stroke_fill', color: ed.hollow || arrow ? E.dark : ed.color, borderColor: ed.color, borderSize: 2}}];
+    if(ed.label) out.push({type: 'text', ignoreEvent: true, attrs: {x: x + 11, y, text: arrow + ed.label, align: 'left', baseline: 'middle'},
+      styles: ed.dim ? {...chip(E.dark, false), color: ed.color, backgroundColor: hexA(E.dark, .85), borderColor: ed.color, borderSize: 1, style: 'stroke_fill'} : chip(ed.color, !!ed.bold)});
+    return out;
+  }});
+klinecharts.registerOverlay({
+  name: 'tmapRange', totalStep: 3, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: false,
+  createPointFigures: ({coordinates: cs, bounding, overlay}) => {
+    if(cs.length < 2 || !finPt(cs)) return [];
+    if(Math.max(cs[0].y, cs[1].y) < 0 || Math.min(cs[0].y, cs[1].y) > bounding.height) return [];      // the whole band is off-screen
+    const ed = overlay.extendData || {}, x0 = Math.min(cs[0].x, cs[1].x), x1 = Math.max(cs[0].x, cs[1].x), y0 = Math.min(cs[0].y, cs[1].y), y1 = Math.max(cs[0].y, cs[1].y);
+    const edge = y => ({type: 'line', ignoreEvent: true, attrs: {coordinates: [{x: x0, y}, {x: x1, y}]}, styles: {style: 'dashed', color: TM_COL.RANGE, size: 1, dashedValue: [5, 4]}});
+    return [{type: 'polygon', ignoreEvent: true, attrs: {coordinates: [{x: x0, y: y0}, {x: x1, y: y0}, {x: x1, y: y1}, {x: x0, y: y1}]}, styles: {style: 'fill', color: hexA(TM_COL.RANGE, .13)}},
+            edge(y0), edge(y1),
+            {type: 'text', ignoreEvent: true, attrs: {x: x1 + 11, y: (y0 + y1) / 2, text: ed.label || '', align: 'left', baseline: 'middle'}, styles: chip(TM_COL.RANGE, true)}];
+  }});
+function tmapOffset(spanBars){      // leave room right of the last candle for the roads and their labels; restore the stock margin when off
+  let d = 40;
+  if(spanBars){let bs = 8; try{bs = chart.getBarSpace().bar || 8}catch(e){} d = Math.round(spanBars * bs + 200)}
+  if(Math.abs(d - TM.off) > 4){chart.setOffsetRightDistance(d); TM.off = d}
+}
+function drawTmap(force){
+  const r = TM.res, m = r && r.status === 'OK' && r.map ? r.map : null, data = chart.getDataList(), lastBar = data[data.length - 1];
+  const lp = num(gexLast()) ? gexLast() : lastBar && num(lastBar.close) ? lastBar.close : null;
+  const sig = JSON.stringify([TM.on, m && [m.spot, m.flip, m.roads.map(x => x.waypoints.map(w => w.price))], lp != null ? Math.round(lp * 4) / 4 : null, data.length]);
+  if(sig === TM.sig && !force) return;
+  TM.sig = sig;
+  try{
+    chart.removeOverlay({groupId: 'tmap'});
+    if(!TM.on || !m || lp == null){tmapOffset(0); return}
+    const i0 = data.length - 1, X0 = 3, STEP = 4, road = k => m.roads.find(x => x.key === k) || {waypoints: []};
+    const maxK = Math.max(road('UP').waypoints.length, road('DOWN').waypoints.length, 1), span = X0 + STEP * maxK;
+    tmapOffset(span);
+    const ov = (name, points, ed) => chart.createOverlay({name, groupId: 'tmap', lock: true, points, extendData: ed});
+    const rg = road('RANGE');
+    if(rg.band) ov('tmapRange', [{dataIndex: i0, value: rg.band.lo}, {dataIndex: i0 + span - 1, value: rg.band.hi}], {label: 'ELSE ' + rg.band.lo + ' to ' + rg.band.hi});
+    const pinAt = new Set((rg.waypoints || []).map(w => w.price));       // a pin on the same strike as another waypoint shares its chip
+    for(const key of ['UP', 'DOWN']){
+      let prev = {dataIndex: i0, value: lp};
+      road(key).waypoints.slice().sort((a, b) => Math.abs(a.price - m.spot) - Math.abs(b.price - m.spot)).forEach((w, k) => {
+        const at = {dataIndex: i0 + X0 + STEP * k, value: w.price}, flipW = /FLIP$/.test(w.tag);
+        const passed = key === 'UP' ? w.price < lp : w.price > lp, col = flipW ? TM_COL.FLIP : TM_COL[key];
+        ov('tmapSeg', [prev, at], {color: passed ? hexA(col, .4) : col, dash: !!w.tail || passed, size: flipW ? 3 : 2});
+        ov('tmapDot', [at], {color: col, label: w.tag + (pinAt.has(w.price) ? ' + PIN' : '') + (passed ? ' (through)' : ''), hollow: !!w.open, bold: flipW, dim: passed || !!w.tail});
+        prev = at;
+      });
+    }
+    const onRoad = new Set([...road('UP').waypoints, ...road('DOWN').waypoints].map(w => w.price));
+    for(const w of (rg.waypoints || []).filter(w => !onRoad.has(w.price))) ov('tmapDot', [{dataIndex: i0 + X0, value: w.price}], {color: TM_COL.RANGE, label: w.tag, bold: false, dim: false});
+  }catch(e){err(e)}
+}
+const ctClock = new Intl.DateTimeFormat('en-US', {timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', weekday: 'short'});
+function renderTmap(){
+  const host = $('tm-body'), sub = $('tm-sub'); if(!host || !sub) return;
+  host.hidden = !TM.panel;
+  const hb = $('tm-hide'); hb.textContent = TM.panel ? 'Hide' : 'Show'; hb.setAttribute('aria-expanded', String(TM.panel));
+  const tg = $('tm-toggle'); tg.setAttribute('aria-pressed', String(TM.on));
+  const r = TM.res; host.replaceChildren(); sub.textContent = '';
+  if(!r){host.append(mk('div', 'tm-dead', 'loading')); return}
+  const m = r.status === 'OK' && r.map ? r.map : null;
+  if(!m){host.append(mk('div', 'tm-dead', TM_WHY[r.code] || TM_WHY[r.status] || 'Not available right now.')); return}
+  const age = r.age_s < 5400 ? Math.round(r.age_s / 60) + ' min old' : (r.age_s / 3600).toFixed(1) + ' h old';
+  sub.textContent = `${r.source} to ${r.root} · ${ctClock.format(new Date(r.snapshot_epoch * 1000))} CT · ${age}`;
+  const neg = m.regime === 'negative', d = mk('div', 'tm-dealers ' + (neg ? 'neg' : 'pos'));
+  d.append(mk('b', null, neg ? 'SHORT GAMMA' : 'LONG GAMMA'), document.createTextNode(neg ? ': dealers chase price, so moves extend.' : ': dealers lean against price, so moves get damped.'));
+  host.append(d);
+  if(m.flip != null){
+    const f = mk('div', 'tm-flip'), b = mk('b', null, String(m.flip));
+    if(m.flip_on_price) f.append(document.createTextNode('The flip ('), b, document.createTextNode(') sits on top of price, so it says nothing.'));
+    else if(m.flip > m.spot) f.append(document.createTextNode('Under the flip ('), b, document.createTextNode('): chasing. Through it dealers stop chasing and start braking.'));
+    else f.append(document.createTextNode('Above the flip ('), b, document.createTextNode('): dealers are braking, not chasing.'));
+    host.append(f);
+  }
+  const byKey = k => m.roads.find(x => x.key === k) || {cond: '', rule: ''};
+  for(const [cls, kind, k, verb] of [['up', 'IF', 'UP', 'it goes '], ['dn', 'IF', 'DOWN', 'it goes '], ['el', 'ELSE', 'RANGE', 'it holds ']]){
+    const rd = byKey(k), row = mk('div', 'tm-row ' + cls), c = mk('div', 'tm-cond');
+    c.append(mk('i', null, kind), document.createTextNode(verb + rd.cond));
+    row.append(c, mk('div', 'tm-rule', rd.rule)); host.append(row);
+  }
+  let foot = 'Positioning, not targets. Gamma that survives tonight; a level past a typical day (' + m.typical_move + ' pts) is a tail.';
+  if(m.regime_includes_expiring) foot += ' The regime and flip still count tonight\'s expiries' + (m.expiring_share != null ? ' (' + Math.round(m.expiring_share * 100) + '% of gamma)' : '') + '.';
+  if(m.thin_book) foot += ' Thin book.';
+  host.append(mk('div', 'tm-foot', foot));
+}
+async function tmapFetch(cid){
+  TM.busy = true; TM.at = Date.now();
+  try{
+    const r = await j('/api/tomorrow?contract=' + encodeURIComponent(cid));
+    if(cid === S.contractId){TM.res = r; renderTmap(); drawTmap(true)}
+  }catch(e){if(cid === S.contractId){TM.res = {status: 'ERROR', code: 'UPSTREAM_ERROR'}; renderTmap()}}
+  finally{TM.busy = false}
+}
+function tmapSync(){
+  const cid = S.contractId;
+  if(cid !== TM.cid){TM.cid = cid; TM.res = null; TM.at = 0; TM.sig = ''; renderTmap()}
+  if(cid && !TM.busy && Date.now() - TM.at > (TM.res && TM.res.status === 'OK' ? 300000 : 60000)) tmapFetch(cid);
+  drawTmap(false);
+}
+$('tm-toggle').onclick = () => {TM.on = !TM.on; LS.set('px.tmap', TM.on); renderTmap(); drawTmap(true)};
+$('tm-hide').onclick = () => {TM.panel = !TM.panel; LS.set('px.tmapPanel', TM.panel); renderTmap()};
+renderTmap();
+function syncDesk(){if(typeof tmapSync === 'function') tmapSync(); drawDesk(false); if(typeof drawAutoLevels === 'function' && I.sel) drawAutoLevels(indWanted().hz)}   // auto levels are side-coded against the last price: a cross recolours them within a poll
 
 /* ---- level reaction markers (group 'react': never saved with the user's drawings) ---- */
 let reactSig = '';

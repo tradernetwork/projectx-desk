@@ -886,3 +886,4 @@ html[data-layout="portrait"][data-pos="1"] .col-right>#blotter{order:0}
 
 .ema-slope{margin-left:4px;font-weight:700}
 .ema-slope[data-warn="1"]{color:var(--amber-ink);text-shadow:0 0 6px var(--amber)}   /* the stack still says one way while the 21 EMA has turned the other */
+.fdrow .cs{flex-basis:100%;color:var(--text-2);font-family:var(--mono);font-size:var(--fs-xs)}   /* what the chart says since the post: facts only */

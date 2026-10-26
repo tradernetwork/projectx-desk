@@ -1848,6 +1848,17 @@ function calloutWatch(items){
     calloutAlert(i);
   }
 }
+/* What the chart says about this callout since it posted (facts only). Needs the callout's own contract on screen: bars come from the chart. */
+function calloutState(i){
+  try{
+    if(i.event !== 'ENTRY' || !i.symbol || rootOf(i.symbol) !== curRoot() || typeof i.age_s !== 'number') return '';
+    const data = chart.getDataList(), post = Date.now() - i.age_s * 1000, last = data.length ? data[data.length - 1].close : null;
+    const m = TM.res && TM.res.status === 'OK' ? TM.res.map : null, ind = S.ai && S.ai.ind;
+    const levels = (m ? tmapLevels(m) : []).concat(ind && ind.ema && typeof ind.ema['21'] === 'number' ? [{price: ind.ema['21'], roles: ['EMA21']}] : []);
+    const st = PXCall.status({side: i.side, entry: i.entry, stop: i.stop, tp1: i.tp1, tp2: i.tp2, tp3: i.tp3}, data.filter(b => b.timestamp >= post), last, ind && ind.atr, levels);
+    return PXCall.text(st);
+  }catch(e){return ''}
+}
 async function feedFetch(){
   const st = $('fd-state'), box = $('fd-list');
   try{
@@ -1867,6 +1878,7 @@ async function feedFetch(){
       for(const [k, lab] of [['entry', 'E'], ['stop', 'SL'], ['tp1', 'T1'], ['tp2', 'T2'], ['tp3', 'T3']]) if(typeof i[k] === 'number') row.append(mk('span', '', lab + ' ' + i[k]));
       if(typeof i.points === 'number') row.append(mk('span', '', (i.points > 0 ? '+' : '') + i.points + ' pts'));
       if(i.has_image) row.append(mk('span', 'age', '[chart]'));
+      const cs = calloutState(i); if(cs) row.append(mk('span', 'cs', cs));
       box.append(row);
     }
   }catch(e){st.textContent = 'error'; err(e)}

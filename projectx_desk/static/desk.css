@@ -855,3 +855,5 @@ button.mini{min-height:24px;padding:0 8px}
 @media (min-width:1100px) and (min-height:900px){:root{--mini-h:clamp(132px,15vh,300px);--tick-h:clamp(120px,14vh,260px)}}
 @media (min-width:1100px){.col.col-right{overflow-y:auto;scrollbar-width:thin}}      /* taller minis must scroll the rail, never push a panel out of reach */
 html[data-layout="portrait"] .col-right>#tmap{grid-column:1/-1}     /* the map text is long: give it the full width of the bottom band */
+.tm-now{border:1px solid #ffb000;border-radius:var(--r-sm);padding:6px 8px;background:rgba(255,176,0,.07);display:flex;flex-direction:column;gap:3px}
+.tm-now i{font:700 var(--fs-2xs)/1 var(--sans);font-style:normal;letter-spacing:.12em;color:#ffb000} .tm-now span{font:500 var(--fs-sm)/1.4 var(--sans);color:var(--text)}

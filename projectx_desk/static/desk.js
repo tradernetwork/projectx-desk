@@ -1205,11 +1205,13 @@ function deskLines(){
   if(g && Array.isArray(g.levels)) for(const lv of g.levels){
     if(typeof lv.price !== 'number') continue;
     const nm = String(lv.name || 'gex').slice(0, 24);
-    const kd = lv.kind === 'PUT' || lv.kind === 'CALL' ? lv.kind + ' ' : '';       // put-dominated or call-dominated strike
-    const sz = typeof lv.rel === 'number' ? ' ' + Math.round(lv.rel * 100) + '%' : '';   // size against the biggest wall in the payload
+    const kd = lv.kind === 'PUT' || lv.kind === 'CALL' ? lv.kind + ' ' : '';       // put-dominated (dealers short gamma) or call-dominated (long gamma) strike
+    const rl = gexRel(lv), sz = rl == null ? '' : ' \u00b7 ' + (rl >= 0.66 ? 'BIG' : rl >= 0.33 ? 'MED' : 'SMALL');   // size against the biggest wall in today's data, in words
+    const does = lv.kind === 'PUT' ? ' \u00b7 speeds moves' : lv.kind === 'CALL' ? ' \u00b7 stalls moves' : '';   // what dealer hedging does at it
     const ref = /^flip/.test(nm), pin = nm === 'pin', rel = gexRel(lv);
     const color = ref ? GEX_COL.flip : pin ? GEX_COL.pin : lastP == null ? C.purple : lv.price > lastP ? E.hot : E.sup;
-    out.push({price: lv.price, label: 'GEX ' + kd + nm + ' ' + lv.price + sz, color, dash: !pin, size: pin ? 3 : rel == null ? 2 : rel >= 0.66 ? 4 : rel >= 0.33 ? 3 : 2});
+    const word = /^flip/.test(nm) ? 'flip' : nm === 'pin' ? 'pin' : 'wall';
+    out.push({price: lv.price, label: 'GEX ' + (word === 'wall' ? kd : '') + word + ' ' + lv.price + (word === 'flip' ? '' : sz + (word === 'wall' ? does : '')), color, dash: !pin, size: pin ? 3 : rel == null ? 2 : rel >= 0.66 ? 4 : rel >= 0.33 ? 3 : 2});
   }
   const cl = CALL.live;       // the analyst's own entry, stop and first target, while it is recent and this is its chart
   if(cl && cl.root === curRoot() && cl.age0 + (performance.now() - cl.at) / 1000 < 5400){
@@ -1299,6 +1301,37 @@ const TM_PAIRS = {   // two roles on the same strike: say what the COMBINATION m
 const TM_EMO = {'PIN': '\u{1F9F2}', 'FLIP': '\u{1F504}', 'ACCELERANT': '\u{1F680}', 'BRAKE': '\u{1F6D1}', 'CEILING': '\u{1F9F1}', 'TRAPDOOR': '\u{1F6AA}',
   'LAST SHELF': '\u{1F6E1}\uFE0F', 'THIN CUSHION': '\u{1FAA3}', 'EMPTY': '\u{1F573}\uFE0F', 'PUT WALL': '\u{1F94A}'};      // magnet, flip, rocket, stop, brick wall, door, shield, bucket, hole, glove
 const tmEmoji = (tag, withPin) => TM.emoji ? (TM_EMO[tmRole(tag)] || '') + (withPin ? TM_EMO.PIN : '') : '';
+const TM_WATCH = {   // what to WATCH at each level, and what would change it. Never "buy" or "sell": the map describes dealer hedging, not a trade.
+  'PIN': 'Price tends to wrestle around a pin: expect chop, not a trend.',
+  'FLIP': 'This is the regime line. Over it dealers brake moves; under it they chase them.',
+  'ACCELERANT': 'Watch for a push through. If it goes, dealers buy into the rise and it speeds up. Under it, nothing special.',
+  'BRAKE': 'Watch for a stall. Rallies tend to fade here; closing over it is the real test.',
+  'CEILING': 'Watch for the move to die here. Closing over it removes the ceiling.',
+  'TRAPDOOR': 'Watch for a close below. If it goes, selling can feed on itself and the drop speeds up. Holding above, nothing special.',
+  'LAST SHELF': 'Watch whether it holds. Dealers buy dips here; closing below it removes the last support.',
+  'THIN CUSHION': 'Small support. If it fails there is little underneath.',
+  'EMPTY': 'No support in this stretch. If price enters it, it can slide.',
+  'PUT WALL': 'A fight, not a floor. Expect a messy reaction either way.',
+};
+function tmapLevels(m){      // one entry per strike, roles merged (a pin on the same strike as another level), top to bottom like the chart
+  const byPrice = new Map();
+  for(const rd of m.roads) for(const w of rd.waypoints){const e = byPrice.get(w.price) || {price: w.price, tags: [], road: rd.key}; e.tags.push(w.tag); byPrice.set(w.price, e)}
+  return [...byPrice.values()].map(e => ({...e, roles: [...new Set(e.tags.map(tmRole))]})).sort((a, b) => b.price - a.price);
+}
+function tmapNowText(m){
+  const p = gexLast(); if(!num(p)) return '';
+  const lv = tmapLevels(m); if(!lv.length) return 'No levels to watch on this map.';
+  const tol = Math.max(0.1 * (m.typical_move || 0), 1), near = lv.slice().sort((a, b) => Math.abs(a.price - p) - Math.abs(b.price - p))[0];
+  const name = it => (TM.emoji ? it.roles.map(r => TM_EMO[r] || '').join('') + ' ' : '') + it.price + ' ' + it.roles.join(' + ');
+  if(Math.abs(near.price - p) <= tol){
+    const key = near.roles.slice().sort((a, b) => (a === 'PIN') - (b === 'PIN') || a.localeCompare(b)).join('+');
+    const what = near.roles.length > 1 ? near.roles.filter(r => r !== 'PIN').map(r => TM_WATCH[r]).join(' ') + (near.roles.includes('PIN') ? ' ' + TM_WATCH.PIN : '') : TM_WATCH[near.roles[0]];
+    return `Price ${p} is AT the ${name(near)}. ${what} It is something to WATCH, not a signal to act on by itself.`;
+  }
+  const up = lv.filter(i => i.price > p).pop(), dn = lv.find(i => i.price < p);       // nearest level above and below
+  const gap = i => Math.abs(i.price - p).toFixed(2).replace(/\.?0+$/, '');
+  return `Price ${p} is between ${dn ? name(dn) + ' (' + gap(dn) + ' below)' : 'nothing below'} and ${up ? name(up) + ' (' + gap(up) + ' above)' : 'nothing above'}. Nothing is being tested right now: just watch.`;
+}
 const tmRole = tag => String(tag || '').replace(/^[0-9.]+\s*/, '');
 const tmGloss = (tag, withPin) => { const r = TM_ROLES[tmRole(tag)]; return r ? r[0] + (withPin ? ' + magnet' : '') : ''; };
 const hexA = (h, a) => `rgba(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)},${a})`;
@@ -1381,6 +1414,7 @@ function renderTmap(){
   if(!m){host.append(mk('div', 'tm-dead', TM_WHY[r.code] || TM_WHY[r.status] || 'Not available right now.')); return}
   const age = r.age_s < 5400 ? Math.round(r.age_s / 60) + ' min old' : (r.age_s / 3600).toFixed(1) + ' h old';
   sub.textContent = `${r.source} to ${r.root} · ${ctClock.format(new Date(r.snapshot_epoch * 1000))} CT · ${age}`;
+  const now = mk('div', 'tm-now'); now.id = 'tm-now'; now.append(mk('i', null, 'RIGHT NOW'), mk('span', null, tmapNowText(m))); host.append(now);
   const neg = m.regime === 'negative', d = mk('div', 'tm-dealers ' + (neg ? 'neg' : 'pos'));
   d.append(mk('b', null, (TM.emoji ? (neg ? '\u{1F525} ' : '\u{1F9CA} ') : '') + (neg ? 'SHORT GAMMA' : 'LONG GAMMA')), document.createTextNode(neg ? ': dealers chase price, so moves extend.' : ': dealers lean against price, so moves get damped.'));
   host.append(d);
@@ -1406,9 +1440,7 @@ function renderTmap(){
   host.append(mk('div', 'tm-foot', foot));
 }
 function tmapKey(host, m){      // "what these mean": only the levels on THIS map, top to bottom like the chart, same-strike pairs explained as a pair
-  const byPrice = new Map();
-  for(const rd of m.roads) for(const w of rd.waypoints){const e = byPrice.get(w.price) || {price: w.price, tags: [], road: rd.key}; e.tags.push(w.tag); byPrice.set(w.price, e)}
-  const items = [...byPrice.values()].sort((a, b) => b.price - a.price);
+  const items = tmapLevels(m);
   if(!items.length) return;
   const det = mk('details', 'tm-key'); det.open = LS.get('px.tmapKey', false) === true;       // collapsed until asked for: the chart labels already carry the short gloss
   det.addEventListener('toggle', () => LS.set('px.tmapKey', det.open));
@@ -1438,6 +1470,8 @@ function tmapSync(){
   if(cid !== TM.cid){TM.cid = cid; TM.res = null; TM.at = 0; TM.sig = ''; renderTmap()}
   if(cid && !TM.busy && Date.now() - TM.at > (TM.res && TM.res.status === 'OK' ? 300000 : 60000)) tmapFetch(cid);
   drawTmap(false);
+  const nowEl = $('tm-now'), m = TM.res && TM.res.status === 'OK' ? TM.res.map : null;
+  if(nowEl && m){const t = tmapNowText(m), s = nowEl.querySelector('span'); if(s && s.textContent !== t) s.textContent = t}      // follows price without rebuilding the panel
 }
 $('tm-toggle').onclick = () => {TM.on = !TM.on; LS.set('px.tmap', TM.on); renderTmap(); drawTmap(true)};
 $('tm-emo').onclick = () => {TM.emoji = !TM.emoji; LS.set('px.tmapEmoji', TM.emoji); renderTmap(); drawTmap(true)};

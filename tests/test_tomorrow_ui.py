@@ -28,3 +28,17 @@ def test_every_road_is_drawn_from_server_text_never_rebuilt_in_the_browser():
     block = JS.split("function renderTmap()")[1].split("async function tmapFetch")[0]
     assert "rd.cond" in block and "rd.rule" in block                                           # the sentences are the server's, printed as given
     assert "innerHTML" not in block                                                           # text nodes only
+
+
+def test_the_right_now_box_says_watch_and_never_tells_you_to_trade():
+    watch = JS.split("const TM_WATCH = {")[1].split("};")[0].lower()
+    for advice in ("go long", "go short", "you should", "enter ", "buy it", "sell it", "take the trade", "place "):
+        assert advice not in watch, advice
+    assert "RIGHT NOW" in JS and "something to WATCH, not a signal" in JS and "Nothing is being tested right now: just watch." in JS
+    assert "const nowEl = $('tm-now')" in JS                      # the box follows price on every poll without rebuilding the panel
+
+
+def test_gex_wall_labels_use_words_for_size_and_say_what_the_wall_does():
+    block = JS.split("function deskLines()")[1].split("const cl = CALL.live")[0]
+    assert "'BIG'" in block and "'MED'" in block and "'SMALL'" in block and "speeds moves" in block and "stalls moves" in block
+    assert "Math.round(lv.rel * 100)" not in block                # the bare percentage nobody could read

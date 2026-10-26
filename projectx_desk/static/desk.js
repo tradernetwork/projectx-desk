@@ -1177,16 +1177,39 @@ chart.setDataLoader({
 
 /* ---- desk lines: GEX levels + staged ticket entry/stop ---- */
 let deskSig = '';
-const GEX_COL = {flip: '#c084fc', pin: '#a855f7', wall_above: '#a855f7', wall_below: '#a855f7'};   // reference levels are purple; the label names which
+/* GEX levels, as the ember chart draws walls: the pin (the magnet) and the flip (the regime boundary) stay purple; every other wall is
+   side-coded against the last price, hot orange above (resistance side) and green below (support side), heavier and with a wider shaded
+   band the bigger it is (rel = size against the biggest wall in the payload). A cross recolours it within a poll. Positioning, not targets. */
+const GEX_COL = {flip: '#c084fc', pin: '#a855f7'}, GEX_HOT = '255,122,24', GEX_SUP = '38,208,124', GEX_PIN = '168,85,247';
+const gexLast = () => S.ai && S.ai.quote && num(S.ai.quote.last) ? S.ai.quote.last : lastPx;
+const gexRel = lv => typeof lv.rel === 'number' && isFinite(lv.rel) ? Math.max(0, Math.min(1, lv.rel)) : null;
+function gexBands(){      // translucent bands behind the lines: half-height 0.10 to 0.40 ATR by size; small walls get none
+  const g = S.ai && S.ai.gex, atr = S.ai && S.ai.ind && num(S.ai.ind.atr) ? S.ai.ind.atr : null;
+  if(!g || !Array.isArray(g.levels) || !atr) return [];
+  const lp = gexLast(), out = [];
+  for(const lv of g.levels){
+    if(typeof lv.price !== 'number' || !isFinite(lv.price)) continue;
+    const nm = String(lv.name || '');
+    if(/^flip/.test(nm)) continue;
+    const rel = nm === 'pin' ? 1 : gexRel(lv) ?? 0.3;
+    if(rel < 0.25) continue;
+    const h = atr * (0.10 + 0.30 * rel), rgb = nm === 'pin' ? GEX_PIN : lp != null && lv.price > lp ? GEX_HOT : GEX_SUP;
+    out.push({band: true, price: lv.price - h, price2: lv.price + h, color: `rgba(${rgb},${(0.05 + 0.11 * rel).toFixed(3)})`});
+  }
+  return out;
+}
 function deskLines(){
   const out = [];
   const g = S.ai && S.ai.gex;
+  const lastP = gexLast();
   if(g && Array.isArray(g.levels)) for(const lv of g.levels){
     if(typeof lv.price !== 'number') continue;
     const nm = String(lv.name || 'gex').slice(0, 24);
     const kd = lv.kind === 'PUT' || lv.kind === 'CALL' ? lv.kind + ' ' : '';       // put-dominated or call-dominated strike
     const sz = typeof lv.rel === 'number' ? ' ' + Math.round(lv.rel * 100) + '%' : '';   // size against the biggest wall in the payload
-    out.push({price: lv.price, label: 'GEX ' + kd + nm + ' ' + lv.price + sz, color: GEX_COL[nm] || C.purple, dash: true});
+    const ref = /^flip/.test(nm), pin = nm === 'pin', rel = gexRel(lv);
+    const color = ref ? GEX_COL.flip : pin ? GEX_COL.pin : lastP == null ? C.purple : lv.price > lastP ? E.hot : E.sup;
+    out.push({price: lv.price, label: 'GEX ' + kd + nm + ' ' + lv.price + sz, color, dash: !pin, size: pin ? 2 : rel == null ? 1 : rel >= 0.66 ? 3 : rel >= 0.33 ? 2 : 1});
   }
   const cl = CALL.live;       // the analyst's own entry, stop and first target, while it is recent and this is its chart
   if(cl && cl.root === curRoot() && cl.age0 + (performance.now() - cl.at) / 1000 < 5400){
@@ -1230,7 +1253,7 @@ function tradeZones(){
   return out;
 }
 function drawDesk(force){
-  const lines = deskLines(), zones = tradeZones(), sig = JSON.stringify([zones, lines]);
+  const lines = deskLines(), zones = [...gexBands(), ...tradeZones()], sig = JSON.stringify([zones, lines]);
   if(sig === deskSig && !force) return;
   const last = chart.getDataList().slice(-1)[0];
   if(!last && (lines.length || zones.length)) return;    // retry once bars exist

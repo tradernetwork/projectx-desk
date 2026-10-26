@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Str
 from fastapi.staticfiles import StaticFiles
 
 from projectx_desk import digest as px_digest
+from projectx_desk import tomorrow_feed as px_tomorrow
 from projectx_desk import grades as px_grades
 from projectx_desk import indicators as px_ind
 from projectx_desk import respect as px_respect
@@ -276,6 +277,12 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         if ev is None:
             return px_ind.status_payload("loading", "", contract, tf)
         return px_ind.payload(contract, tf, ev)
+
+    @app.get("/api/tomorrow")
+    async def tomorrow_map(request: Request, contract: str):
+        """Read-only Tomorrow's Map for the chart's contract, in futures space. Display only; a fixed status when it cannot be built."""
+        contract_arg(contract)
+        return await px_tomorrow.tomorrow_result(request.app, contract)
 
     @app.get("/api/bias_board")
     async def bias_board(request: Request):

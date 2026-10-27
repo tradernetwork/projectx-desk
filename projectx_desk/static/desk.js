@@ -999,7 +999,9 @@ const STYLES = {
 };
 /* ember's level label: a solid chip in the level's colour with dark ink, not coloured text on a dark box. Also the hover tag on the
    y axis (klinecharts only draws that tag while the line is hovered), so pass it as the overlay's text style too. */
-const chip = (color, bold) => ({color: E.dark, backgroundColor: color, borderSize: 0, borderRadius: 2, size: document.documentElement.dataset.layout === 'portrait' ? 14 : 12, family: MONO, weight: bold ? '700' : '600',
+const CHIP_A = 0.6;   // overlays always paint above the candles, so the label boxes are see-through: a candle behind a label stays readable
+const chipBg = c => /^#[0-9a-f]{6}$/i.test(c) ? `rgba(${parseInt(c.slice(1, 3), 16)},${parseInt(c.slice(3, 5), 16)},${parseInt(c.slice(5, 7), 16)},${CHIP_A})` : c;
+const chip = (color, bold) => ({color: E.dark, backgroundColor: chipBg(color), borderSize: 0, borderRadius: 2, size: document.documentElement.dataset.layout === 'portrait' ? 14 : 12, family: MONO, weight: bold ? '700' : '600',
                                 paddingLeft: 5, paddingRight: 5, paddingTop: 2, paddingBottom: 2, style: 'fill'});
 const LEGEND_W = 420;   // and about this wide
 const LEGEND_H = 80;   // the OHLC and indicator legends own the top-left corner: a chip that high goes to the right edge instead

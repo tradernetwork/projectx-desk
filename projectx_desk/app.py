@@ -35,6 +35,7 @@ from projectx_desk import lock as px_lock
 from projectx_desk import mcp as px_mcp
 from projectx_desk import net as px_net
 from projectx_desk import notify as px_notify
+from projectx_desk import chat as px_chat
 from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
 from projectx_desk import ticks as px_ticks
@@ -657,6 +658,26 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         request.app.state.push_test_at = now
         res = await p.send_to(sid, {"title": px_notify.TITLE, "body": "Test notification", "tag": "test", "kind": "test"})
         return {"result": res}
+
+    # ---- desk chat: a relay to the read-only desk agent (chat.py). Full desk only, same POST gate, no path to the guard ----
+
+    def chat_of(a):
+        c = getattr(a.state, "chat", None)
+        if c is None:
+            c = a.state.chat = px_chat.Chat(px_chat.config())
+        return c
+
+    @app.get("/api/chat/state")
+    async def chat_state(request: Request):
+        return {"enabled": chat_of(request.app).enabled}
+
+    @app.post("/api/chat")
+    async def chat_ask(request: Request):
+        b = await body(request)
+        try:
+            return {"reply": await chat_of(request.app).ask(b.get("prompt"))}
+        except px_chat.ChatError as e:
+            raise HTTPException(e.status, e.code)
 
     mimetypes.add_type("text/javascript", ".js")   # Windows reads the registry, which can say text/plain
     mimetypes.add_type("application/manifest+json", ".webmanifest")

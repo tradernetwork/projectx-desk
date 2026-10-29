@@ -396,6 +396,20 @@
   </div>
 </div>
 
+<!-- DESK CHAT: floating, read-only agent. Shown only when the server has PX_CHAT_URL set and stream mode is off. -->
+<button id="chat-fab" class="chat-fab" aria-haspopup="dialog" aria-expanded="false" aria-controls="chat-dock" hidden>Ask</button>
+<section id="chat-dock" class="chat-dock" role="dialog" aria-label="Desk chat" hidden>
+  <div class="chat-h"><strong>Desk agent</strong><span class="dim mono">read-only</span><span class="push"></span>
+    <button id="chat-clear" class="ghost" title="Start a fresh conversation">New</button>
+    <button id="chat-close" class="ghost" aria-label="Close chat">&times;</button></div>
+  <div id="chat-log" class="chat-log" role="log" aria-live="polite"></div>
+  <form id="chat-form" class="chat-form">
+    <textarea id="chat-in" rows="2" maxlength="2000" placeholder="Ask about the desk, the chart, an order, the code..." aria-label="Message"></textarea>
+    <button id="chat-send" type="submit">Send</button>
+  </form>
+</section>
+
 <script src="/static/tour.js"></script>
 <script src="/static/alerts.js"></script>
+<script src="/static/chat.js"></script>
 </body></html>

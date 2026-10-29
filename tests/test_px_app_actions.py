@@ -16,6 +16,7 @@ EXPECTED_POSTS = {"/api/preview", "/api/readiness", "/api/place", "/api/flatten"
 
 # Phone-alert routes (Web Push): same Origin + JSON + CSRF gate, no money path. Covered in tests/test_px_push.py.
 PUSH_POSTS = {"/api/push/subscribe", "/api/push/prefs", "/api/push/unsubscribe", "/api/push/test"}
+CHAT_POSTS = {"/api/chat"}                    # the relay to the read-only desk agent (chat.py); tests/test_px_chat.py covers it
 
 
 def make_app(tmp_path, **over):
@@ -45,7 +46,7 @@ def post(c, path, token, json=None, **hdr):
 def test_the_post_surface_is_exactly_the_expected_set_and_not_reachable_by_get(tmp_path):
     app, *_ = make_app(tmp_path)
     posts = {r.path for r in app.routes if "POST" in getattr(r, "methods", set())}
-    assert posts == EXPECTED_POSTS | PUSH_POSTS
+    assert posts == EXPECTED_POSTS | PUSH_POSTS | CHAT_POSTS
     with TestClient(app) as c:
         for p in EXPECTED_POSTS:
             assert c.get(p).status_code == 405

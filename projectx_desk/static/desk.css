@@ -887,3 +887,18 @@ html[data-layout="portrait"][data-pos="1"] .col-right>#blotter{order:0}
 .ema-slope{margin-left:4px;font-weight:700}
 .ema-slope[data-warn="1"]{color:var(--amber-ink);text-shadow:0 0 6px var(--amber)}   /* the stack still says one way while the 21 EMA has turned the other */
 .fdrow .cs{flex-basis:100%;color:var(--text-2);font-family:var(--mono);font-size:var(--fs-xs)}   /* what the chart says since the post: facts only */
+
+/* desk chat dock: floating, bottom right, above the status strip */
+.chat-fab{position:fixed;z-index:55;right:14px;bottom:48px;min-height:34px;padding:0 16px;border-radius:17px;background:var(--bg-card);border:1px solid var(--cyan-line);color:var(--cyan-ink);box-shadow:0 6px 18px rgba(0,0,0,.5)}
+.chat-fab[hidden],.chat-dock[hidden]{display:none}
+.chat-dock{position:fixed;z-index:56;right:14px;bottom:48px;width:min(400px,calc(100vw - 28px));height:min(520px,calc(100dvh - 120px));display:flex;flex-direction:column;
+  background:var(--bg-card);border:1px solid var(--border-strong);border-radius:var(--r);box-shadow:0 12px 32px rgba(0,0,0,.55)}
+.chat-h{display:flex;align-items:center;gap:8px;padding:8px var(--pad);border-bottom:1px solid var(--border)}
+.chat-log{flex:1 1 0;min-height:0;overflow:auto;padding:var(--pad);display:flex;flex-direction:column;gap:8px}
+.chat-msg{white-space:pre-wrap;overflow-wrap:anywhere;padding:7px 10px;border-radius:var(--r-sm);font-size:var(--fs-xs);line-height:1.5}
+.chat-msg.me{align-self:flex-end;max-width:88%;background:var(--cyan-bg);color:var(--cyan-ink)}
+.chat-msg.bot{align-self:stretch;background:var(--bg-app);border:1px solid var(--border);color:var(--text-2);font-family:var(--mono)}
+.chat-msg.err{border-color:var(--amber-ink);color:var(--amber-ink)}
+.chat-form{display:flex;gap:6px;padding:8px var(--pad);border-top:1px solid var(--border)}
+.chat-form textarea{flex:1 1 auto;resize:none;background:var(--bg-app);color:inherit;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 8px;font:inherit}
+body.streaming .chat-fab,body.streaming .chat-dock{display:none}   /* the agent reads the live page, balances included: never on stream */

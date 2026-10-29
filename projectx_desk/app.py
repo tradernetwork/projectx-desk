@@ -36,6 +36,7 @@ from projectx_desk import mcp as px_mcp
 from projectx_desk import net as px_net
 from projectx_desk import notify as px_notify
 from projectx_desk import chat as px_chat
+from projectx_desk import journal as px_journal
 from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
 from projectx_desk import ticks as px_ticks
@@ -150,8 +151,9 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             app.state.bias_task = asyncio.create_task(_bias_log_loop(app)) if roots else None
             app.state.tledger_task = asyncio.create_task(_tomorrow_ledger_loop(app)) if roots else None
             app.state.mapplan_task = asyncio.create_task(_mapplan_shadow_loop(app)) if roots else None
+            app.state.journal_task = asyncio.create_task(_journal_loop(app)) if connect and not rec else None
             yield
-            for name in ("bias_task", "tledger_task", "mapplan_task"):
+            for name in ("bias_task", "tledger_task", "mapplan_task", "journal_task"):
                 if getattr(app.state, name, None) is not None:
                     getattr(app.state, name).cancel()
             if notifier_task is not None:
@@ -945,6 +947,37 @@ async def _bias_log_loop(app):
             except Exception as e:  # noqa: BLE001 - logging must never break the desk
                 print(f"bias log failed {root} {type(e).__name__}", flush=True)
             await asyncio.sleep(1.0)
+
+
+def journal_tick(app, ledger):
+    """Move any new fills from live state into the ledger and rebuild the trade memory when something was added. In memory plus one
+    small file write, so it is safe to run on any cadence. Returns the number of new fills."""
+    new = ledger.add(px_journal.fill_rows(app.state.live.trades))
+    if new:
+        px_journal.write_memory(ROOT, ledger_path=ledger.path)
+    return len(new)
+
+
+async def _journal_loop(app):
+    """The trader's trade memory (journal.py): every fill the desk sees goes to data/trades.jsonl, and data/memory/trades.md is rebuilt.
+    One REST read of the last 30 days once the first seed has landed, so history older than this desk's own session is not lost. Read-only."""
+    ledger = px_journal.Ledger(os.getenv("PX_JOURNAL_FILE") or (pathlib.Path(ROOT) / "data" / "trades.jsonl"))
+    live, backfilled = app.state.live, False
+    while True:
+        try:
+            if live.trades_seeded:
+                if not backfilled and not _quiet(app):
+                    backfilled = True                                  # one attempt per boot: a failure is logged, never hammered
+                    end = datetime.now(timezone.utc)
+                    old = await app.state.client.trades(live.account_id, (end - timedelta(days=30)).isoformat(), end.isoformat())
+                    if ledger.add(px_journal.fill_rows(old)):
+                        px_journal.write_memory(ROOT, ledger_path=ledger.path)
+                journal_tick(app, ledger)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 - the journal must never break the desk
+            print(f"journal failed {type(e).__name__}", flush=True)
+        await asyncio.sleep(15)
 
 
 async def _tomorrow_ledger_loop(app):

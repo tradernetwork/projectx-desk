@@ -7,3 +7,6 @@ data/
 audit.jsonl
 handoff.md
 CLAUDE.local.md
+
+# headless browser MCP output (page snapshots can carry balances)
+.playwright-mcp/

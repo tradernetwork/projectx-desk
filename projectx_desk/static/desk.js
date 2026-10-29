@@ -1177,12 +1177,17 @@ chart.setOffsetRightDistance(40);
 function unsub(){clearInterval(window._px); window._es?.close(); window._es = null; window._stop = null; setDot('')}
 function setDot(c){$('dot').className = c}
 let lastPx = null;
+let titleBase = 'PXDESK';   // the tab text between alerts: last price and root, so it reads from a background tab
+function setTitle(){
+  if(!/^[\u25B2\u25BC\u25B6]/.test(document.title)) document.title = titleBase;   // never clobber a flashing alert label
+}
 function setPrice(p, fromState){
   const e = $('price');
   const moved = lastPx != null && p !== lastPx;
   e.className = 'price' + (!moved ? (e.classList.contains('up') ? ' up' : e.classList.contains('dn') ? ' dn' : '') : (p > lastPx ? ' up' : ' dn'));
   if(moved){e.classList.add(p > lastPx ? 'flash-up' : 'flash-dn'); clearTimeout(setPrice.t); setPrice.t = setTimeout(() => e.classList.remove('flash-up', 'flash-dn'), 120)}
   e.textContent = Number(p).toFixed(cur.dec ?? 2); lastPx = p;
+  titleBase = e.textContent + ' ' + curRoot(); setTitle();
   if(!fromState) S.lastTickAt = Date.now();
 }
 
@@ -1641,11 +1646,11 @@ function showLevelAlert(ev, p){
   box.replaceChildren();
   const main = mk('span', 'ca-main', emo + ev.price + ' ' + ev.role + ' · price ' + p + ' ' + (down ? '▼' : '▲'));
   const sub = mk('span', 'ca-sub', say + ' · ' + ctClock.format(new Date()).replace(/^\w+\s/, '') + ' CT · an alert, not a signal');
-  box.append(main, sub); box.hidden = false; box.className = 'callout-alert level-alert flash ' + (down ? 'down' : 'up'); box.onclick = () => {box.hidden = true; clearInterval(LV.titleT); document.title = 'PXDESK'};
+  box.append(main, sub); box.hidden = false; box.className = 'callout-alert level-alert flash ' + (down ? 'down' : 'up'); box.onclick = () => {box.hidden = true; clearInterval(LV.titleT); document.title = titleBase};
   clearTimeout(LV.hideT); LV.hideT = setTimeout(() => box.classList.remove('flash'), 25000);
   lvBeep(down);
   clearInterval(LV.titleT); let k = 0; const label = (down ? '▼ ' : '▲ ') + ev.role + ' ' + ev.price;
-  LV.titleT = setInterval(() => {document.title = k++ % 2 ? 'PXDESK' : label; if(k > 60){clearInterval(LV.titleT); document.title = 'PXDESK'}}, 800);
+  LV.titleT = setInterval(() => {document.title = k++ % 2 ? titleBase : label; if(k > 60){clearInterval(LV.titleT); document.title = titleBase}}, 800);
 }
 function levelAlerts(m){
   if(S.contractId !== LV.cid){LV.cid = S.contractId; LV.sides.clear(); LV.fired.clear()}
@@ -1832,8 +1837,8 @@ function calloutAlert(i){
   }
   box.hidden = false; box.className = 'callout-alert flash'; box.onclick = calloutDismiss;
   clearTimeout(CALL.hideT); CALL.hideT = setTimeout(() => {box.classList.remove('flash')}, 20000);
-  clearInterval(CALL.titleT); let n = 0; const base = 'PXDESK';
-  CALL.titleT = setInterval(() => {document.title = n++ % 2 ? base : '\u25B6 ENTRY ' + root; if(n > 40){clearInterval(CALL.titleT); document.title = base}}, 700);
+  clearInterval(CALL.titleT); let n = 0;
+  CALL.titleT = setInterval(() => {document.title = n++ % 2 ? titleBase : '\u25B6 ENTRY ' + root; if(n > 40){clearInterval(CALL.titleT); document.title = titleBase}}, 700);
   if(typeof drawDesk === 'function') drawDesk(true);
 }
 async function stageCallout(){
@@ -1844,7 +1849,7 @@ async function stageCallout(){
   S.side = side; syncSizeInputs(); schedule(0);        // the LONG/SHORT chip must show the side we are staging
   await doStage({contract: cid, side, stop_price: cl.stop, risk_pct: S.riskPct, order_type: 'market', source: 'callout'}, cid);   // the server sizes it and runs every check; source is audited
 }
-function calloutDismiss(){const b = $('callout-alert'); b.hidden = true; clearInterval(CALL.titleT); document.title = 'PXDESK'}
+function calloutDismiss(){const b = $('callout-alert'); b.hidden = true; clearInterval(CALL.titleT); document.title = titleBase}
 function calloutWatch(items){
   if(!S.ai) return;       // wait for the account state: 'are we flat?' must be known, never guessed, before we switch the chart or offer to stage
   const fresh = items.filter(i => i.event === 'ENTRY' && i.symbol && typeof i.entry === 'number' && i.age_s <= 900).reverse();   // posted in the last 15 min, oldest first
@@ -2316,7 +2321,7 @@ function load(){
   const sym = want?.ticker !== o.value, pp = chart.getPeriod(), per = pp?.type !== type || pp?.span !== +span;
   cur = {ticker: o.value, tick, tickValue: o.dataset.tv === '' ? null : +o.dataset.tv, name: o.dataset.name, dec};
   S.contractId = o.value; FLOW.since = null; FLOW.holes = []; FLOW.m = new Map(); for(const n of TK.sizes){TK.bars[n] = []; tkMeta(n); tkDraw(n)}; syncTf(); deskSig = ''; reactSig = ''; respectLoad(sym); indLoad();
-  want = {ticker: o.value, type, span: +span}; lastPx = null; $('price').textContent = 'NA'; $('price').className = 'price';
+  want = {ticker: o.value, type, span: +span}; lastPx = null; titleBase = 'PXDESK'; setTitle(); $('price').textContent = 'NA'; $('price').className = 'price';
   if(sym) chart.setSymbol({ticker: o.value, pricePrecision: dec, volumePrecision: 0});
   if(per) chart.setPeriod({span: +span, type});
   if(sym){S.seq++; S.ai = null; S.sizeCid = null; S.aiKey = ''}   // a reply still in flight for the old contract must not land on the new chart

@@ -29,12 +29,17 @@ CHROME = os.environ.get("PX_AGENT_CHROME", str(Path.home() / ".cache/ms-playwrig
 BROWSER = ["browser_navigate", "browser_snapshot", "browser_take_screenshot", "browser_console_messages",
            "browser_network_requests", "browser_wait_for", "browser_resize"]
 ALLOWED = ["Read", "Grep", "Glob"] + ["mcp__deskbrowser__" + t for t in BROWSER]
+# Belt and braces on top of dontAsk: nothing that writes or runs, and the files that hold secrets are unreadable to Read/Grep/Glob.
+DENIED = ["Bash", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent",
+          "Read(./.env*)", "Read(./data/agent_token)", "Read(./data/*.json)", "Read(./data/*.db*)",
+          "Grep(./.env*)", "Grep(./data/agent_token)", "Glob(./.env*)"]
 SYSTEM = (
     "You are the ProjectX Desk agent. Working directory is the desk checkout; read AGENTS.md first for the rules. "
     f"The live desk is {DESK} (open it in the deskbrowser tools to read the DOM/chart; /ai/digest and /state.json are "
     "plain GETs you can navigate to). You are read-only: you cannot place, cancel, flatten or click anything, and "
     "must never suggest bypassing a guard rule. Report facts from the page and the code, say what you could not see. "
-    "Never print tokens or .env.projectx contents. Terse, blunt, show the numbers."
+    "Never print tokens or .env.projectx contents. Earlier turns of this conversation are stale: re-read the page or /ai/digest "
+    "before stating anything about the current position, orders, price or halt. Terse, blunt, show the numbers."
 )
 LOCK = threading.Lock()
 
@@ -53,12 +58,12 @@ def load_sessions() -> dict:
         return {}
 
 
-def ask(prompt: str, session: str = "default", timeout: int = 600) -> str:
+def ask(prompt: str, session: str = "default", timeout: int = 280) -> str:   # under the desk relay's 300 s, so a 504 never leaves a run going
     with LOCK:  # one browser profile, one run at a time
         sessions = load_sessions()
         cmd = ["claude", "-p", prompt, "--output-format", "json", "--append-system-prompt", SYSTEM,
                "--mcp-config", mcp_config(), "--strict-mcp-config", "--permission-mode", "dontAsk",
-               "--allowedTools", *ALLOWED]
+               "--allowedTools", *ALLOWED, "--disallowedTools", *DENIED]
         if session in sessions:
             cmd += ["--resume", sessions[session]]
         try:

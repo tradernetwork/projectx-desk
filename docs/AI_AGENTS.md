@@ -71,6 +71,16 @@ There is no place, flatten, cancel or clear-halt tool, and the tool list is pinn
 `?contract=CON.F.US.MES.Z26&side=long&risk_pct=0.03&stop_k=1.5` (`&stream=1` removes dollar figures). Without `contract`,
 most price and sizing lines read `NA`.
 
+## The Ask box (chat on the desk page)
+
+A floating Ask button, shown only when `PX_CHAT_URL` is set and hidden in stream mode. It relays one typed question per
+request (`POST /api/chat`, the same Origin + JSON + CSRF gate as every desk POST) to `scripts/deskagent.py serve`, a separate
+`claude -p` process that runs in the checkout with a headless browser on the desk. That agent is read-only: Read, Grep and Glob
+plus navigate, snapshot, screenshot, console and network. Bash, Edit, Write, click, type and evaluate are denied, and so are
+`.env*`, `data/agent_token` and the `data/*.json` and `*.db` files. It reads the live page and `/ai/digest` per question, so
+its answer is as fresh as the desk; the reply is plain text and is not streamed (about 40 s, the box shows a counter). It has
+no path to the guard: it cannot place, cancel, flatten or clear a halt, and it is not a second MCP.
+
 ## Reading the digest
 
 One idea per line, fixed key order, `KEY: k=v`, enums uppercase, units suffixed (`pt` points, `t` ticks), `NA` for unknown.

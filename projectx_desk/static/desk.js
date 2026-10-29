@@ -1540,7 +1540,10 @@ klinecharts.registerOverlay({
 /* Lines from the OTHER timeframes ride on whichever chart is on screen: a 1m channel is still a channel on the 5m chart. Their candles come from
    /bars (cached; the chart's own timeframe uses its own data), each is fitted separately and drawn from its first touch to just past the last
    candle, dashed and tagged with its timeframe (1m dotted). Toggled per timeframe; the current timeframe's own lines are the solid ones above. */
-const TRX = {tfs: new Set(LS.get('px.trendTfs', ['1m', '5m', '15m'])), bars: {}, at: {}, busy: {}, cid: null}, TRX_MIN = {'1m': 1, '5m': 5, '15m': 15}, TRX_TTL = {'1m': 30000, '5m': 60000, '15m': 120000};
+// 1m is off by default (it crowds the chart); a browser that saved the old default loses 1m once, then keeps whatever it picks
+const trxSaved = LS.get('px.trendTfs', ['5m', '15m']).filter(t => LS.get('px.trendTfs.v2', false) || t !== '1m');
+LS.set('px.trendTfs.v2', true);
+const TRX = {tfs: new Set(trxSaved), bars: {}, at: {}, busy: {}, cid: null}, TRX_MIN = {'1m': 1, '5m': 5, '15m': 15}, TRX_TTL = {'1m': 30000, '5m': 60000, '15m': 120000};
 async function trxFetch(tf){
   const cid = S.contractId; if(!cid || TRX.busy[tf] || Date.now() - (TRX.at[tf] || 0) < TRX_TTL[tf]) return;
   TRX.busy[tf] = true; TRX.at[tf] = Date.now();

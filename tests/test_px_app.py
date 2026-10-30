@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -175,3 +177,107 @@ async def test_a_failed_first_boot_keeps_retrying_until_it_works(monkeypatch):
 
 async def _noop():
     return None
+
+
+# ---- a logged-out session must never leave a seeded-and-empty cache (2026-10-30 incident) ------------------------
+
+async def test_gateway_logout_unseeds_forces_a_hub_reconnect_and_reseeds(monkeypatch, tmp_path):
+    """GatewayLogout leaves the websocket open but the gateway stops pushing: no reconnect, no resync, no reseed, so the
+    cache stayed 'seeded and empty' for a day while a real position and stop sat at the broker."""
+    from projectx_desk import app as px_app
+    from projectx_desk.limits import Limits
+    app, fake = app_and_fake(limits=Limits(halt_path=tmp_path / "HALT", audit_path=tmp_path / "audit.jsonl"))
+    reconnects, snaps = [], []
+
+    async def fake_reconnect():
+        reconnects.append(1)
+    async with app.router.lifespan_context(app):
+        live = app.state.live
+        live.select_account(7)
+        live.seed([], [])
+        live.seed_trades([])
+        app.state.user.reconnect = fake_reconnect
+
+        async def snap(_app):
+            snaps.append((live.positions_seeded, live.trades_seeded))     # what the digest would have shown when the read started
+            live.positions_seeded = live.trades_seeded = True
+        monkeypatch.setattr(px_app, "_snapshot", snap)
+        for fn in app.state.user._handlers["GatewayLogout"]:
+            fn({"reason": "Multiple sessions detected"})
+            assert live.positions_seeded is False and live.trades_seeded is False      # unverified the instant it happens
+        assert app.state.guard.halted()                                                 # halted, and the reseed still runs
+        await asyncio.sleep(0.05)
+        assert reconnects == [1] and snaps and snaps[0] == (False, False)
+        assert live.positions_seeded and live.trades_seeded
+
+
+async def test_forced_reconnect_on_logout_is_rate_limited(tmp_path):
+    """Another live session holds the login: a reconnect every logout could loop. One forced reconnect per window; the halt,
+    the unseed and the reseed still run on every logout."""
+    from projectx_desk import app as px_app
+    from projectx_desk.limits import Limits
+    app, fake = app_and_fake(limits=Limits(halt_path=tmp_path / "HALT", audit_path=tmp_path / "audit.jsonl"))
+    reconnects, unseeds = [], []
+
+    async def fake_reconnect():
+        reconnects.append(1)
+    async with app.router.lifespan_context(app):
+        live = app.state.live
+        live.select_account(7)
+        app.state.user.reconnect = fake_reconnect
+        orig = live.mark_unseeded
+        live.mark_unseeded = lambda: (unseeds.append(1), orig())
+        fire = app.state.user._handlers["GatewayLogout"][0]
+        fire({}); fire({})
+        await asyncio.sleep(0.05)
+        assert reconnects == [1] and len(unseeds) == 2 and app.state.guard.halted()
+        app.state.logout_reconnect_at -= px_app.LOGOUT_RECONNECT_COOLDOWN_S + 1       # the window has passed
+        fire({})
+        await asyncio.sleep(0.05)
+        assert reconnects == [1, 1] and len(unseeds) == 3
+
+
+def _bare_app(client):
+    import types
+
+    from projectx_desk.state import LiveState
+    live = LiveState()
+    live.select_account(7)
+    live.seed([], [])
+    live.seed_trades([])
+    return types.SimpleNamespace(state=types.SimpleNamespace(client=client, live=live)), live
+
+
+async def test_periodic_reseed_recovers_a_cache_that_missed_events():
+    from projectx_desk import app as px_app
+
+    class C:
+        async def open_positions(self, _a):
+            return [{"id": 1, "accountId": 7, "contractId": CID, "size": 1, "type": 1, "averagePrice": 5000.0}]
+
+        async def open_orders(self, _a):
+            return []
+
+        async def trades(self, *_a):
+            return []
+    app, live = _bare_app(C())
+    assert await px_app._reseed_tick(app) is True
+    assert list(live.positions) == [1] and live.positions_seeded
+
+
+async def test_periodic_reseed_failure_marks_unseeded():
+    from projectx_desk import app as px_app
+
+    class C:
+        async def open_positions(self, _a):
+            raise PXError("down")
+    app, live = _bare_app(C())
+    assert await px_app._reseed_tick(app) is False
+    assert live.positions_seeded is False and live.trades_seeded is False
+
+
+def test_digest_never_prints_none_for_positions_or_orders_when_unseeded():
+    app, _ = app_and_fake()
+    with TestClient(app, base_url="http://testserver") as c:       # never seeded (connect=False)
+        txt = c.get("/ai/digest").text
+    assert "POS: UNKNOWN" in txt and "ORD: UNKNOWN" in txt and "POS: NONE" not in txt

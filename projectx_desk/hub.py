@@ -87,6 +87,16 @@ class SignalRHub:
         if self._session is not None and self._owns_session:
             await self._session.close()
 
+    async def reconnect(self):
+        """Drop the socket so _run() reconnects, replays every subscription and notifies "resync". For a session the gateway
+        logged out: the socket stays open but the pushes stop, so nothing else would ever re-subscribe."""
+        ws = self._ws
+        if ws is not None and not ws.closed:
+            try:
+                await ws.close()
+            except Exception:  # noqa: BLE001 - a dead socket is what we wanted anyway
+                pass
+
     def feed_age_s(self):
         return None if not self.last_msg else round(time.monotonic() - self.last_msg, 1)
 

@@ -174,6 +174,10 @@ class LiveState:
         self.account, self.positions, self.orders, self.trades = {}, {}, {}, []
         self.trades_seeded = self.positions_seeded = False
 
+    def mark_unseeded(self):
+        """The cache can no longer be trusted (logged out, a reseed failed): unknown, never 'flat'. Opens refuse until a REST read lands."""
+        self.trades_seeded = self.positions_seeded = False
+
     def _mine(self, d):
         # Fail closed: until an account is selected, accept nothing (never mix accounts).
         return isinstance(d, dict) and self.account_id is not None and d.get("accountId") == self.account_id

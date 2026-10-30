@@ -118,7 +118,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             app.state.csrf = secrets.token_urlsafe(32)
             app.state.guard = guard or Guard(c, app.state.live, limits or Limits.from_env(), user_hub=u)
             # "Multiple sessions detected": the gateway logs this session out. Stop opening; reducing paths (flatten, cancel) stay available.
-            u.on("GatewayLogout", lambda *a: app.state.guard.trip_halt("gateway_logout"))
+            u.on("GatewayLogout", lambda *a: _on_gateway_logout(app))
             try:
                 rcfg = px_recorder.recorder_config()
                 app.state.recorder = px_recorder.RecorderCache() if rcfg else None
@@ -152,8 +152,9 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             app.state.tledger_task = asyncio.create_task(_tomorrow_ledger_loop(app)) if roots else None
             app.state.mapplan_task = asyncio.create_task(_mapplan_shadow_loop(app)) if roots else None
             app.state.journal_task = asyncio.create_task(_journal_loop(app)) if connect and not rec else None
+            app.state.reseed_loop_task = asyncio.create_task(_reseed_loop(app)) if connect and not rec else None
             yield
-            for name in ("bias_task", "tledger_task", "mapplan_task", "journal_task"):
+            for name in ("bias_task", "tledger_task", "mapplan_task", "journal_task", "reseed_loop_task"):
                 if getattr(app.state, name, None) is not None:
                     getattr(app.state, name).cancel()
             if notifier_task is not None:
@@ -1060,6 +1061,64 @@ async def _track_loop(app, roots):
                 print(f"track: scan failed {root} {type(e).__name__}", flush=True)
             await asyncio.sleep(1.0)
         await asyncio.sleep(interval)
+
+
+LOGOUT_RECONNECT_COOLDOWN_S = 300.0
+
+
+def _on_gateway_logout(app):
+    """"Multiple sessions detected": halt, and stop trusting the cache. The gateway keeps the socket open but stops pushing, so no
+    resync ever follows by itself (2026-10-30: a position and its stop were invisible for a day). Mark unseeded, force the user hub to
+    reconnect (subscriptions replay, resync fires) and re-read from REST now, halted or not: the reseed is read-only."""
+    app.state.guard.trip_halt("gateway_logout")
+    app.state.live.mark_unseeded()
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    hub = getattr(app.state, "user", None)
+    now = time.monotonic()
+    last = getattr(app.state, "logout_reconnect_at", None)
+    if hub is not None and (last is None or now - last >= LOGOUT_RECONNECT_COOLDOWN_S):
+        # At most one forced reconnect per window: "multiple sessions" means another session holds the login, and if it is still
+        # alive our reconnect can trigger another logout, forever. The halt, the unseed and the REST reseed above/below always run.
+        app.state.logout_reconnect_at = now
+        app.state.logout_reconnect_task = loop.create_task(hub.reconnect())
+    _schedule_reseed(app)
+
+
+def _reseed_interval():
+    try:
+        v = float((os.getenv("PX_RESEED_S") or "60").strip())
+    except ValueError:
+        return 60.0
+    return 60.0 if v != v or v < 0 else v        # blank or garbled falls back; 0 turns the loop off
+
+
+async def _reseed_tick(app):
+    """One REST re-read of positions, orders and fills. A failure marks the state UNSEEDED (unknown, never flat). True if it landed."""
+    try:
+        await _snapshot(app)
+        return True
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:  # noqa: BLE001 - any failure means the cache is unverified
+        app.state.live.mark_unseeded()
+        print(f"periodic reseed failed: {type(e).__name__}", flush=True)
+        return False
+
+
+async def _reseed_loop(app):
+    """Belt and braces for a silently dead user stream (logout, a dropped subscription): re-read the broker every PX_RESEED_S
+    (default 60, 0 off). Read-only; the snapshot keeps anything a live event touched mid-read and re-runs protect_open_positions."""
+    while True:
+        every = _reseed_interval()
+        await asyncio.sleep(max(every, 5.0) if every else 60.0)
+        if not _reseed_interval() or _quiet(app) or getattr(app.state, "boot_error", None) or app.state.live.account_id is None:
+            continue
+        t = getattr(app.state, "reseed_task", None)
+        if t is None or t.done():
+            await _reseed_tick(app)
 
 
 def _schedule_reseed(app):

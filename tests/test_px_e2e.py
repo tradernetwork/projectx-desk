@@ -401,3 +401,21 @@ async def test_mock_history_joins_the_live_price_with_no_spike():
     closes = [r["c"] for r in rows]                                      # newest first
     assert abs(closes[0] - gw.px[cid]) <= 0.25 * 2                       # the latest bar sits at the live price
     assert max(abs(a - b) for a, b in zip(closes, closes[1:])) <= 4.0    # and there is no spike anywhere in the ramp
+
+
+async def test_silent_stream_stall_is_healed_by_the_periodic_reseed(make_desk):
+    """The 2026-10-30 failure: the socket stays OPEN but the gateway stops pushing. A position and its stop appear at the broker
+    (set straight into the mock's REST book, so no hub event is emitted, exactly like a silent stream). The desk sees nothing
+    until a reseed tick runs; the tick (what _reseed_loop runs every PX_RESEED_S) then shows it and runs protect_open_positions."""
+    d = await make_desk()
+    assert d.app.state.reseed_loop_task is not None and not d.app.state.reseed_loop_task.done()
+    assert d.live.positions_seeded and not d.live.positions and not d.live.orders
+    d.gw.positions[CID] = {"id": 777, "accountId": ACCOUNT_ID, "contractId": CID, "creationTimestamp": wall().isoformat(),
+                           "type": 1, "size": 1, "averagePrice": 5000.0}
+    d.gw._new_order({"contractId": CID, "type": 4, "side": 1, "size": 1, "stopPrice": 4990.0}, 1)
+    await asyncio.sleep(0.3)
+    assert not d.live.positions and not d.live.orders           # blind: nothing was pushed
+    assert d.guard.protection == {}                              # protect_open_positions has not seen it either
+    assert await px_app._reseed_tick(d.app) is True
+    assert [p["size"] for p in d.live.positions.values()] == [1] and len(d.live.orders) == 1
+    assert d.guard.protection == {CID: "COVERED"}                # and protection ran on what the read found

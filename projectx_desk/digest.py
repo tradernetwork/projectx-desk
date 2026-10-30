@@ -969,9 +969,11 @@ def format_digest(s) -> str:
     L.extend(px_gex.near_lines(g))
     L.append("GEX_NOTE: positioning not targets; flip is regime boundary")
     L.extend(px_tomorrow.tomorrow_lines(s.get("tomorrow")))
-    L.append("POS: " + ("; ".join(f"{p['side']} {_f(p['size'])} {_f(p['contract'])} @ {_f(p['avg_price'])}" for p in s["positions"]) or "NONE"))
+    unk = "UNKNOWN (state not verified against the broker; do not read this as flat)"
+    seeded = bool(s["feed"]["seeded"])
+    L.append("POS: " + ("; ".join(f"{p['side']} {_f(p['size'])} {_f(p['contract'])} @ {_f(p['avg_price'])}" for p in s["positions"]) or ("NONE" if seeded else unk)))
     L.append("ORD: " + ("; ".join(f"{o['side']} {o['type']} {_f(o['size'])} {_f(o['contract'])} stop={_f(o['stop'])} limit={_f(o['limit'])} tag={_f(o['tag'])}"
-                                  for o in s["orders"]) or "NONE"))
+                                  for o in s["orders"]) or ("NONE" if seeded else unk)))
     L.append(f"FILLS_TODAY: {_f(s['fills_today'])}" + ("" if s.get("stream") else f" pnl_day={_f(r.get('pnl_day'))}"))
     L.append(f"ACTIONS: stage={'ENABLED' if not m['halt'] else 'BLOCKED'} place={'NEEDS_HUMAN' if t else 'NEEDS_TICKET'}")
     L.append("RULE: agent reads and stages; the operator places. Voice never confirms.")

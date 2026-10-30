@@ -25,6 +25,7 @@ from typing import Callable, Optional
 
 from projectx_desk import sizing
 from projectx_desk.client import PXError, PXRateLimited, PXWriteUnknown
+from projectx_desk.state import STOP_TYPES, WORKING_STATUSES, is_protective_stop, is_trail
 from projectx_desk.limits import BRACKET_MODES, DayState, Limits, atomic_write_json
 from projectx_desk.tradeday import CT
 
@@ -1166,9 +1167,7 @@ class Guard:
 
     @staticmethod
     def _covered_by_broker_stop(working, cid, side, size) -> bool:
-        return working is not None and side is not None and any(
-            o.get("contractId") == cid and o.get("type") == 4 and o.get("side") == (1 if side == "long" else 0)
-            and abs(o.get("size") or 0) >= size for o in working)
+        return working is not None and side is not None and any(is_protective_stop(o, side, size, cid) for o in working)
 
     def _stop_filled(self, t) -> bool:
         """Did THIS ticket's stop fill? Proved only by a non-voided fill carrying its order id (the live trade list)."""
@@ -1510,13 +1509,13 @@ class Guard:
         if len(pos) != 1:
             return None
         side, size = self._pos_side(pos[0]), abs(pos[0]["size"])
-        stops = [o for o in self.live.orders.values() if o.get("contractId") == contract_id and o.get("type") == 4
-                 and o.get("side") == (1 if side == "long" else 0)]
-        if side is None or len(stops) != 1 or abs(stops[0].get("size") or 0) < size or not _finite_pos(stops[0].get("stopPrice")) \
-                or not isinstance(stops[0].get("id"), int):
+        stops = [o for o in self.live.orders.values() if o.get("contractId") == contract_id and o.get("type") in STOP_TYPES
+                 and o.get("side") == (1 if side == "long" else 0) and o.get("status") in (None, *WORKING_STATUSES)]
+        if side is None or len(stops) != 1 or not is_protective_stop(stops[0], side, size, contract_id) \
+                or not _finite_pos(stops[0].get("stopPrice")) or not isinstance(stops[0].get("id"), int):
             return None
         o = stops[0]
-        return types.SimpleNamespace(side=side, contract_id=contract_id, stop_order_id=o["id"], stop_size=int(abs(o["size"])),
+        return types.SimpleNamespace(trail=is_trail(o), side=side, contract_id=contract_id, stop_order_id=o["id"], stop_size=int(abs(o["size"])),
                                      stop_current=float(o["stopPrice"]), stop_price=None, hash8="adopted", ticket_id=None,
                                      abandoned=False, adopted=True)
 
@@ -1536,6 +1535,11 @@ class Guard:
             t = self.open_trade(contract_id)
             if t is None:
                 return MoveResult(False, None, "no open position with a live stop in that contract")
+            if getattr(t, "trail", False):
+                # A trailing stop moves itself at the broker. Modifying it could widen it or turn it into a fixed stop, and how the
+                # broker reads trailPrice is unverified, so the desk never touches it: refuse, never replace.
+                return MoveResult(False, None, "trail_stop: the covering stop is a trailing stop (TRAIL); the broker moves it, "
+                                               "so the desk does not modify it. Change it in the TopstepX UI")
             try:
                 rec = await self._contract(contract_id)
                 tick = Decimal(str(rec["tickSize"]))

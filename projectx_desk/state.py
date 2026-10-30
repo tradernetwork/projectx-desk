@@ -316,6 +316,45 @@ def _num(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
+# ---- which broker orders protect a position -----------------------------------------------------------------
+# ProjectX order types: 4 = STOP, 5 = TRAIL (a trailing stop the broker moves itself). Both rest on the closing side and both can
+# turn into a market order that OPENS the opposite position if left behind, so every "is it covered" and "cancel what is left" decision
+# goes through here. STOPLIMIT (3) is deliberately not protection: it may never fill.
+STOP_TYPE, TRAIL_TYPE = 4, 5
+STOP_TYPES = (STOP_TYPE, TRAIL_TYPE)
+WORKING_STATUSES = (1, 6)          # Open, Pending
+
+
+def _finite_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and v not in (float("inf"), float("-inf"))
+
+
+def is_trail(order) -> bool:
+    return isinstance(order, dict) and order.get("type") == TRAIL_TYPE
+
+
+def is_protective_stop(order, position_side, position_size, contract_id=None) -> bool:
+    """True only if `order` is a WORKING stop (type 4) or trailing stop (type 5) on the closing side of the position, at least its size.
+    A TRAIL must also carry a finite numeric `stopPrice` (its current trigger). Anything unreadable is NOT covering (fail closed).
+    `position_side` is "long" or "short"; a missing status counts as working only because callers pass the broker's open-order list."""
+    if not isinstance(order, dict) or order.get("type") not in STOP_TYPES:
+        return False
+    if contract_id is not None and order.get("contractId") != contract_id:
+        return False
+    if position_side not in ("long", "short") or not _finite_num(position_size) or position_size <= 0:
+        return False
+    if order.get("status") is not None and order.get("status") not in WORKING_STATUSES:
+        return False
+    if order.get("side") != (1 if position_side == "long" else 0):
+        return False
+    sz = order.get("size")
+    if not _finite_num(sz) or abs(sz) < position_size:
+        return False
+    if order.get("type") == TRAIL_TYPE and not (_finite_num(order.get("stopPrice")) and order["stopPrice"] > 0):
+        return False
+    return True
+
+
 def position_view(p):
     return {"contract": p.get("contractId") if re.match(r"^CON\.[A-Za-z0-9._]{1,40}$", str(p.get("contractId", ""))) else None,
             "side": {1: "LONG", 2: "SHORT"}.get(p.get("type")), "size": _num(p.get("size")),

@@ -902,3 +902,11 @@ html[data-layout="portrait"][data-pos="1"] .col-right>#blotter{order:0}
 .chat-form{display:flex;gap:6px;padding:8px var(--pad);border-top:1px solid var(--border)}
 .chat-form textarea{flex:1 1 auto;resize:none;background:var(--bg-app);color:inherit;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 8px;font:inherit}
 body.streaming .chat-fab,body.streaming .chat-dock{display:none}   /* the agent reads the live page, balances included: never on stream */
+.thesis-fab{position:fixed;z-index:55;left:14px;bottom:48px;min-height:34px;padding:0 16px;border-radius:17px;background:var(--bg-card);border:1px solid var(--cyan-line);color:var(--cyan-ink)}
+.thesis-card{position:fixed;z-index:56;left:14px;bottom:48px;width:min(340px,calc(100vw - 28px));max-height:calc(100dvh - 120px);overflow:auto;display:flex;flex-direction:column;gap:6px;padding:12px;background:var(--bg-card);border:1px solid var(--cyan-line);border-radius:10px}
+.thesis-card[hidden]{display:none}
+.thesis-h{display:flex;gap:8px;align-items:center}.thesis-h .ghost{margin-left:auto}
+.thesis-row{display:flex;flex-wrap:wrap;gap:6px}
+.thesis-card .chip.on{border-color:var(--cyan-ink);color:var(--cyan-ink)}
+.thesis-fact{color:var(--amber,#e0a040)}
+body.streaming .thesis-fab,body.streaming .thesis-card{display:none}

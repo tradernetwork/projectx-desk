@@ -10,6 +10,11 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
 - A trailing stop (order type 5) counts as protection under the same conditions as a plain stop; `move_stop` refuses it; every
   cancel sweep cancels it (Round 24). The desk does not place one yet.
 
+- Thesis card and quick buttons, first slice (item 6): `thesis.py` (allowlisted rows, append-only `data/thesis.jsonl`, pure fact checks:
+  invalidation broken, scalp past its limit, stop wider than the invalidation), `GET/POST /api/thesis` (full desk only, same POST gate),
+  a "thesis against what happened" section in `data/memory/trades.md`, and `static/thesis.js` (preset buttons, respected-level chips).
+  Left for later: the invalidation alert through the phone notifier, a banner for the facts, voice fill.
+
 ## Next, in order
 
 1. **Restart the desk and clear the latched `gateway_logout` halt.** Human step, flat only. Check the digest shows a seeded
@@ -26,13 +31,8 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
    timeframe's lines onto another chart through time).
 5. **Trade-event detector in the desk.** Read-only background task like `notify.py`: no stop after N seconds, re-entry after a loss,
    scale-in, late entry, entry against the BIAS read. Fixed templates, a banner and chime on the desk. No model needed to detect.
-6. **Thesis card and quick buttons.** The trader states the idea in a few taps before or right after an entry: type (reversal hold,
-   scalp, fade the range, trend add), target, invalidation level, time limit. Presets prefill it, and respected levels from
-   `respect.py` show as tappable chips for the invalidation and the target, so nothing is typed mid-trade. The desk then holds the
-   trader to their own thesis with plain numbers: an alert when the invalidation level breaks, a timer when a scalp overruns its
-   limit, a flag when the stop sits wider than the invalidation, and a line in the trade memory (thesis against what happened) for the
-   debrief. It reports facts and never grades the idea. Voice later fills the same fields, so nothing here is thrown away. Display and
-   logging only, no path to the guard.
+6. **Thesis card, second slice.** The first slice is in Done. Still to do: a phone alert and a chime when the invalidation breaks
+   (a fixed template in `notify.py`, read-only), a banner for the facts, and voice filling the same fields.
 7. **Coach service.** A chat dock in the desk that answers quickly, speaks first on a detected trade, and sees the page the trader
    sees. A fork of disclaw (MIT) with the Discord layer replaced by a desk adapter: `POST /ask` as SSE, `GET /events`, `POST /event`,
    sessions pinned by name. Claude subscription login only, no API keys, runs on the trader's own box.

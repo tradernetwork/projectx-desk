@@ -18,6 +18,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .tradeday import parse_ts
+from . import thesis as px_thesis
 
 ROOT = Path(__file__).resolve().parent.parent
 CT = ZoneInfo("America/Chicago")
@@ -251,6 +252,13 @@ def render_memory(trips, now=None, last=12):
         x = t["ctx"]
         bias = "none" if not x else f"{x['grade']} {x['direction']}" + ("" if x["aligned"] is None else (" with" if x["aligned"] else " AGAINST"))
         L.append(f"| {d:%m-%d %H:%M} | {t['contract'].split('.')[3]} | {t['side']} | {t['qty']} | {t['avg_entry']} | {t['avg_exit']} | {_dur(t['hold_s'])} | {_money(t['net'])} | {bias} |")
+    th = [t for t in sorted(trips, key=lambda x: x["entry_ts"], reverse=True) if t.get("thesis")][:last]
+    if th:
+        L += ["", f"## Thesis against what happened (newest first, n={len(th)})",
+              "What the trader stated on the card, then the plain outcome. Facts, not a grade of the idea."]
+        for t in th:
+            d = datetime.fromtimestamp(t["entry_ts"] / 1000, CT)
+            L.append(f"- {d:%m-%d %H:%M} {t['contract'].split('.')[3]} {t['side']}: {px_thesis.trip_line(t['thesis'], t)}")
     return "\n".join(L + [""])
 
 
@@ -259,7 +267,8 @@ def write_memory(root=None, ledger_path=None, bias_path=None, now=None):
     root = Path(root or ROOT)
     ledger = Ledger(ledger_path or os.getenv("PX_JOURNAL_FILE") or root / "data" / "trades.jsonl")
     trips = attach_context(round_trips(ledger.rows), read_bias(bias_path or os.getenv("PX_BIAS_LOG_FILE") or root / "data" / "bias_log.jsonl"))
-    out = Path(os.getenv("PX_MEMORY_DIR") or root / "data" / "memory")
+    px_thesis.attach(trips, px_thesis.Store(px_thesis.store_path(root)).rows)
+    out =Path(os.getenv("PX_MEMORY_DIR") or root / "data" / "memory")
     out.mkdir(parents=True, exist_ok=True)
     tmp = out / "trades.md.tmp"
     tmp.write_text(render_memory(trips, now), encoding="utf-8")

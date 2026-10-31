@@ -41,3 +41,26 @@ def test_roles_can_be_filtered_and_junk_is_ignored():
     items = [{"price": 100.0, "roles": ["PIN", "TRAPDOOR"]}, {"price": None, "roles": ["FLIP"]}, {"price": 105.0}]
     assert run([(0, 101.0), (1000, 99.0)], items=items, only=["TRAPDOOR"]) == [[], [["TRAPDOOR", -1]]]
     assert run([(0, 101.0), (1000, None), (2000, float("nan") if False else 99.0)], items=items, only=["TRAPDOOR"])[1] == []
+
+
+FRESH_JS = """const W=require(process.argv[1]);const d=JSON.parse(require('fs').readFileSync(0,'utf8'));
+const seen=new Set();console.log(JSON.stringify(d.steps.map(([now,evs])=>W.freshEvents(evs,seen,now,120000).map(e=>e.id))))"""
+
+
+def test_trade_events_announce_once_ignore_old_history_and_junk():
+    e = lambda i, ts, kind="LATE_ENTRY": {"id": i, "kind": kind, "ts": ts, "text": "MES LONG entry"}      # noqa: E731
+    steps = [(1_000_000, [e("old", 1_000), e("new", 990_000)]), (1_001_000, [e("new", 990_000), e("b", 1_000_500)]),
+             (1_002_000, [{"id": "x", "kind": "BUY_NOW", "ts": 1_001_900, "text": "t"}, {"id": "y", "kind": "NO_STOP", "ts": "z", "text": "t"}, None, e("c", 1_001_900, "SCALE_IN")])]
+    out = subprocess.run(["node", "-e", FRESH_JS, str(STATIC / "watch.js")], input=json.dumps({"steps": steps}), capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout) == [["new"], ["b"], ["c"]]          # a reload never replays "old"; "new" is not told twice; unknown kinds are dropped
+
+
+def test_trade_alert_path_is_display_only_with_no_post_and_no_trade_wording():
+    js = (STATIC / "desk.js").read_text()
+    block = js.split("Trade-event alerts: a flash")[1].split("function syncDesk")[0]
+    for shout in ("trade now", "TRADE NOW", "BUY NOW", "SELL NOW", "go long", "go short", "enter ", "should"):
+        assert shout not in block, shout
+    assert "an alert, not a signal" in block and "PXWatch.freshEvents" in block
+    assert "method: 'POST'" not in block and "/api/" not in block and "fetch(" not in block
+    assert "try{tradeAlerts(" in js and 'id="trade-alert"' in (STATIC / "index.html").read_text()

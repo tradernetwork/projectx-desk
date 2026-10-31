@@ -9,6 +9,10 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
   prints `UNKNOWN` instead of `NONE` when unverified (Round 23).
 - A trailing stop (order type 5) counts as protection under the same conditions as a plain stop; `move_stop` refuses it; every
   cancel sweep cancels it (Round 24). The desk does not place one yet.
+- Trade-event detector (`tradewatch.py`, default OFF, `PX_TRADEWATCH=1`): no working stop N seconds after a position is seen
+  (`PX_TRADEWATCH_NOSTOP_S`, 15), re-entry within 10 minutes of a losing exit, scale-in, entry after 14:55 CT, entry against the BIAS
+  read. Habit definitions are `journal.py`'s. Fixed templates, a banner and chime (`watch.js` `freshEvents`) and `TRADEWATCH:` digest
+  lines. Read-only, no path to the guard. Not yet seen against a live session; the coach (item 7 below) can speak first on these events.
 
 ## Next, in order
 
@@ -24,8 +28,6 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
 4. **Tick charts.** Set `PX_TICK_BARS` to include 500 and 1000 (minimum 50, at most 4 sizes). Throughput test at the Sunday open:
    prints per second, hub-to-browser lag, CPU. Then a larger main-size tick chart with a 5m overlay (`trend.js` already maps one
    timeframe's lines onto another chart through time).
-5. **Trade-event detector in the desk.** Read-only background task like `notify.py`: no stop after N seconds, re-entry after a loss,
-   scale-in, late entry, entry against the BIAS read. Fixed templates, a banner and chime on the desk. No model needed to detect.
 6. **Thesis card and quick buttons.** The trader states the idea in a few taps before or right after an entry: type (reversal hold,
    scalp, fade the range, trend add), target, invalidation level, time limit. Presets prefill it, and respected levels from
    `respect.py` show as tappable chips for the invalidation and the target, so nothing is typed mid-trade. The desk then holds the

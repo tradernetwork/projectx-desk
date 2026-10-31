@@ -21,6 +21,7 @@ from projectx_desk import tomorrow_feed as px_tomorrow
 from projectx_desk import tomorrow_ledger as px_tledger
 from projectx_desk import flow as px_flow
 from projectx_desk import sizing
+from projectx_desk import tradewatch as px_tradewatch
 from projectx_desk.indicators import rsi_series
 from projectx_desk.levels import atr_series, bounce_stats, ema_stack, percentile_rank, placebo_rate, verdict
 from projectx_desk.client import live_data, PXAuthError, PXError, PXNotConfigured, PXRateLimited
@@ -771,11 +772,21 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
         "positions": [position_view(p) for p in live.positions.values()],
         "orders": [order_view(o) for o in live.orders.values()],
         "fills_today": len(live.trades) if live.trades_seeded else None,
+        "tradewatch": tradewatch_state(app),
         "disclaimer": DISCLAIMER,
     }
     if not stream and isinstance(state.get("size"), dict):
         state["size"].pop("why_stream", None)
     return redact_stream(state) if stream else state
+
+
+def tradewatch_state(app):
+    """The trade-event detector's recent events (fixed templates, no amounts), or OFF. Display only."""
+    tw = getattr(app.state, "tradewatch", None)
+    try:
+        return tw.snapshot() if tw is not None else {"status": "OFF", "events": []}
+    except Exception:  # noqa: BLE001 - advisory
+        return {"status": "OFF", "events": []}
 
 
 async def _tomorrow_state(app, contract_id):
@@ -974,6 +985,7 @@ def format_digest(s) -> str:
     L.append("POS: " + ("; ".join(f"{p['side']} {_f(p['size'])} {_f(p['contract'])} @ {_f(p['avg_price'])}" for p in s["positions"]) or ("NONE" if seeded else unk)))
     L.append("ORD: " + ("; ".join(f"{o['side']} {o['type']} {_f(o['size'])} {_f(o['contract'])} stop={_f(o['stop'])} limit={_f(o['limit'])} tag={_f(o['tag'])}"
                                   for o in s["orders"]) or ("NONE" if seeded else unk)))
+    L.extend(px_tradewatch.digest_lines(s.get("tradewatch")))
     L.append(f"FILLS_TODAY: {_f(s['fills_today'])}" + ("" if s.get("stream") else f" pnl_day={_f(r.get('pnl_day'))}"))
     L.append(f"ACTIONS: stage={'ENABLED' if not m['halt'] else 'BLOCKED'} place={'NEEDS_HUMAN' if t else 'NEEDS_TICKET'}")
     L.append("RULE: agent reads and stages; the operator places. Voice never confirms.")

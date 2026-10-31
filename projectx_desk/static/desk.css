@@ -881,6 +881,8 @@ html[data-layout="portrait"][data-pos="1"] .col-right>#blotter{order:0}
 
 /* level-cross alert: below the analyst entry banner, red for a break down, green for a break up */
 .level-alert{top:70px}
+.trade-alert{top:132px}
+.callout-alert.trade-alert{background:linear-gradient(90deg,#fbbf24,#d97706);color:#2b1700;box-shadow:0 0 0 2px #fde68a,0 0 22px 5px rgba(251,191,36,.5)}
 .callout-alert.level-alert.down{background:linear-gradient(90deg,#fb3b64,#be123c);color:#fff;box-shadow:0 0 0 2px #fecdd3,0 0 26px 6px rgba(251,59,100,.6)}
 .callout-alert.level-alert.up{background:linear-gradient(90deg,#34d399,#16a34a);color:#052e16;box-shadow:0 0 0 2px #bbf7d0,0 0 26px 6px rgba(52,211,153,.55)}
 

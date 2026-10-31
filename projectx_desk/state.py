@@ -27,7 +27,7 @@ from projectx_desk.ticks import TickBars
 
 
 class LiveState:
-    def __init__(self, market_hub=None, user_hub=None, flow_path=None, ticks_path=None, flow_legacy=None):
+    def __init__(self, market_hub=None, user_hub=None, flow_path=None, ticks_path=None, flow_legacy=None, tape=None):
         self.market, self.user = market_hub, user_hub
         self.quotes = {}      # contractId -> last GatewayQuote payload (+ "_rx" monotonic time)
         self.account = {}     # last GatewayUserAccount for the selected account
@@ -41,6 +41,7 @@ class LiveState:
         self._listeners = []         # callables(kind, payload) for position/order events (the guard's stop manager)
         self.ticks = TickBars(path=ticks_path)   # tick bars (N prints per bar) from the same tape; sizes from PX_TICK_BARS
         self.flow = FlowStore(path=flow_path, legacy_json=flow_legacy)   # real buy/sell volume per minute, built from every GatewayTrade we receive
+        self.tape = tape      # raw tape log (tapelog.TapeLog) or None = off; add() never raises
         self._tape = []       # contracts whose trade tape stays subscribed with no browser open (oldest first)
         self._subs = {}       # contractId -> set[Queue]
         self._pinned = set()  # contracts whose quotes stay subscribed so the guard/MCP work with no browser open
@@ -137,6 +138,11 @@ class LiveState:
 
     def _on_trade(self, cid, data):
         for t in (data if isinstance(data, list) else [data]):
+            if self.tape is not None:
+                try:
+                    self.tape.add(cid, ts_ms(t["timestamp"]), t.get("price"), t.get("volume"), t.get("type"))
+                except Exception:  # noqa: BLE001 - raw tape logging must never stop the tick stream
+                    self.tape.errors += 1
             self.ticks.add_trade(cid, t, ts_ms)   # tick bars; never raises (a malformed trade marks a gap)
             try:
                 self.flow.add(cid, ts_ms(t["timestamp"]), t.get("volume"), t.get("type"))

@@ -14,7 +14,7 @@ from test_px_guard_protect import Broker
 
 GOOD = "9f2c61b7a04e83d5c7b1e690a3f48d2e5b7c9a10d6e4f3b2a1c8d7e6f5a49b30"
 EXPECTED_TOOLS = {"get_digest", "get_state", "get_positions", "get_orders", "get_quote", "get_bars",
-                  "search_contracts", "get_risk_status", "get_respect", "size_trade", "preview_order", "halt"}
+                  "search_contracts", "get_risk_status", "get_respect", "size_trade", "preview_order", "halt", "get_trade_memory"}
 FORBIDDEN_WORDS = ("place", "flatten", "cancel", "clear", "resume", "approve", "confirm", "submit", "close", "send", "execute")
 
 
@@ -154,3 +154,60 @@ def test_preview_order_accepts_stop_ticks_and_still_cannot_place(tmp_path):
 
         out = asyncio.run(run())
     assert out["ok"] and out["readback"]["stop_ticks"] == 25
+
+
+MEM = "# Trade memory\n- Net +$12.50 after $1.20 fees, n=4\n- loss -$3,400.00 here\n| 10-01 | MES | long | 1 | 7000.25 | 7001 | 5m | -$7.00 | none |\n"
+
+
+def _mem(tmp_path, monkeypatch, **env):
+    (tmp_path / "trades.md").write_text(MEM, encoding="utf-8")
+    (tmp_path / "notes.md").write_text("my private note $99", encoding="utf-8")
+    monkeypatch.setenv("PX_MEMORY_DIR", str(tmp_path))
+    for k in ("PX_MCP_MEMORY_DOLLARS", "PX_MCP_MEMORY_NOTES", "PX_MCP_MEMORY_MAX"):
+        monkeypatch.delenv(k, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+
+
+def test_trade_memory_strips_dollars_by_default_but_keeps_counts_and_prices(tmp_path, monkeypatch):
+    from projectx_desk.mcp import read_memory
+    _mem(tmp_path, monkeypatch)
+    r = read_memory()
+    assert "$" not in r["text"].replace("[$ withheld]", "")
+    assert "n=4" in r["text"] and "7000.25" in r["text"] and r["dollars"] is False
+
+
+@pytest.mark.parametrize("val", ["0", "", "true", "yes", "2"])
+def test_trade_memory_dollars_only_on_exact_1(tmp_path, monkeypatch, val):
+    from projectx_desk.mcp import read_memory
+    _mem(tmp_path, monkeypatch, PX_MCP_MEMORY_DOLLARS=val)
+    assert "+$12.50" not in read_memory()["text"]
+
+
+def test_trade_memory_dollars_when_switched_on(tmp_path, monkeypatch):
+    from projectx_desk.mcp import read_memory
+    _mem(tmp_path, monkeypatch, PX_MCP_MEMORY_DOLLARS="1")
+    r = read_memory()
+    assert "+$12.50" in r["text"] and r["dollars"] is True
+
+
+def test_trade_memory_notes_are_refused_unless_switched_on(tmp_path, monkeypatch):
+    from projectx_desk.mcp import read_memory
+    _mem(tmp_path, monkeypatch)
+    assert read_memory("notes") == {"error": "notes_disabled"}
+    assert read_memory("../../etc/passwd") == {"error": "bad_file"}
+    monkeypatch.setenv("PX_MCP_MEMORY_NOTES", "1")
+    r = read_memory("notes")
+    assert "private note" in r["text"] and "$99" not in r["text"]
+
+
+def test_trade_memory_is_size_capped_and_missing_file_is_a_code(tmp_path, monkeypatch):
+    from projectx_desk.mcp import read_memory
+    _mem(tmp_path, monkeypatch, PX_MCP_MEMORY_MAX="1000")
+    (tmp_path / "trades.md").write_text("x" * 5000, encoding="utf-8")
+    r = read_memory()
+    assert r["truncated"] is True and len(r["text"]) == 1000
+    monkeypatch.setenv("PX_MCP_MEMORY_MAX", "junk")
+    assert len(read_memory()["text"]) == 5000
+    (tmp_path / "trades.md").unlink()
+    assert read_memory() == {"error": "not_found"}

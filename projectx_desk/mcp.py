@@ -7,8 +7,10 @@ that moves money or lifts a safety. Tools never register those names at all (the
 """
 import hmac
 import math
+import os
 import re
 import time
+from pathlib import Path
 from typing import Optional
 
 from projectx_desk import sizing
@@ -79,6 +81,47 @@ def _contract(c: Optional[str]):
     if c is not None and not CONTRACT_RE.match(c):
         raise ValueError("bad contract id")
     return c
+
+
+MEMORY_DEFAULT_CAP = 20000
+_DOLLARS = re.compile(r"[+-]?\$\s?\d[\d,]*(?:\.\d+)?")
+_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def _switch(name: str) -> bool:
+    """On only for exactly "1"; unset, blank or garbled is OFF."""
+    return (os.getenv(name) or "").strip() == "1"
+
+
+def _memory_cap() -> int:
+    try:
+        n = int(os.getenv("PX_MCP_MEMORY_MAX") or MEMORY_DEFAULT_CAP)
+    except ValueError:
+        return MEMORY_DEFAULT_CAP
+    return min(max(n, 1000), 100000)
+
+
+def read_memory(which: str = "trades") -> dict:
+    """The trader's trade memory as capped text. trades.md has dollar figures replaced unless PX_MCP_MEMORY_DOLLARS=1;
+    notes.md (hand-written) is served only when PX_MCP_MEMORY_NOTES=1. Read-only, no path comes from the caller."""
+    if which not in ("trades", "notes"):
+        return {"error": "bad_file"}
+    if which == "notes" and not _switch("PX_MCP_MEMORY_NOTES"):
+        return {"error": "notes_disabled"}
+    from projectx_desk.journal import ROOT
+    d = Path(os.getenv("PX_MEMORY_DIR") or Path(ROOT) / "data" / "memory")
+    try:
+        text = (d / f"{which}.md").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {"error": "not_found"}
+    dollars = _switch("PX_MCP_MEMORY_DOLLARS")
+    if not dollars:
+        text = _DOLLARS.sub("[$ withheld]", text)
+    text = _CTRL.sub("", text)
+    cap, truncated = _memory_cap(), False
+    if len(text) > cap:
+        text, truncated = text[:cap], True
+    return {"file": f"{which}.md", "dollars": dollars, "truncated": truncated, "text": text}
 
 
 def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
@@ -220,6 +263,13 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
                        readback=dict(p.ticket.readback),
                        next_step="The operator must review this ticket on the desk and place it personally. You cannot place it.")
         return out
+
+    @mcp.tool
+    def get_trade_memory(file: str = "trades") -> dict:
+        """The trader's own trade memory (counts, sample sizes, hold times, habit counts, last trips) as capped plain text.
+        Dollar figures are withheld unless the operator enabled them. file="notes" (hand-written) is refused unless enabled.
+        Facts from fills, not advice or a signal. Read-only."""
+        return read_memory(file)
 
     @mcp.tool
     def halt() -> dict:

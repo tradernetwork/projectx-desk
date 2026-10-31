@@ -10,6 +10,9 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
 - A trailing stop (order type 5) counts as protection under the same conditions as a plain stop; `move_stop` refuses it; every
   cancel sweep cancels it (Round 24). The desk does not place one yet.
 
+- Read-only MCP tool `get_trade_memory` for the trade memory (roadmap item 9 prerequisite): dollars withheld unless
+  `PX_MCP_MEMORY_DOLLARS=1`, `notes.md` only behind `PX_MCP_MEMORY_NOTES=1`, size-capped.
+
 ## Next, in order
 
 1. **Restart the desk and clear the latched `gateway_logout` halt.** Human step, flat only. Check the digest shows a seeded
@@ -43,14 +46,14 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
 8. **Callout cross-check.** The coach says whether the newest analyst callout agrees with the open position. Only when the callout
    carries a symbol and side. Allowlisted fields only (`feed.py`), never callout text, opinion not signal, no path to the guard.
 9. **Scheduled debriefs on the home agent.** A locked-down profile with only the desk MCP, a debrief after the close and a pre-open
-   note, reading the trade memory. Needs a read-only MCP tool for `data/memory/trades.md`.
+   note, reading the trade memory. The read-only MCP tool for `data/memory/trades.md` now exists (`get_trade_memory`).
 
 ## Waiting on a decision
 
 - Deep model for the coach: Opus or Sonnet (Opus burns more of the subscription).
 - Edits from chat: a branch on the home box that the trader reviews here, or a patch applied from this checkout.
 - Where scheduled output is delivered. A chat platform conflicts with the LAN-only decision, so nothing is wired until it is decided.
-- Whether dollars belong in the trade-memory MCP tool (the AI surface otherwise carries no balances).
+- Whether dollars belong in the trade-memory MCP tool (the AI surface otherwise carries no balances). Default is OFF (withheld); `PX_MCP_MEMORY_DOLLARS=1` turns them on.
 
 ## Known gaps
 

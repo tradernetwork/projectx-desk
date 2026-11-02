@@ -113,7 +113,7 @@
   function open(on){
     dock.hidden = !on; fab.hidden = on;
     fab.setAttribute('aria-expanded', String(on));
-    if(on) input.focus();
+    if(on){const v = lsGet(); if(v) place(v.x, v.y); input.focus()}
   }
 
   fab.onclick = () => open(true);
@@ -122,6 +122,31 @@
   form.onsubmit = (e) => {e.preventDefault(); submit()};
   input.onkeydown = (e) => {if(e.key === 'Enter' && !e.shiftKey){e.preventDefault(); submit()}};
   dock.onkeydown = (e) => {if(e.key === 'Escape'){open(false); fab.focus()}};
+
+  // Float it: drag by the header, position remembered per browser (localStorage), clamped on screen, double-click the header to snap back.
+  const POS = 'px_chat_pos_v1', head = dock.querySelector('.chat-h');
+  const lsGet = () => {try{return JSON.parse(localStorage.getItem(POS) || 'null')}catch(_){return null}};
+  const lsSet = (v) => {try{v ? localStorage.setItem(POS, JSON.stringify(v)) : localStorage.removeItem(POS)}catch(_){}};
+  function place(x, y){
+    const r = dock.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight;
+    x = Math.max(0, Math.min(x, W - Math.min(r.width, W))); y = Math.max(0, Math.min(y, H - 60));
+    dock.style.left = x + 'px'; dock.style.top = y + 'px'; dock.style.right = 'auto'; dock.style.bottom = 'auto';
+    return {x, y};
+  }
+  function home(){dock.style.left = dock.style.top = dock.style.right = dock.style.bottom = ''; lsSet(null)}
+  head.style.cursor = 'move'; head.style.touchAction = 'none';
+  head.addEventListener('pointerdown', (e) => {
+    if(e.target.closest('button')) return;
+    const r = dock.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    head.setPointerCapture(e.pointerId);
+    const move = (m) => place(m.clientX - dx, m.clientY - dy);
+    const up = (u) => {head.removeEventListener('pointermove', move); head.removeEventListener('pointerup', up); head.removeEventListener('pointercancel', up);
+      const q = dock.getBoundingClientRect(); lsSet(place(q.left, q.top))};
+    head.addEventListener('pointermove', move); head.addEventListener('pointerup', up); head.addEventListener('pointercancel', up);
+  });
+  head.addEventListener('dblclick', (e) => {if(!e.target.closest('button')) home()});
+  window.addEventListener('resize', () => {const v = lsGet(); if(v && !dock.hidden) place(v.x, v.y)});
+  const saved = lsGet(); if(saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) place(saved.x, saved.y);
 
   st.msgs = store.get();
   st.msgs.forEach(paint);

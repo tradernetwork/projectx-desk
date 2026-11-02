@@ -19,6 +19,8 @@ ROOT = Path(__file__).resolve().parent.parent
 MAX_PROMPT = 2000
 MAX_REPLY = 8000
 MAX_IMAGES = 3
+MAX_BODY = 17_000_000                 # bytes of request: three 4 MB images as base64 plus the text
+MAX_SIDE, MAX_PIXELS = 8000, 40_000_000   # a small file can declare a gigapixel canvas that the agent's image reader would try to decode
 MAX_IMAGE_BYTES = 4_000_000          # decoded, per screenshot; the browser downsizes anything bigger
 MAGIC = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"), (b"GIF87a", "gif"), (b"GIF89a", "gif"))
 SESSION = "desk"                    # fixed server side: the browser cannot pick or enumerate agent sessions
@@ -50,6 +52,45 @@ def config(environ=None):
     return (url, token) if len(token) >= 32 else None
 
 
+def dims(blob: bytes, ext: str):
+    """(width, height) read from the header, or None when it cannot be read. Header bytes only: nothing is decoded here."""
+    try:
+        if ext == "png" and blob[12:16] == b"IHDR":
+            return int.from_bytes(blob[16:20], "big"), int.from_bytes(blob[20:24], "big")
+        if ext == "gif":
+            return int.from_bytes(blob[6:8], "little"), int.from_bytes(blob[8:10], "little")
+        if ext == "jpg":
+            i = 2
+            while i + 9 < len(blob):
+                if blob[i] != 0xFF:
+                    return None
+                m = blob[i + 1]
+                if m in (0xD8, 0x01) or 0xD0 <= m <= 0xD7:
+                    i += 2
+                    continue
+                n = int.from_bytes(blob[i + 2:i + 4], "big")
+                if m in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                    return int.from_bytes(blob[i + 7:i + 9], "big"), int.from_bytes(blob[i + 5:i + 7], "big")
+                i += 2 + n
+        if ext == "webp":
+            kind = blob[12:16]
+            if kind == b"VP8X":
+                return 1 + int.from_bytes(blob[24:27], "little"), 1 + int.from_bytes(blob[27:30], "little")
+            if kind == b"VP8 ":
+                return int.from_bytes(blob[26:28], "little") & 0x3FFF, int.from_bytes(blob[28:30], "little") & 0x3FFF
+            if kind == b"VP8L" and blob[20] == 0x2F:
+                b = int.from_bytes(blob[21:25], "little")
+                return 1 + (b & 0x3FFF), 1 + ((b >> 14) & 0x3FFF)
+    except (IndexError, ValueError):
+        return None
+    return None
+
+
+def dims_ok(blob: bytes, ext: str) -> bool:
+    wh = dims(blob, ext)
+    return bool(wh) and 0 < wh[0] <= MAX_SIDE and 0 < wh[1] <= MAX_SIDE and wh[0] * wh[1] <= MAX_PIXELS
+
+
 def clean_images(images) -> list:
     """Screenshots from the browser as [{data: base64}]. Only real PNG/JPEG/GIF/WebP bytes within the caps get through, and what is relayed is
     the sniffed type plus the base64 (never a filename or a type the browser claimed). Anything else is a fixed 400."""
@@ -71,7 +112,7 @@ def clean_images(images) -> list:
         ext = next((e for m, e in MAGIC if blob.startswith(m)), None)
         if ext is None and blob[:4] == b"RIFF" and blob[8:12] == b"WEBP":
             ext = "webp"
-        if ext is None:
+        if ext is None or not dims_ok(blob, ext):
             raise ChatError("bad image", 400)
         out.append({"ext": ext, "data": raw})
     return out

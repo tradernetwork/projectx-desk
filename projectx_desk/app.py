@@ -690,7 +690,14 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
 
     @app.post("/api/chat")
     async def chat_ask(request: Request):
+        try:
+            if int(request.headers.get("content-length") or 0) > px_chat.MAX_BODY:
+                raise HTTPException(413, "too big")
+        except ValueError:
+            raise HTTPException(400, "bad length")
         b = await body(request)
+        if isinstance(b.get("prompt"), str) and re.search(r"\btrail", b["prompt"], re.I) and getattr(request.app.state, "guard", None):
+            request.app.state.guard.open_trail_window()           # the trader typed a trail request: the agent may arm one for the next 2 minutes
         try:
             return {"reply": await chat_of(request.app).ask(b.get("prompt"), b.get("images"))}
         except px_chat.ChatError as e:

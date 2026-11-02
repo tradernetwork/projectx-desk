@@ -11,7 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 WRITE_ENDPOINT = re.compile(r"(Order/(place|modify|cancel)|Position/(close|partialClose))", re.I)
 GUARD_ONLY_NAMES = {"ORDER_PLACE", "ORDER_MODIFY", "ORDER_CANCEL", "POSITION_CLOSE", "POSITION_PARTIAL_CLOSE"}
 # attributes that reach the order path; only the web layer may touch them (UI buttons), never MCP/state/etc.
-MONEY_ATTRS = {"place", "flatten", "cancel_order", "close_position", "move_stop",
+MONEY_ATTRS = {"place", "flatten", "cancel_order", "close_position", "move_stop", "arm_trail",
                # the guard's other writers and human-only controls: only the web layer (a human's click) may reach them
                "clear_halt", "resolve_intent", "reconcile", "handle_position",
                "_arm_stop", "_naked", "_resize_stop", "_verify_stop_after_unknown"}
@@ -20,6 +20,11 @@ MONEY_ATTRS = {"place", "flatten", "cancel_order", "close_position", "move_stop"
 PKG = "projectx_desk"
 GUARD_FILE = f"{PKG}/guard.py"
 MONEY_ALLOWED_FILES = {f"{PKG}/app.py"}       # guard.py itself is exempt from every rule
+EXTRA_ALLOWED = {"arm_trail": {f"{PKG}/mcp.py"}}   # the MCP tool is the one other caller of arm_trail, gated by PX_MCP_TRAIL and the human-typed window
+
+
+def money_ok(name, filename):
+    return filename in MONEY_ALLOWED_FILES or filename in EXTRA_ALLOWED.get(name, set())
 WRITE_ALLOWED_FILES = {f"{PKG}/client.py"}    # defines PXClient.write; may not CALL it
 DYNAMIC_NAMES = {"methodcaller", "attrgetter", "__import__", "import_module", "eval", "exec", "vars"}   # build a name or call at runtime
 BANNED_ATTRS = {"__dict__", "__getattribute__", "_http"}        # reach around the client wrapper or the attribute check
@@ -45,7 +50,7 @@ def violations(source: str, filename: str):
         if isinstance(node, ast.Attribute):
             if node.attr in GUARD_ONLY_NAMES | DYNAMIC_NAMES:                      # px_guard.ORDER_PLACE, operator.methodcaller
                 out.append(f"{filename}:{node.lineno} touches .{node.attr}")
-            if node.attr in MONEY_ATTRS and filename not in MONEY_ALLOWED_FILES:
+            if node.attr in MONEY_ATTRS and not money_ok(node.attr, filename):
                 out.append(f"{filename}:{node.lineno} touches .{node.attr}")
             if node.attr in BANNED_ATTRS and filename not in WRITE_ALLOWED_FILES:
                 out.append(f"{filename}:{node.lineno} touches .{node.attr}")
@@ -57,7 +62,7 @@ def violations(source: str, filename: str):
             nm = node.args[1] if len(node.args) > 1 else None
             if nm is not None and not isinstance(nm, ast.Constant) and filename not in MONEY_ALLOWED_FILES:
                 out.append(f"{filename}:{node.lineno} {node.func.id} with a computed attribute name")
-            if isinstance(nm, ast.Constant) and nm.value in MONEY_ATTRS | {"write"} and filename not in MONEY_ALLOWED_FILES:
+            if isinstance(nm, ast.Constant) and nm.value in MONEY_ATTRS | {"write"} and not money_ok(nm.value, filename):
                 out.append(f"{filename}:{node.lineno} dynamic dispatch to {nm.value!r}")
     return out
 

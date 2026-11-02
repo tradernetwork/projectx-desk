@@ -188,6 +188,7 @@ class Guard:
         self._lock = asyncio.Lock()             # serialises place(): check + send is one critical section
         self._stop_lock = asyncio.Lock()        # one stop modification at a time
         self._trail_at: dict[str, float] = {}
+        self._trail_window = -1e9               # clock() until which an MCP-origin trail is allowed: opened only by a trail request the trader TYPED
         self._trail_n = 0
         self._flatten_lock = asyncio.Lock()     # flatten must never wait behind a hung place or stop write
         self._intents, self._intents_ok = self._load_intents()
@@ -1317,6 +1318,12 @@ class Guard:
     async def _resize_stop(self, t: Ticket, size: int) -> None:
         """Keep the stop equal to the position, AT ITS CURRENT PRICE. A stop larger than the position flips you on a
         stop-out, and re-sending the original price would undo a tightening the trader already made."""
+        if getattr(t, "trail", False):
+            # A modify here would send the stale arm-time trigger with trailPrice None: it could turn the trail into a looser FIXED stop
+            # (Order/modify reads trailPrice as a level, and the broker moved the trigger since). Never. The trail covers only what it was sized to.
+            self._audit("stop", ticket=t.hash8, size=size, state="TRAIL_SIZE_MISMATCH")
+            self.trip_halt("trail_resize")
+            return
         failed = True
         async with self._stop_lock:
             price = t.stop_current if t.stop_current is not None else t.stop_plan["stop_price"]
@@ -1614,6 +1621,13 @@ class Guard:
                 return True
         return False
 
+    TRAIL_WINDOW_S = 120.0
+
+    def open_trail_window(self) -> None:
+        """Called by the desk's chat relay when the trader's own typed message asks for a trail. The MCP origin can only arm inside this window,
+        so a page, callout or image that talks the agent into a trail cannot do it unless the trader just asked for one."""
+        self._trail_window = self.clock() + self.TRAIL_WINDOW_S
+
     async def arm_trail(self, contract_id: str, distance, *, origin: str = "ui") -> TrailResult:
         """Replace the position's single fixed STOP with a TRAIL (type 5) that sits `distance` points behind the market.
 
@@ -1629,6 +1643,8 @@ class Guard:
             return TrailResult(False, reason="trailing stops are off (PX_TRAIL_STOP=1 enables them)")
         if origin == "mcp" and not lim.mcp_trail:
             return TrailResult(False, reason="the MCP origin may not arm a trail (PX_MCP_TRAIL=1 enables it)")
+        if origin == "mcp" and self.clock() > self._trail_window:
+            return TrailResult(False, reason="the trader has not asked for a trail in the last 2 minutes: ask in the desk chat first")
         if lim.account_kind != "sim":
             return TrailResult(False, reason="a trailing stop needs cancel, which is sim-only: set it in the TopstepX UI on a live account")
         if not _finite_pos(distance):
@@ -1636,9 +1652,9 @@ class Guard:
         now = self.clock()
         if self._trail_n >= TRAIL_MAX_PER_RUN or now - self._trail_at.get(contract_id, -1e9) < TRAIL_MIN_GAP_S:
             return TrailResult(False, reason="too many trail attempts: wait a few seconds")
+        if self._flatten_lock.locked():
+            return TrailResult(False, reason="a flatten is running: nothing changed")
         async with self._stop_lock:
-            self._trail_at[contract_id] = now
-            self._trail_n += 1
             try:
                 rec = await self._contract(contract_id)
                 tick = Decimal(str(rec["tickSize"]))
@@ -1659,6 +1675,9 @@ class Guard:
                 return TrailResult(False, reason="needs exactly one open position with a readable side in that contract")
             size, long_ = int(abs(pos[0]["size"])), side == "long"
             close_side = 1 if long_ else 0
+            t0 = self.open_trade(contract_id)
+            if getattr(t0, "ticket_id", None) and (t0.filled_size or 0) < int((t0.payload or {}).get("size") or 0):
+                return TrailResult(False, reason="the entry is still filling: a trail sized to part of it would leave the rest unprotected")
             stops = [o for o in orders if o.get("type") in STOP_TYPES and o.get("side") == close_side
                      and o.get("status") in (None, *WORKING_STATUSES)]
             if any(is_trail(o) for o in stops):
@@ -1686,6 +1705,7 @@ class Guard:
             if old is not None and ((long_ and trigger <= Decimal(str(old["stopPrice"]))) or (not long_ and trigger >= Decimal(str(old["stopPrice"])))):
                 return TrailResult(False, reason=f"a trail of {d} would start at {trigger}, no tighter than the stop at {old['stopPrice']}: "
                                                  "a trail only tightens")
+            self._trail_at[contract_id], self._trail_n = now, self._trail_n + 1           # only a real attempt counts against the throttle
             tag = f"px-{uuid.uuid4().hex[:8]}-5"
             body = {"accountId": self.live.account_id, "contractId": contract_id, "type": 5, "side": close_side, "size": size,
                     "limitPrice": None, "stopPrice": None, "trailPrice": float(trigger), "customTag": tag}
@@ -1701,7 +1721,7 @@ class Guard:
                     self._audit("trail", origin=origin, state="REJECTED")
                     return TrailResult(False, reason="the broker rejected the trail: nothing changed, old stop untouched")
             except PXError as e:
-                if not isinstance(e, (PXWriteUnknown, PXRateLimited)):
+                if not isinstance(e, PXWriteUnknown):                # a 429 or a client-side refusal: the order was not accepted
                     self._set_intent(tag, state="REJECTED")
                     self._audit("trail", origin=origin, state="NOT_SENT")
                     return TrailResult(False, reason="not sent: nothing changed")
@@ -1716,8 +1736,21 @@ class Guard:
                     self.trip_halt("trail_unknown")
                     return TrailResult(False, reason="the broker's answer was unclear and the trail is not in its book: halted, old stop untouched")
                 oid = hit.get("id")
+                if not isinstance(oid, int):
+                    self._set_intent(tag, state="UNKNOWN")
+                    self.trip_halt("trail_unknown")
+                    return TrailResult(False, reason="the trail is in the broker's book without a readable id: halted, old stop untouched")
             self._set_intent(tag, state="ACKED", order_id=oid)
             got = await self._read_order(oid)
+            if not isinstance(got, dict):          # never listed: absence is NOT proof it is not there, so do not claim a clean cancel
+                self._audit("trail", origin=origin, state="UNSEEN")
+                try:
+                    await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id, "orderId": oid})
+                except Exception:  # noqa: BLE001
+                    pass
+                self._set_intent(tag, state="ORPHAN", order_id=oid)
+                self.trip_halt("trail_unverified")
+                return TrailResult(False, reason="the trail never showed up in the broker's book and cannot be proven gone: halted. Check TopstepX for a stray trail")
             bad = self._trail_misread(got, close_side, size, long_, d, tick, edge, old)
             if bad:
                 self._audit("trail", origin=origin, state="MISREAD")
@@ -1728,18 +1761,50 @@ class Guard:
                 self._set_intent(tag, state="CLOSED")
                 return TrailResult(False, reason=f"{bad}: trail cancelled, old stop left in place")
             trig = float(got["stopPrice"])
+            # The book can change under us between the first read and now (a flatten, the watchdog, a manual close, the old stop filling):
+            # a trail resting on a flat account opens a position when price reaches it. Re-prove the picture before the old stop goes.
+            if not await self._trail_context_ok(contract_id, side, size, old):
+                self._audit("trail", origin=origin, state="CONTEXT_CHANGED")
+                if not await self._drop_order(oid):
+                    self._set_intent(tag, state="ORPHAN", order_id=oid)
+                    self.trip_halt("trail_unverified")
+                    return TrailResult(False, reason="the position changed while the trail went in and the trail would not cancel: halted. Cancel it in the TopstepX UI")
+                self._set_intent(tag, state="CLOSED")
+                return TrailResult(False, reason="the position or its stop changed while the trail went in: trail cancelled, nothing else touched")
             t = self.open_trade(contract_id)
+            owned = t is not None and bool(getattr(t, "ticket_id", None))
+            old_id = old["id"] if old is not None else None
+            if owned:                                # the ticket owns the trail from here, before the old stop is dropped
+                t.stop_order_id, t.stop_size, t.stop_current, t.trail, t.stop_state = oid, size, trig, True, "ACKED"
             note = ""
-            if old is not None:
-                if not await self._drop_order(old["id"]):
+            if old_id is not None:
+                if not await self._drop_order(old_id):
+                    if owned:
+                        self._set_intent(f"px-{t.hash8}-2", state="ORPHAN", order_id=old_id)
                     self.trip_halt("trail_orphan")
                     note = "the old stop would not cancel: halted. Cancel it in the TopstepX UI before the trail can fill"
-                elif getattr(t, "ticket_id", None):
+                elif owned:
                     self._set_intent(f"px-{t.hash8}-2", state="CLOSED")
-            if t is not None and getattr(t, "ticket_id", None):
-                t.stop_order_id, t.stop_size, t.stop_current, t.trail, t.stop_state = oid, size, trig, True, "ACKED"
+            if not await self._trail_context_ok(contract_id, side, size, None):            # flat after all: nothing may be left resting
+                self._audit("trail", origin=origin, state="FLAT_AFTER")
+                if not await self._drop_order(oid):
+                    self.trip_halt("trail_unverified")
+                    return TrailResult(False, reason="the position closed during the swap and the trail would not cancel: halted. Cancel it in the TopstepX UI")
+                return TrailResult(False, reason="the position closed during the swap: the trail was cancelled")
             self._audit("trail", origin=origin, size=size, state="ARMED")
             return TrailResult(True, trig, note, oid)
+
+    async def _trail_context_ok(self, contract_id, side, size, old) -> bool:
+        """Fresh REST read: still exactly one position, same side and size, and (when given) the old stop still working. Unreadable = not ok."""
+        try:
+            pos = [p for p in await self._positions_rest(contract_id) if abs(p.get("size") or 0)]
+            if len(pos) != 1 or self._pos_side(pos[0]) != side or int(abs(pos[0]["size"])) != size:
+                return False
+            if old is not None:
+                return any(o.get("id") == old["id"] and o.get("status") in (None, *WORKING_STATUSES) for o in await self._working_rest(contract_id))
+            return True
+        except Exception:  # noqa: BLE001
+            return False
 
     def _trail_misread(self, got, close_side, size, long_, d, tick, edge, old) -> str:
         """Why the broker's own record of the new trail is not what we asked for, or '' when it is. Fail closed: anything unreadable is a misread."""

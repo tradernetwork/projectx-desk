@@ -3,7 +3,7 @@ import asyncio
 
 import pytest
 
-from projectx_desk.client import PXWriteUnknown
+from projectx_desk.client import PXRateLimited, PXWriteUnknown
 from projectx_desk.guard import ORDER_CANCEL, ORDER_MODIFY, ORDER_PLACE
 from test_px_guard_place import go, staged
 from test_px_guard_preview import CID
@@ -23,10 +23,13 @@ class TB(Broker):
         self.stuck = set()
         self.reject = False
         self.last = 5010.0
+        self.on_place = None         # a callback run when the trail is placed: simulates the book changing under us
 
     async def write(self, path, body):
         if path == ORDER_PLACE and body["type"] == 5:
             self.writes.append((path, dict(body)))
+            if self.on_place:
+                self.on_place()
             if self.reject:
                 return {"success": False, "orderId": 971, "errorCode": 2, "errorMessage": "x"}
             if self.visible:                                               # the broker reads trailPrice as a LEVEL; order search reports the distance
@@ -196,7 +199,11 @@ async def test_live_accounts_and_the_mcp_origin_are_gated(tmp_path):
     assert "may not arm" in (await g.arm_trail(CID, 5.0, origin="mcp")).reason
     set_limits(g, mcp_trail=True)
     later(clock, live)
+    assert "has not asked" in (await g.arm_trail(CID, 5.0, origin="mcp")).reason       # the switch alone is not enough: the trader must have typed a request
+    g.open_trail_window()
     assert (await g.arm_trail(CID, 5.0, origin="mcp")).ok
+    g.clock = lambda c=g.clock: c() + 500                                              # the window is two minutes, not forever
+    assert g._trail_window < g.clock()
     g2, live2, clock2, gw2, t2 = await open_long(tmp_path / "live")
     set_limits(g2, account_kind="live")
     assert "sim-only" in (await g2.arm_trail(CID, 5.0)).reason and gw2.writes == []
@@ -314,3 +321,67 @@ def test_the_trail_route_uses_the_same_gate_and_the_state_carries_the_buttons(tm
         assert d["STOP_DISTANCE"]["distance"] == 6.25 and d["STOP_DISTANCE"]["first"] == 5003.75 and d["STOP_DISTANCE"]["valid"] is True
         set_limits(g, account_kind="live")
         assert c.get("/ai/state", params={"contract": CID}).json()["manage"]["trail_on"] is False   # sim only: no buttons on a live account
+
+
+async def test_a_flatten_between_the_read_and_the_place_leaves_no_trail_behind(tmp_path):
+    g, live, clock, gw, t = await open_long(tmp_path)
+
+    def flattened():                                             # the watchdog / flat-by / a manual close: stop cancelled, position gone
+        gw.pos, gw.working = [], []
+    gw.on_place = flattened
+    r = await g.arm_trail(CID, 5.0)
+    assert not r.ok and "changed while the trail went in" in r.reason and not g.halted()
+    assert gw.working == [] or all(o["id"] != 970 for o in gw.working)           # the new trail was cancelled, nothing rests on a flat account
+    assert 970 in gw.cancelled
+
+
+async def test_a_trail_the_book_never_lists_is_not_called_cleanly_cancelled(tmp_path):
+    g, live, clock, gw, t = await open_long(tmp_path)
+    gw.visible = False                                          # ACKed, but the open-order list does not show it
+    r = await g.arm_trail(CID, 5.0)
+    assert not r.ok and "cannot be proven gone" in r.reason and g.halted()
+    assert [o["id"] for o in gw.working] == [900] and t.stop_order_id == 900
+
+
+async def test_a_partly_filled_entry_is_refused(tmp_path):
+    g, live, clock, gw, t = await open_long(tmp_path)
+    t.payload["size"] = 2                                       # two lots ordered, one filled so far
+    r = await g.arm_trail(CID, 5.0)
+    assert not r.ok and "still filling" in r.reason and gw.writes == []
+
+
+async def test_refusals_do_not_use_up_the_attempt_budget(tmp_path):
+    g, live, clock, gw, t = await open_long(tmp_path)
+    for _ in range(30):
+        later(clock, live)
+        assert not (await g.arm_trail(CID, 5.1)).ok             # off-tick distance, refused before anything is sent
+    later(clock, live)
+    assert (await g.arm_trail(CID, 5.0)).ok
+
+
+async def test_a_429_is_not_an_unknown_outcome(tmp_path):
+    g, live, clock, gw, t = await open_long(tmp_path)
+    gw.exc, gw.visible = PXRateLimited(1), False
+    r = await g.arm_trail(CID, 5.0)
+    assert not r.ok and "not sent" in r.reason and not g.halted() and [o["id"] for o in gw.working] == [900]
+
+
+async def test_an_unclear_reply_whose_order_has_no_id_halts(tmp_path):
+    g, live, clock, gw, t = await open_long(tmp_path)
+    gw.exc, gw.store = PXWriteUnknown("timeout"), {"id": None}
+    r = await g.arm_trail(CID, 5.0)
+    assert not r.ok and g.halted() and "without a readable id" in r.reason
+
+
+async def test_a_flatten_in_progress_refuses_and_a_trail_is_never_resized_by_a_modify(tmp_path):
+    g, live, clock, gw, t = await open_long(tmp_path)
+    await g._flatten_lock.acquire()
+    try:
+        assert "flatten is running" in (await g.arm_trail(CID, 5.0)).reason
+    finally:
+        g._flatten_lock.release()
+    later(clock, live)
+    assert (await g.arm_trail(CID, 5.0)).ok
+    gw.writes.clear()
+    await g._resize_stop(t, 2)                                  # a second lot filled after the trail went in
+    assert not any(p == ORDER_MODIFY for p, _ in gw.writes) and g.halted()

@@ -181,13 +181,17 @@ def test_dock_is_hidden_while_streaming_and_wired_into_the_page():
 
 import base64  # noqa: E402
 
-PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 64).decode()
+def png_bytes(w=64, h=64, pad=64):
+    return b"\x89PNG\r\n\x1a\n" + (13).to_bytes(4, "big") + b"IHDR" + w.to_bytes(4, "big") + h.to_bytes(4, "big") + b"0" * pad
+
+
+PNG = base64.b64encode(png_bytes()).decode()
 
 
 def test_images_are_sniffed_and_capped():
     assert chat.clean_images(None) == [] and chat.clean_images([]) == []
     assert chat.clean_images([{"data": PNG}]) == [{"ext": "png", "data": PNG}]
-    webp = base64.b64encode(b"RIFF\x00\x00\x00\x00WEBPVP8 ").decode()
+    webp = base64.b64encode(b"RIFF\x00\x00\x00\x00WEBPVP8X" + b"\x00" * 8 + (63).to_bytes(3, "little") + (63).to_bytes(3, "little")).decode()
     assert chat.clean_images([{"data": webp}])[0]["ext"] == "webp"
     for bad in ("nope", "!!!", base64.b64encode(b"<svg onload=x>").decode(), base64.b64encode(b"MZ" + b"0" * 50).decode(), ""):
         with pytest.raises(chat.ChatError):
@@ -196,7 +200,7 @@ def test_images_are_sniffed_and_capped():
         chat.clean_images([{"data": PNG}] * 4)
     with pytest.raises(chat.ChatError):
         chat.clean_images("x")
-    big = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * chat.MAX_IMAGE_BYTES).decode()
+    big = base64.b64encode(png_bytes(pad=chat.MAX_IMAGE_BYTES)).decode()
     with pytest.raises(chat.ChatError):
         chat.clean_images([{"data": big}])
 
@@ -217,3 +221,29 @@ def test_a_screenshot_alone_is_a_question_and_reaches_the_agent():
         assert seen["images"] == [{"ext": "png", "data": PNG}]          # type is sniffed here, a browser-supplied name or ext never travels
         assert hpost(c, tok, {"images": [{"data": "AAAA"}]}).status_code == 400
         assert hpost(c, tok, {}).status_code == 400
+
+
+def test_a_small_file_that_declares_a_huge_canvas_is_refused():
+    for w, h in ((9000, 10), (10, 9000), (7000, 7000), (0, 10)):               # over a side cap, over 40 MP, zero
+        with pytest.raises(chat.ChatError):
+            chat.clean_images([{"data": base64.b64encode(png_bytes(w, h)).decode()}])
+    assert chat.clean_images([{"data": base64.b64encode(png_bytes(8000, 5000)).decode()}])             # exactly inside both caps
+    assert chat.dims(b"\xff\xd8\xff\xc0\x00\x11\x08\x00\x20\x00\x40" + b"0" * 20, "jpg") == (64, 32)
+    assert chat.dims(b"GIF89a\x10\x00\x20\x00" + b"0" * 9, "gif") == (16, 32)
+    with pytest.raises(chat.ChatError):                                          # a PNG with no readable header is refused, not trusted
+        chat.clean_images([{"data": base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 64).decode()}])
+
+
+def test_chat_body_is_capped_and_a_typed_trail_request_opens_the_agents_window():
+    app = app_with(agent(lambda r: httpx.Response(200, json={"result": "ok"})))
+    with TestClient(app) as c:
+        tok = c.get("/api/csrf").json()["token"]
+        g = app.state.guard
+        assert g._trail_window < g.clock()
+        assert hpost(c, tok, {"prompt": "how is my trade"}).status_code == 200
+        assert g._trail_window < g.clock()                                      # no trail request typed: the window stays shut
+        assert hpost(c, tok, {"prompt": "trail it 4.5 points"}).status_code == 200
+        assert g._trail_window > g.clock()
+        r = c.post("/api/chat", content=b"{}", headers={"origin": "http://testserver", "x-px-csrf": tok, "content-type": "application/json",
+                                                         "content-length": str(chat.MAX_BODY + 1)})
+        assert r.status_code in (413, 400)

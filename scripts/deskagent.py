@@ -11,6 +11,7 @@ Standalone tool: lives outside projectx_desk/ and never imports the desk.
 """
 import argparse
 import base64
+import hmac
 import io
 import json
 import os
@@ -29,6 +30,7 @@ TOKEN_FILE = DATA / "agent_token"
 SESSIONS = DATA / "agent_sessions.json"
 UPLOADS = DATA / "uploads"        # screenshots the trader attached; the agent Reads them, this server writes them (the agent has no Write)
 MAX_BODY = 20_000_000
+MAX_SIDE, MAX_PIXELS = 8000, 40_000_000     # a small file can declare a gigapixel canvas the image reader would try to decode
 MAX_IMAGES, MAX_IMAGE_BYTES, KEEP_S = 3, 4_000_000, 86400
 MAGIC = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"), (b"GIF87a", "gif"), (b"GIF89a", "gif"))
 DESK = os.environ.get("PX_AGENT_DESK", "http://127.0.0.1:8600")
@@ -36,13 +38,13 @@ CHROME = os.environ.get("PX_AGENT_CHROME", str(Path.home() / ".cache/ms-playwrig
 BROWSER = ["browser_navigate", "browser_snapshot", "browser_take_screenshot", "browser_console_messages",
            "browser_network_requests", "browser_wait_for", "browser_resize"]
 # PX_AGENT_TRAIL=1 (env or .env.projectx) lets the agent call the desk's guarded arm_trail tool; the desk needs PX_TRAIL_STOP=1 and PX_MCP_TRAIL=1 too
-MCP_FILE = DATA / "agent_mcp.json"                 # holds the desk MCP bearer token, so it is a 0600 file and never an argv string
+MCP_FILE = Path.home() / ".cache" / "projectx-desk" / "agent_mcp.json"   # holds the desk MCP bearer token: 0600, OUTSIDE the checkout so no Read/Grep/Glob rule is needed, never an argv string
 ALLOWED = ["Read", "Grep", "Glob"] + ["mcp__deskbrowser__" + t for t in BROWSER]
 TRAIL_TOOLS = ["mcp__deskmcp__" + t for t in ("arm_trail", "get_positions", "get_orders", "get_quote")]
 # Belt and braces on top of dontAsk: nothing that writes or runs, and the files that hold secrets are unreadable to Read/Grep/Glob.
 DENIED = ["Bash", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent",
           "Read(./.env*)", "Read(./data/agent_token)", "Read(./data/*.json)", "Read(./data/*.db*)",
-          "Grep(./.env*)", "Grep(./data/agent_token)", "Glob(./.env*)"]
+          "Grep(./.env*)", "Grep(./data/agent_token)", "Grep(./data/*.json)", "Grep(./data/*.db*)", "Glob(./.env*)", "Glob(./data/agent_*)"]
 SYSTEM = (
     "You are the ProjectX Desk agent. Working directory is the desk checkout; read AGENTS.md first for the rules. "
     f"The live desk is {DESK} (open it in the deskbrowser tools to read the DOM/chart; /ai/digest and /state.json are "
@@ -63,16 +65,54 @@ SYSTEM = (
 LOCK = threading.Lock()
 
 
+def dims(blob: bytes, ext: str):
+    """(width, height) from the header bytes only, or None. Same rules as projectx_desk/chat.py (this standalone script never imports the desk)."""
+    try:
+        if ext == "png" and blob[12:16] == b"IHDR":
+            return int.from_bytes(blob[16:20], "big"), int.from_bytes(blob[20:24], "big")
+        if ext == "gif":
+            return int.from_bytes(blob[6:8], "little"), int.from_bytes(blob[8:10], "little")
+        if ext == "jpg":
+            i = 2
+            while i + 9 < len(blob):
+                if blob[i] != 0xFF:
+                    return None
+                m = blob[i + 1]
+                if m in (0xD8, 0x01) or 0xD0 <= m <= 0xD7:
+                    i += 2
+                    continue
+                n = int.from_bytes(blob[i + 2:i + 4], "big")
+                if m in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                    return int.from_bytes(blob[i + 7:i + 9], "big"), int.from_bytes(blob[i + 5:i + 7], "big")
+                i += 2 + n
+        if ext == "webp":
+            kind = blob[12:16]
+            if kind == b"VP8X":
+                return 1 + int.from_bytes(blob[24:27], "little"), 1 + int.from_bytes(blob[27:30], "little")
+            if kind == b"VP8 ":
+                return int.from_bytes(blob[26:28], "little") & 0x3FFF, int.from_bytes(blob[28:30], "little") & 0x3FFF
+            if kind == b"VP8L" and blob[20] == 0x2F:
+                b = int.from_bytes(blob[21:25], "little")
+                return 1 + (b & 0x3FFF), 1 + ((b >> 14) & 0x3FFF)
+    except (IndexError, ValueError):
+        return None
+    return None
+
+
+def prune_uploads() -> None:
+    try:
+        for old in UPLOADS.iterdir():
+            if time.time() - old.stat().st_mtime > KEEP_S:
+                old.unlink()
+    except OSError:
+        pass
+
+
 def save_images(images) -> list:
     """Validate (real image bytes, size caps) and write each screenshot under data/uploads with a random name; returns the paths.
     The name and type come from here, never from the browser. Files older than a day are pruned on every call."""
-    UPLOADS.mkdir(parents=True, exist_ok=True)
-    for old in UPLOADS.iterdir():
-        try:
-            if time.time() - old.stat().st_mtime > KEEP_S:
-                old.unlink()
-        except OSError:
-            pass
+    prune_uploads()
+    UPLOADS.mkdir(parents=True, exist_ok=True, mode=0o700)
     if not isinstance(images, list) or len(images) > MAX_IMAGES:
         raise ValueError("images")
     paths = []
@@ -81,10 +121,13 @@ def save_images(images) -> list:
         ext = next((e for m, e in MAGIC if blob.startswith(m)), None)
         if ext is None and blob[:4] == b"RIFF" and blob[8:12] == b"WEBP":
             ext = "webp"
-        if ext is None or not 0 < len(blob) <= MAX_IMAGE_BYTES:
+        wh = dims(blob, ext) if ext else None
+        if ext is None or not 0 < len(blob) <= MAX_IMAGE_BYTES or not wh or not (0 < wh[0] <= MAX_SIDE and 0 < wh[1] <= MAX_SIDE and wh[0] * wh[1] <= MAX_PIXELS):
             raise ValueError("image")
         path = UPLOADS / (uuid.uuid4().hex + "." + ext)
-        path.write_bytes(blob)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            shutil.copyfileobj(io.BytesIO(blob), f)             # (the order-path pin forbids a bare .write anywhere but the client)
         paths.append(path)
     return paths
 
@@ -115,7 +158,7 @@ def mcp_config() -> str:
     if not tok:
         return json.dumps({"mcpServers": servers})
     servers["deskmcp"] = {"type": "http", "url": DESK.rstrip("/") + "/mcp/", "headers": {"Authorization": "Bearer " + tok}}
-    DATA.mkdir(exist_ok=True)
+    MCP_FILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd = os.open(MCP_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         print(json.dumps({"mcpServers": servers}), file=f)
@@ -180,11 +223,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         token = TOKEN_FILE.read_text().strip()
-        if self.path != "/ask" or self.headers.get("Authorization") != "Bearer " + token:
+        if self.path != "/ask" or not hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + token):
             return self._send(401, b'{"error":"no"}')
         try:
             size = int(self.headers.get("Content-Length", 0))
-            if size > MAX_BODY:
+            if size < 0 or size > MAX_BODY:
                 return self._send(413, b'{"error":"too big"}')
             body = json.loads(self.rfile.read(size))
             prompt = str(body["prompt"])
@@ -195,6 +238,7 @@ class Handler(BaseHTTPRequestHandler):
             result = ask(prompt, str(body.get("session") or "default"))
         except (ValueError, KeyError, TypeError):
             return self._send(400, b'{"error":"bad request"}')
+        prune_uploads()
         self._send(200, json.dumps({"result": result}).encode())
 
     def log_message(self, *a) -> None:

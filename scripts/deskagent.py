@@ -35,10 +35,10 @@ DESK = os.environ.get("PX_AGENT_DESK", "http://127.0.0.1:8600")
 CHROME = os.environ.get("PX_AGENT_CHROME", str(Path.home() / ".cache/ms-playwright/chromium-1208/chrome-linux64/chrome"))
 BROWSER = ["browser_navigate", "browser_snapshot", "browser_take_screenshot", "browser_console_messages",
            "browser_network_requests", "browser_wait_for", "browser_resize"]
-TRAIL = os.environ.get("PX_AGENT_TRAIL") == "1"    # lets the agent call the desk's guarded arm_trail tool (the desk needs PX_TRAIL_STOP=1 and PX_MCP_TRAIL=1 too)
+# PX_AGENT_TRAIL=1 (env or .env.projectx) lets the agent call the desk's guarded arm_trail tool; the desk needs PX_TRAIL_STOP=1 and PX_MCP_TRAIL=1 too
 MCP_FILE = DATA / "agent_mcp.json"                 # holds the desk MCP bearer token, so it is a 0600 file and never an argv string
-ALLOWED = ["Read", "Grep", "Glob"] + ["mcp__deskbrowser__" + t for t in BROWSER] + \
-          (["mcp__deskmcp__" + t for t in ("arm_trail", "get_positions", "get_orders", "get_quote")] if TRAIL else [])
+ALLOWED = ["Read", "Grep", "Glob"] + ["mcp__deskbrowser__" + t for t in BROWSER]
+TRAIL_TOOLS = ["mcp__deskmcp__" + t for t in ("arm_trail", "get_positions", "get_orders", "get_quote")]
 # Belt and braces on top of dontAsk: nothing that writes or runs, and the files that hold secrets are unreadable to Read/Grep/Glob.
 DENIED = ["Bash", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent",
           "Read(./.env*)", "Read(./data/agent_token)", "Read(./data/*.json)", "Read(./data/*.db*)",
@@ -89,16 +89,21 @@ def save_images(images) -> list:
     return paths
 
 
-def mcp_token() -> str:
-    tok = os.environ.get("PX_MCP_TOKEN", "").strip()
-    if not tok:
+def env_value(name: str) -> str:
+    """A variable from the process environment, else from .env.projectx (shell wins, as in the desk). Values are never printed."""
+    v = os.environ.get(name, "").strip()
+    if not v:
         try:
             for line in (ROOT / ".env.projectx").read_text().splitlines():
-                if line.startswith("PX_MCP_TOKEN="):
-                    tok = line.split("=", 1)[1].strip().strip("\"'")
+                if line.startswith(name + "="):
+                    v = line.split("=", 1)[1].strip().strip("\"'")
         except OSError:
             pass
-    return tok
+    return v
+
+
+def mcp_token() -> str:
+    return env_value("PX_MCP_TOKEN")
 
 
 def mcp_config() -> str:
@@ -106,7 +111,7 @@ def mcp_config() -> str:
         "command": "npx",
         "args": ["-y", "@playwright/mcp@0.0.83", "--headless", "--isolated", "--executable-path", CHROME,
                  "--allowed-origins", DESK, "--viewport-size", "1600x1000"]}}
-    tok = mcp_token() if TRAIL else ""
+    tok = mcp_token() if trail_on() else ""
     if not tok:
         return json.dumps({"mcpServers": servers})
     servers["deskmcp"] = {"type": "http", "url": DESK.rstrip("/") + "/mcp/", "headers": {"Authorization": "Bearer " + tok}}
@@ -115,6 +120,10 @@ def mcp_config() -> str:
     with os.fdopen(fd, "w") as f:
         print(json.dumps({"mcpServers": servers}), file=f)
     return str(MCP_FILE)
+
+
+def trail_on() -> bool:
+    return env_value("PX_AGENT_TRAIL") == "1"
 
 
 def load_sessions() -> dict:
@@ -129,7 +138,7 @@ def ask(prompt: str, session: str = "default", timeout: int = 280) -> str:   # u
         sessions = load_sessions()
         cmd = ["claude", "-p", prompt, "--output-format", "json", "--append-system-prompt", SYSTEM,
                "--mcp-config", mcp_config(), "--strict-mcp-config", "--permission-mode", "dontAsk",
-               "--allowedTools", *ALLOWED, "--disallowedTools", *DENIED]
+               "--allowedTools", *ALLOWED, *(TRAIL_TOOLS if trail_on() else []), "--disallowedTools", *DENIED]
         if session in sessions:
             cmd += ["--resume", sessions[session]]
         try:

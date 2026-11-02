@@ -262,3 +262,13 @@ def test_script_never_touches_trades_md_or_notes(tmp_path):
     (mem / "notes.md").write_text("YOURS")
     sr.build(tmp_path, 14, charts=False, keep=80, client=httpx.Client(transport=desk_transport([])))
     assert (mem / "trades.md").read_text() == "MINE" and (mem / "notes.md").read_text() == "YOURS"
+
+
+def test_deskagent_prompt_points_at_the_analysis_memory():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("deskagent", ROOT / "scripts" / "deskagent.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    for needle in ("data/memory/index.md", "scalp.md", "trips.md", "PNG", "never recompute"):
+        assert needle in m.SYSTEM
+    assert "Bash" in m.DENIED and "Read" in m.ALLOWED          # the agent still cannot run code; it reads the precomputed files

@@ -1673,16 +1673,22 @@ class Guard:
             if self.clock() - q.get("_rx", -1e9) > lim.max_quote_age_s:
                 return TrailResult(False, reason="quote is stale: cannot check the trail is clear of the market")
             edge = q.get("bestBid") if long_ else q.get("bestAsk")
-            if not _finite_pos(edge):
+            if not _finite_pos(edge) or not _finite_pos(q.get("lastPrice")):
                 return TrailResult(False, reason="no usable quote")
             edge = Decimal(str(edge))
-            trigger = edge - d if long_ else edge + d
+            # The gateway reads `trailPrice` on a PLACE as an ABSOLUTE price level and trails by (last traded price - trailPrice) in ticks
+            # (official docs, Order/place). So the level is last -/+ distance, never the distance itself (a distance reads as a price near zero).
+            trigger = Decimal(str(q["lastPrice"])) - d if long_ else Decimal(str(q["lastPrice"])) + d
+            if (trigger / tick) % 1 != 0:
+                return TrailResult(False, reason="last price is not on a tick")
+            if (long_ and trigger > edge - tick) or (not long_ and trigger < edge + tick):
+                return TrailResult(False, reason="the trail would start at or through the market")
             if old is not None and ((long_ and trigger <= Decimal(str(old["stopPrice"]))) or (not long_ and trigger >= Decimal(str(old["stopPrice"])))):
                 return TrailResult(False, reason=f"a trail of {d} would start at {trigger}, no tighter than the stop at {old['stopPrice']}: "
                                                  "a trail only tightens")
             tag = f"px-{uuid.uuid4().hex[:8]}-5"
             body = {"accountId": self.live.account_id, "contractId": contract_id, "type": 5, "side": close_side, "size": size,
-                    "limitPrice": None, "stopPrice": float(trigger), "trailPrice": float(d), "customTag": tag}
+                    "limitPrice": None, "stopPrice": None, "trailPrice": float(trigger), "customTag": tag}
             self._set_intent(tag, state="SENDING", size=size, ts=self.wall().isoformat(timespec="seconds"))
             self._audit("trail", origin=origin, size=size, state="SENDING")
             oid = None
@@ -1690,6 +1696,10 @@ class Guard:
                 resp = await self.client.write(ORDER_PLACE, body)
                 if isinstance(resp, dict) and resp.get("success") is True and isinstance(resp.get("orderId"), int):
                     oid = resp["orderId"]
+                elif isinstance(resp, dict) and resp.get("success") is False:     # a clear "no" from the broker: nothing rests, nothing is unknown
+                    self._set_intent(tag, state="REJECTED")
+                    self._audit("trail", origin=origin, state="REJECTED")
+                    return TrailResult(False, reason="the broker rejected the trail: nothing changed, old stop untouched")
             except PXError as e:
                 if not isinstance(e, (PXWriteUnknown, PXRateLimited)):
                     self._set_intent(tag, state="REJECTED")
@@ -1747,8 +1757,9 @@ class Guard:
             return "the trail's trigger sits at or through the market"
         if old is not None and ((long_ and sp <= Decimal(str(old["stopPrice"]))) or (not long_ and sp >= Decimal(str(old["stopPrice"])))):
             return "the trail's trigger is not tighter than the old stop"
-        tp, td = got.get("trailPrice"), got.get("trailDistance")      # the broker stores points in trailPrice and ticks in trailDistance
-        ok = (_finite_pos(tp) and abs(Decimal(str(tp)) - d) < tick / 2) or (_finite_pos(td) and abs(Decimal(str(td)) * tick - d) < tick / 2)
+        tp, td = got.get("trailPrice"), got.get("trailDistance")      # order search returns the DISTANCE in trailPrice (ticks x tick size) and ticks in trailDistance
+        slack = 2 * tick                                              # the gateway measures from the last trade at its own moment, which can be a tick or two off ours
+        ok = (_finite_pos(tp) and abs(Decimal(str(tp)) - d) <= slack) or (_finite_pos(td) and abs(Decimal(str(td)) * tick - d) <= slack)
         return "" if ok else "the trail distance is not what we asked for"
 
     async def _verify_stop_after_unknown(self, t: Ticket, wanted: float) -> MoveResult:

@@ -21,13 +21,18 @@ class TB(Broker):
         self.visible = True
         self.exc = None
         self.stuck = set()
+        self.reject = False
+        self.last = 5010.0
 
     async def write(self, path, body):
         if path == ORDER_PLACE and body["type"] == 5:
             self.writes.append((path, dict(body)))
-            if self.visible:
+            if self.reject:
+                return {"success": False, "orderId": 971, "errorCode": 2, "errorMessage": "x"}
+            if self.visible:                                               # the broker reads trailPrice as a LEVEL; order search reports the distance
+                dist = abs(self.last - body["trailPrice"])
                 rec = {"id": 970, "contractId": body["contractId"], "type": 5, "side": body["side"], "size": body["size"],
-                       "stopPrice": body["stopPrice"], "trailPrice": body["trailPrice"], "trailDistance": None, "status": 1,
+                       "stopPrice": body["trailPrice"], "trailPrice": dist, "trailDistance": round(dist / 0.25), "status": 1,
                        "customTag": body["customTag"]}
                 rec.update(self.store)
                 self.working.append(rec)
@@ -82,7 +87,7 @@ async def test_happy_path_places_the_trail_reads_it_back_then_drops_the_fixed_st
     place, cancel = gw.writes
     assert place[0] == ORDER_PLACE and cancel == (ORDER_CANCEL, {"accountId": 7, "orderId": 900})            # trail first, THEN the old stop
     b = place[1]
-    assert (b["type"], b["side"], b["size"], b["stopPrice"], b["trailPrice"], b["limitPrice"]) == (5, 1, 1, 5005.0, 5.0, None)
+    assert (b["type"], b["side"], b["size"], b["stopPrice"], b["trailPrice"], b["limitPrice"]) == (5, 1, 1, None, 5005.0, None)   # an absolute LEVEL, not 5.0
     assert b["customTag"].startswith("px-") and b["customTag"].endswith("-5")
     assert [o["id"] for o in gw.working] == [970]
     assert (t.stop_order_id, t.stop_current, t.trail, t.stop_state) == (970, 5005.0, True, "ACKED") and not g.halted()
@@ -109,8 +114,8 @@ async def test_a_trail_that_would_start_wider_or_equal_is_refused(tmp_path):
     ({"stopPrice": 4990.0}, "not tighter"),                       # broker put the trigger BELOW the old stop
     ({"stopPrice": 5010.0}, "through the market"),                # at the bid: would fill now
     ({"stopPrice": None}, "no readable trigger"),
-    ({"trailPrice": 2.0}, "distance"),                            # not what we asked for
-    ({"trailPrice": None}, "distance"),                           # unreadable distance fails closed
+    ({"trailPrice": 2.0, "trailDistance": 8}, "distance"),                            # not what we asked for
+    ({"trailPrice": None, "trailDistance": None}, "distance"),    # unreadable distance fails closed
     ({"type": 4}, "not the order we sent"),
     ({"side": 0}, "not the order we sent"),
     ({"size": 0}, "not the order we sent"),
@@ -133,7 +138,7 @@ async def test_distance_may_be_read_from_trailDistance_in_ticks(tmp_path):
 
 async def test_a_trail_that_will_not_read_back_and_will_not_cancel_halts(tmp_path):
     g, live, clock, gw, t = await open_long(tmp_path)
-    gw.store, gw.stuck = {"trailPrice": 2.0}, {970}
+    gw.store, gw.stuck = {"trailPrice": 2.0, "trailDistance": 8}, {970}
     r = await g.arm_trail(CID, 5.0)
     assert not r.ok and "halted" in r.reason and g.halted() and t.stop_order_id == 900
 
@@ -199,7 +204,7 @@ async def test_live_accounts_and_the_mcp_origin_are_gated(tmp_path):
 
 async def test_attempts_are_throttled_per_contract(tmp_path):
     g, live, clock, gw, t = await open_long(tmp_path)
-    gw.store = {"trailPrice": 2.0}
+    gw.store = {"trailPrice": 2.0, "trailDistance": 8}
     assert not (await g.arm_trail(CID, 5.0)).ok
     n = len(gw.writes)
     assert "wait a few seconds" in (await g.arm_trail(CID, 5.0)).reason and len(gw.writes) == n
@@ -223,12 +228,13 @@ async def test_short_trail_mirrors(tmp_path):
     gw.pos, gw.working = [dict(pos)], [{**STOP, "side": 0, "stopPrice": 5007.0}]
     gw.writes.clear()
     live.quotes[CID].update(bestBid=4990.0, bestAsk=4990.25, lastPrice=4990.0, _rx=clock())
+    gw.last = 4990.0
     set_limits(g, trail_stop=True)
-    assert not (await g.arm_trail(CID, 17.0)).ok                  # 4990.25 + 17 = 5007.25: wider
+    assert not (await g.arm_trail(CID, 17.0)).ok                  # 4990 + 17 = 5007: no tighter than the stop at 5007
     later(clock, live)
     r = await g.arm_trail(CID, 5.0)
-    assert r.ok and r.trigger == 4995.25
-    assert gw.writes[0][1]["side"] == 0 and gw.writes[0][1]["stopPrice"] == 4995.25
+    assert r.ok and r.trigger == 4995.0
+    assert gw.writes[0][1]["side"] == 0 and gw.writes[0][1]["trailPrice"] == 4995.0
 
 
 def test_the_mcp_tool_exists_only_when_switched_on(tmp_path, monkeypatch):
@@ -247,3 +253,24 @@ def test_the_mcp_tool_exists_only_when_switched_on(tmp_path, monkeypatch):
     assert "arm_trail" not in names()
     monkeypatch.setenv("PX_MCP_TRAIL", "1")
     assert "arm_trail" in names()
+
+
+async def test_a_clear_rejection_is_not_an_unknown_outcome_and_does_not_halt(tmp_path):
+    g, live, clock, gw, t = await open_long(tmp_path)
+    gw.reject = True
+    r = await g.arm_trail(CID, 5.0)
+    assert not r.ok and "rejected" in r.reason and not g.halted() and [o["id"] for o in gw.working] == [900]
+    assert len([1 for p, b in gw.writes if p == ORDER_PLACE]) == 1 and not any(p == ORDER_CANCEL for p, _ in gw.writes)
+
+
+async def test_the_broker_measuring_from_a_slightly_different_last_still_reads_back(tmp_path):
+    g, live, clock, gw, t = await open_long(tmp_path)
+    gw.last = 5010.5                                             # price ticked up between our quote and the broker's: distance 5.5 not 5.0
+    assert (await g.arm_trail(CID, 5.0)).ok
+
+
+async def test_the_distance_is_never_sent_as_the_price(tmp_path):
+    g, live, clock, gw, t = await open_long(tmp_path)
+    await g.arm_trail(CID, 5.0)
+    body = gw.writes[0][1]
+    assert body["trailPrice"] > 1000 and body["stopPrice"] is None   # 5.0 would be read as a price near zero: a 20,000-tick trail

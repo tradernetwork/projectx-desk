@@ -377,6 +377,10 @@ body.acct-live .ribbon{border-top:2px solid var(--magenta)}
 .mg-rv.pos{color:var(--green-ink)} .mg-rv.neg{color:var(--mag-ink)}
 .mg-kv{display:grid;grid-template-columns:auto auto;gap:1px 10px;margin:0 0 0 auto;font:500 var(--fs-xs)/1.4 var(--mono)}
 .mg-kv dt{color:var(--text-muted)} .mg-kv dd{margin:0;text-align:right;color:var(--text)}
+.mg-trail{margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
+.mg-trail-form{display:flex;align-items:center;gap:6px;margin-top:6px}
+.mg-trail-form input{width:72px;min-height:30px;background:var(--bg-app);color:inherit;border:1px solid var(--border);border-radius:var(--r-sm);padding:0 6px;font:inherit}
+.mg-trail-form .mg-btn{width:auto;justify-content:center;padding:0 14px}
 .mg-opts{display:flex;flex-direction:column;gap:4px;margin-top:8px}
 .mg-opt{display:flex;flex-direction:column;gap:2px}
 .mg-btn{display:flex;align-items:center;gap:8px;width:100%;min-height:30px;text-align:left;font:600 var(--fs-xs)/1.1 var(--mono);letter-spacing:.04em}

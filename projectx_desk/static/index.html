@@ -296,6 +296,13 @@
         </dl>
       </div>
       <div id="mg-opts" class="mg-opts" role="group" aria-label="Tighten the stop"></div>
+      <div id="mg-trail" class="mg-trail" role="group" aria-label="Trailing stop" hidden>
+        <div id="mg-trail-opts" class="mg-opts"></div>
+        <form id="mg-trail-form" class="mg-trail-form"><label class="lbl" for="mg-trail-pts">Trail (points)</label>
+          <input id="mg-trail-pts" type="number" step="0.25" min="0.25" inputmode="decimal" placeholder="4.5" aria-label="Trail distance in points">
+          <button id="mg-trail-go" type="submit" class="mg-btn">Trail</button></form>
+        <p id="mg-trail-note" class="note"></p>
+      </div>
       <p id="mg-msg" class="mg-msg" role="status" aria-live="polite"></p>
       <p class="note">Stops only move toward price.</p>
     </section>

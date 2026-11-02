@@ -274,3 +274,43 @@ async def test_the_distance_is_never_sent_as_the_price(tmp_path):
     await g.arm_trail(CID, 5.0)
     body = gw.writes[0][1]
     assert body["trailPrice"] > 1000 and body["stopPrice"] is None   # 5.0 would be read as a price near zero: a 20,000-tick trail
+
+
+def test_the_trail_route_uses_the_same_gate_and_the_state_carries_the_buttons(tmp_path):
+    from fastapi.testclient import TestClient
+    from test_px_app_actions import make_app, post
+    from test_px_guard_protect import fill as fill_
+    from test_px_sizing_display import RECS, bars_newest_first
+    app, g, live, gw = make_app(tmp_path, size_scalers=False)
+    with TestClient(app) as c:
+        app.state.live = g.live
+
+        async def lookup(cid):
+            return RECS.get(cid) or {"id": cid, "name": "MESZ6", "activeContract": True, "tickSize": 0.25, "tickValue": 1.25}
+        g._lookup = lookup
+
+        async def bars(body):
+            return bars_newest_first(atr=2.0, base=5000.0, amp=3.0)
+        app.state.client.bars = bars
+        tok = c.get("/api/csrf").json()["token"]
+        body = {"contract": CID, "distance": 5.0}
+        assert c.post("/api/trail", json=body, headers={"origin": "http://evil.com", "x-px-csrf": tok}).status_code == 403
+        assert c.post("/api/trail", json=body, headers={"origin": "http://testserver", "content-type": "application/json"}).status_code == 403
+        assert post(c, "/api/trail", tok, {"contract": CID, "distance": "x"}).status_code == 400
+        assert post(c, "/api/trail", tok, {"contract": "nope", "distance": 5}).status_code in (400, 422)
+        off = post(c, "/api/trail", tok, body).json()
+        assert off["ok"] is False and "off" in off["reason"]                      # default OFF: the route cannot arm anything
+        p = post(c, "/api/preview", tok, {"contract": CID, "side": "long", "stop_price": 4994.0, "risk_pct": 0.04}).json()
+        post(c, "/api/place", tok, {"ticket_id": p["ticket"]["ticket_id"], "confirm_hash": p["ticket"]["hash8"]})
+        import asyncio
+        asyncio.run(g.handle_position(fill_(live)))
+        live.quotes[CID].update(bestBid=5010.0, bestAsk=5010.25, lastPrice=5010.0, _rx=g.clock())
+        m = c.get("/ai/state", params={"contract": CID}).json()["manage"]
+        assert m["trail_on"] is False and m["trail_opts"] == [] and m["trail"] is False
+        set_limits(g, trail_stop=True)
+        m = c.get("/ai/state", params={"contract": CID}).json()["manage"]
+        assert m["trail_on"] is True and m["trail"] is False
+        d = {o["name"]: o for o in m["trail_opts"]}
+        assert d["STOP_DISTANCE"]["distance"] == 6.25 and d["STOP_DISTANCE"]["first"] == 5003.75 and d["STOP_DISTANCE"]["valid"] is True
+        set_limits(g, account_kind="live")
+        assert c.get("/ai/state", params={"contract": CID}).json()["manage"]["trail_on"] is False   # sim only: no buttons on a live account

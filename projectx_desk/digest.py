@@ -616,7 +616,27 @@ def manage_block(guard, live, contract_id, rec, q, ind):
         clear = px <= bid - float(tick) if long_ else px >= ask + float(tick)
         out.append({"name": name, "price": _n(px, 4), "why": why, "valid": bool(tightens and clear),
                     "recommended": bool(tightens and clear and rec_ok)})
+    trail_opts = []
+    if guard.limits.trail_stop and guard.limits.account_kind == "sim" and not getattr(t, "trail", False):
+        mn, mx = guard.limits.min_stop_ticks, guard.limits.max_stop_ticks
+
+        def to_d(points):                          # whole ticks, rounded up, inside the guard's stop bounds; None when it cannot be offered
+            if not points or points <= 0:
+                return None
+            n = int((Decimal(str(points)) / tick).to_integral_value(rounding=ROUND_CEILING))
+            return float(n * tick) if mn <= n <= mx else None
+        for name, why, pts in (("STOP_DISTANCE", "the initial stop distance", init_risk),
+                               ("ATR_1_5", "1.5 x ATR (5m)", 1.5 * atr_v if atr_v else None)):
+            d = to_d(pts)
+            if d is None or any(o["distance"] == d for o in trail_opts):
+                continue
+            first = (last - d) if long_ else (last + d)
+            ok = (first > t.stop_current if long_ else first < t.stop_current) and \
+                 (first <= bid - float(tick) if long_ else first >= ask + float(tick))
+            trail_opts.append({"name": name, "distance": _n(d, 4), "first": _n(first, 4), "why": why, "valid": bool(ok)})
     return {"side": t.side.upper(), "size": abs(pos.get("size") or 0), "avg": _n(avg, 4), "last": _n(last, 4),
+            "trail": bool(getattr(t, "trail", False)), "trail_on": bool(guard.limits.trail_stop and guard.limits.account_kind == "sim"),
+            "trail_opts": trail_opts,
             "stop": _n(t.stop_current, 4), "initial_stop": _n(t.stop_price, 4) if t.stop_price else None, "open_r": open_r, "suggestions": out,
             "adopted": bool(getattr(t, "adopted", False)),
             "rule": "stops only move toward price, never away; recommended = valid and the trade has earned it (hypothesis)"}

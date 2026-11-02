@@ -564,6 +564,20 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         r = await request.app.state.guard.move_stop(c, price, origin="ui")
         return {"ok": r.ok, "stop_price": r.stop_price, "reason": r.reason}
 
+    @app.post("/api/trail")
+    async def api_trail(request: Request):
+        """Swap the working stop for a trailing stop `distance` points behind the market. Human click only, same gate as /api/stop; tightens only.
+        The MCP tool is a separate, default-OFF switch (PX_MCP_TRAIL)."""
+        b = await body(request)
+        c = b.get("contract")
+        contract_arg(c)
+        try:
+            dist = float(b.get("distance"))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "distance must be a number")
+        r = await request.app.state.guard.arm_trail(c, dist, origin="ui")
+        return {"ok": r.ok, "trigger": r.trigger, "reason": r.reason}
+
     @app.post("/api/halt")
     async def api_halt(request: Request):
         await body(request)

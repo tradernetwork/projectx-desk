@@ -741,8 +741,9 @@ function mgSay(t, cls){
 function renderManage(){
   const a = S.ai, g = a && a.manage, box = $('manage');
   box.hidden = !g;
-  if(!g){mgSay(''); $('mg-opts').replaceChildren(); return}
+  if(!g){mgSay(''); $('mg-opts').replaceChildren(); $('mg-trail').hidden = true; return}
   fill(box, a);
+  renderTrail(g);
   const sugg = Array.isArray(g.suggestions) ? g.suggestions.filter(x => x && MG_LABEL[x.name] && num(x.price)) : [];
   const host = $('mg-opts');
   const want = sugg.map(x => x.name).join(',');
@@ -763,11 +764,48 @@ function renderManage(){
     if(tag.textContent !== hint) tag.textContent = hint;
     tag.className = 'mg-tag ' + (x.recommended ? 'rec' : x.valid ? 'wait' : 'off');
     b.classList.toggle('rec', !!x.recommended);
-    b.disabled = !x.valid || mgBusy;
+    b.disabled = !x.valid || mgBusy || !!g.trail;      // a trailing stop moves itself: the desk never modifies it
     const why = String(x.why || '');
     b.title = x.valid ? (why + (x.recommended ? '' : '. Not earned yet: the trade has not moved far enough.')) : 'Not valid now: ' + why + ' would not tighten the stop, or it sits too close to the market.';
   }
 }
+/* trailing stop: swap the fixed stop for a TRAIL at the broker (Guard.arm_trail reads it back before dropping the old stop). Human click, tighten-only. */
+function renderTrail(g){
+  const box = $('mg-trail'), on = !!g.trail_on;
+  box.hidden = !on;
+  if(!on) return;
+  const host = $('mg-trail-opts'), opts = Array.isArray(g.trail_opts) ? g.trail_opts.filter(x => x && num(x.distance) && num(x.first)) : [];
+  const want = g.trail ? 'TRAILING' : opts.map(x => x.name + x.distance).join(',');
+  if(host.dataset.names !== want){host.dataset.names = want; host.replaceChildren(...opts.map(x => {
+    const w = mk('div', 'mg-opt'), b = mk('button', 'mg-btn'); b.type = 'button'; b.dataset.dist = String(x.distance);
+    b.append(mk('span', 'mg-l'), mk('span', 'mg-tag')); w.append(b); return w;
+  }))}
+  const dec = cur.dec ?? 2;
+  for(const x of opts){
+    const b = host.querySelector(`button[data-dist="${x.distance}"]`); if(!b) continue;
+    b.firstChild.textContent = 'Trail ' + Number(x.distance).toFixed(dec) + ' pts (' + x.why + ')';
+    b.lastChild.textContent = x.valid ? 'starts ' + Number(x.first).toFixed(dec) : 'not valid now';
+    b.lastChild.className = 'mg-tag ' + (x.valid ? 'rec' : 'off');
+    b.disabled = !x.valid || mgBusy;
+    b.title = x.valid ? 'Replaces the stop with a trailing stop ' + x.distance + ' points behind the market. It starts at ' + x.first + ' and only moves toward price.'
+                      : 'Would not start tighter than the current stop, or sits too close to the market.';
+  }
+  $('mg-trail-go').disabled = mgBusy || !!g.trail; $('mg-trail-pts').disabled = !!g.trail;
+  $('mg-trail-note').textContent = g.trail ? 'TRAILING: the broker moves it. Change it in the TopstepX UI.' : 'Swaps the stop for a trail. It only tightens.';
+}
+async function armTrail(distance){
+  if(mgBusy || !S.contractId || !isFinite(distance) || distance <= 0) return;
+  mgBusy = true; renderManage(); mgSay('Arming trail...', '');
+  const r = await post('/api/trail', {contract: S.contractId, distance});
+  mgBusy = false;
+  const d = r.data || {};
+  if(r.ok && d.ok) mgSay('Trailing stop armed' + (num(d.trigger) ? ', now at ' + d.trigger : '') + (d.reason ? '. ' + d.reason : ''), d.reason ? 'bad' : 'ok');
+  else mgSay('Trail NOT set, old stop kept: ' + (r.ok ? String(d.reason || 'refused') : detailOf(r)), 'bad');
+  renderManage(); schedule(0); setTimeout(() => schedule(0), 600);
+}
+$('mg-trail-opts').addEventListener('click', e => {const b = e.target.closest('button[data-dist]'); if(b && !b.disabled) armTrail(Number(b.dataset.dist))});
+$('mg-trail-form').addEventListener('submit', e => {e.preventDefault(); armTrail(Number($('mg-trail-pts').value))});
+
 $('mg-opts').addEventListener('click', async e => {
   const b = e.target.closest('button.mg-btn'); if(!b || b.disabled || mgBusy || !S.contractId) return;
   const px = Number(b.dataset.price); if(!isFinite(px)) return;

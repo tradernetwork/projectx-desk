@@ -11,7 +11,7 @@ from test_px_guard_preview import CID
 from test_px_guard_place import GW, build
 from test_px_guard_protect import Broker
 
-EXPECTED_POSTS = {"/api/preview", "/api/readiness", "/api/place", "/api/flatten", "/api/halt", "/api/halt/clear", "/api/reconcile", "/api/stop", "/api/intent/resolve"}
+EXPECTED_POSTS = {"/api/preview", "/api/readiness", "/api/place", "/api/flatten", "/api/halt", "/api/halt/clear", "/api/reconcile", "/api/stop", "/api/trail", "/api/intent/resolve"}
 
 
 # Phone-alert routes (Web Push): same Origin + JSON + CSRF gate, no money path. Covered in tests/test_px_push.py.

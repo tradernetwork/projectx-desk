@@ -5,6 +5,8 @@ path to the guard, and the question and the reply are plain text. Off unless PX_
 the desk can never be turned into a forwarder to somewhere else. Errors are fixed codes, never the agent's or the network's text.
 """
 import asyncio
+import base64
+import binascii
 import os
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -16,6 +18,9 @@ from .net import is_loopback
 ROOT = Path(__file__).resolve().parent.parent
 MAX_PROMPT = 2000
 MAX_REPLY = 8000
+MAX_IMAGES = 3
+MAX_IMAGE_BYTES = 4_000_000          # decoded, per screenshot; the browser downsizes anything bigger
+MAGIC = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"), (b"GIF87a", "gif"), (b"GIF89a", "gif"))
 SESSION = "desk"                    # fixed server side: the browser cannot pick or enumerate agent sessions
 TIMEOUT_S = 300.0
 
@@ -45,6 +50,33 @@ def config(environ=None):
     return (url, token) if len(token) >= 32 else None
 
 
+def clean_images(images) -> list:
+    """Screenshots from the browser as [{data: base64}]. Only real PNG/JPEG/GIF/WebP bytes within the caps get through, and what is relayed is
+    the sniffed type plus the base64 (never a filename or a type the browser claimed). Anything else is a fixed 400."""
+    if images in (None, []):
+        return []
+    if not isinstance(images, list) or len(images) > MAX_IMAGES:
+        raise ChatError("too many images", 400)
+    out = []
+    for im in images:
+        raw = im.get("data") if isinstance(im, dict) else None
+        if not isinstance(raw, str) or len(raw) > MAX_IMAGE_BYTES * 4 // 3 + 8:
+            raise ChatError("bad image", 400)
+        try:
+            blob = base64.b64decode(raw, validate=True)
+        except (binascii.Error, ValueError):
+            raise ChatError("bad image", 400)
+        if not blob or len(blob) > MAX_IMAGE_BYTES:
+            raise ChatError("bad image", 400)
+        ext = next((e for m, e in MAGIC if blob.startswith(m)), None)
+        if ext is None and blob[:4] == b"RIFF" and blob[8:12] == b"WEBP":
+            ext = "webp"
+        if ext is None:
+            raise ChatError("bad image", 400)
+        out.append({"ext": ext, "data": raw})
+    return out
+
+
 class Chat:
     def __init__(self, cfg, transport=None):
         self.cfg, self.transport = cfg, transport
@@ -54,11 +86,16 @@ class Chat:
     def enabled(self) -> bool:
         return self.cfg is not None
 
-    async def ask(self, prompt) -> str:
+    async def ask(self, prompt, images=None) -> str:
         if self.cfg is None:
             raise ChatError("chat off", 503)
-        if not isinstance(prompt, str) or not prompt.strip():
+        pics = clean_images(images)
+        if prompt is None and pics:
+            prompt = ""
+        if not isinstance(prompt, str) or not (prompt.strip() or pics):
             raise ChatError("empty prompt", 400)
+        if not prompt.strip():
+            prompt = "Look at the attached screenshot."
         if len(prompt) > MAX_PROMPT:
             raise ChatError("prompt too long", 400)
         if self.lock.locked():
@@ -67,7 +104,7 @@ class Chat:
             url, token = self.cfg
             try:
                 async with httpx.AsyncClient(transport=self.transport, timeout=TIMEOUT_S) as c:
-                    r = await c.post(url + "/ask", json={"prompt": prompt.strip(), "session": SESSION},
+                    r = await c.post(url + "/ask", json={"prompt": prompt.strip(), "session": SESSION, "images": pics},
                                      headers={"Authorization": "Bearer " + token})
             except httpx.TimeoutException:
                 raise ChatError("agent timed out", 504)

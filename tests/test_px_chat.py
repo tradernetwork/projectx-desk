@@ -175,3 +175,45 @@ def test_dock_is_hidden_while_streaming_and_wired_into_the_page():
     assert re.search(r"body\.streaming \.chat-fab,\s*body\.streaming \.chat-dock\{display:none\}", css)
     assert 'id="chat-fab"' in html and "hidden" in html.split('id="chat-fab"')[1].split(">")[0]
     assert '<script src="/static/chat.js"></script>' in html
+
+
+# ---- screenshots --------------------------------------------------------------------------------------------------------
+
+import base64  # noqa: E402
+
+PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 64).decode()
+
+
+def test_images_are_sniffed_and_capped():
+    assert chat.clean_images(None) == [] and chat.clean_images([]) == []
+    assert chat.clean_images([{"data": PNG}]) == [{"ext": "png", "data": PNG}]
+    webp = base64.b64encode(b"RIFF\x00\x00\x00\x00WEBPVP8 ").decode()
+    assert chat.clean_images([{"data": webp}])[0]["ext"] == "webp"
+    for bad in ("nope", "!!!", base64.b64encode(b"<svg onload=x>").decode(), base64.b64encode(b"MZ" + b"0" * 50).decode(), ""):
+        with pytest.raises(chat.ChatError):
+            chat.clean_images([{"data": bad}])
+    with pytest.raises(chat.ChatError):
+        chat.clean_images([{"data": PNG}] * 4)
+    with pytest.raises(chat.ChatError):
+        chat.clean_images("x")
+    big = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * chat.MAX_IMAGE_BYTES).decode()
+    with pytest.raises(chat.ChatError):
+        chat.clean_images([{"data": big}])
+
+
+def test_a_screenshot_alone_is_a_question_and_reaches_the_agent():
+    seen = {}
+
+    def h(r):
+        import json
+        seen.update(json.loads(r.content))
+        return httpx.Response(200, json={"result": "seen"})
+    app = app_with(agent(h))
+    with TestClient(app) as c:
+        tok = c.get("/api/csrf").json()["token"]
+        r = hpost(c, tok, {"images": [{"data": PNG, "name": "../../etc/passwd", "ext": "sh"}]})
+        assert r.status_code == 200 and r.json()["reply"] == "seen"
+        assert seen["prompt"] == "Look at the attached screenshot."
+        assert seen["images"] == [{"ext": "png", "data": PNG}]          # type is sniffed here, a browser-supplied name or ext never travels
+        assert hpost(c, tok, {"images": [{"data": "AAAA"}]}).status_code == 400
+        assert hpost(c, tok, {}).status_code == 400

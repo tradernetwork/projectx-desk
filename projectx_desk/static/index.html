@@ -403,7 +403,10 @@
     <button id="chat-clear" class="ghost" title="Start a fresh conversation">New</button>
     <button id="chat-close" class="ghost" aria-label="Close chat">&times;</button></div>
   <div id="chat-log" class="chat-log" role="log" aria-live="polite"></div>
+  <div id="chat-thumbs" class="chat-thumbs" hidden></div>
   <form id="chat-form" class="chat-form">
+    <input id="chat-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
+    <button id="chat-attach" type="button" class="ghost" title="Attach a screenshot (or paste or drop one)" aria-label="Attach a screenshot">+ Img</button>
     <textarea id="chat-in" rows="2" maxlength="2000" placeholder="Ask about the desk, the chart, an order, the code..." aria-label="Message"></textarea>
     <button id="chat-send" type="submit">Send</button>
   </form>

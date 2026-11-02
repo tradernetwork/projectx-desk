@@ -901,4 +901,10 @@ html[data-layout="portrait"][data-pos="1"] .col-right>#blotter{order:0}
 .chat-msg.err{border-color:var(--amber-ink);color:var(--amber-ink)}
 .chat-form{display:flex;gap:6px;padding:8px var(--pad);border-top:1px solid var(--border)}
 .chat-form textarea{flex:1 1 auto;resize:none;background:var(--bg-app);color:inherit;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 8px;font:inherit}
+.chat-thumbs{display:flex;gap:6px;padding:6px var(--pad) 0;flex-wrap:wrap}
+.chat-thumbs[hidden]{display:none}
+.chat-th{position:relative;width:56px;height:56px;border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden}
+.chat-th img{width:100%;height:100%;object-fit:cover;display:block}
+.chat-th button{position:absolute;top:0;right:0;min-width:18px;min-height:18px;padding:0 4px;line-height:16px;background:var(--bg-app);border:0;color:var(--text-2);cursor:pointer}
+.chat-dock.drop{outline:2px dashed var(--cyan-line)}
 body.streaming .chat-fab,body.streaming .chat-dock{display:none}   /* the agent reads the live page, balances included: never on stream */

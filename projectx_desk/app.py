@@ -678,7 +678,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
     async def chat_ask(request: Request):
         b = await body(request)
         try:
-            return {"reply": await chat_of(request.app).ask(b.get("prompt"))}
+            return {"reply": await chat_of(request.app).ask(b.get("prompt"), b.get("images"))}
         except px_chat.ChatError as e:
             raise HTTPException(e.status, e.code)
 

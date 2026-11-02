@@ -7,6 +7,7 @@ that moves money or lifts a safety. Tools never register those names at all (the
 """
 import hmac
 import math
+import os
 import re
 import time
 from typing import Optional
@@ -226,5 +227,15 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
         """Freeze all new opens immediately. Reduces exposure only; only the operator can clear it."""
         get_app().state.guard.trip_halt("mcp")
         return {"halted": True, "note": "Only the operator can clear the halt at the desk."}
+
+    if os.environ.get("PX_MCP_TRAIL") == "1":      # absent unless switched on: with it off the host sees `unknown tool`, not a refusal
+        @mcp.tool
+        async def arm_trail(contract: str, distance_points: float) -> dict:
+            """Swap the open position's fixed stop for a TRAILING stop `distance_points` behind the market (sim account only).
+            It can only TIGHTEN: the trail must start tighter than the stop it replaces, it covers exactly the position's size, and the
+            desk reads it back from the broker before dropping the old stop. Refusals come back as `reason`. Do this only when the trader asked."""
+            _contract(contract)
+            r = await get_app().state.guard.arm_trail(contract, distance_points, origin="mcp")
+            return {"ok": r.ok, "trigger": r.trigger, "reason": r.reason}
 
     return mcp

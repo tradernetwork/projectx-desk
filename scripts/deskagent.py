@@ -35,7 +35,10 @@ DESK = os.environ.get("PX_AGENT_DESK", "http://127.0.0.1:8600")
 CHROME = os.environ.get("PX_AGENT_CHROME", str(Path.home() / ".cache/ms-playwright/chromium-1208/chrome-linux64/chrome"))
 BROWSER = ["browser_navigate", "browser_snapshot", "browser_take_screenshot", "browser_console_messages",
            "browser_network_requests", "browser_wait_for", "browser_resize"]
-ALLOWED = ["Read", "Grep", "Glob"] + ["mcp__deskbrowser__" + t for t in BROWSER]
+TRAIL = os.environ.get("PX_AGENT_TRAIL") == "1"    # lets the agent call the desk's guarded arm_trail tool (the desk needs PX_TRAIL_STOP=1 and PX_MCP_TRAIL=1 too)
+MCP_FILE = DATA / "agent_mcp.json"                 # holds the desk MCP bearer token, so it is a 0600 file and never an argv string
+ALLOWED = ["Read", "Grep", "Glob"] + ["mcp__deskbrowser__" + t for t in BROWSER] + \
+          (["mcp__deskmcp__" + t for t in ("arm_trail", "get_positions", "get_orders", "get_quote")] if TRAIL else [])
 # Belt and braces on top of dontAsk: nothing that writes or runs, and the files that hold secrets are unreadable to Read/Grep/Glob.
 DENIED = ["Bash", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent",
           "Read(./.env*)", "Read(./data/agent_token)", "Read(./data/*.json)", "Read(./data/*.db*)",
@@ -51,6 +54,9 @@ SYSTEM = (
     "shows a habit those files count (re-entry within 10 minutes of a loss, a scale-in, entry against the BIAS direction, entry after 14:55 CT), "
     "say so bluntly with the numbers and the sample size; a count under 5 is too few to call a pattern, and no rate exists under 30 trades. "
     "Never invent a trade or a figure that is not in those files. You cannot write: tell the trader what to add to notes.md. "
+    "TRAILING STOP: if (and only if) you have an arm_trail tool, call it ONLY when the trader asks for a trail in this conversation, with the distance in "
+    "points they gave (never invent one, never retry a refusal in a loop). It swaps the position's fixed stop for a trailing stop, can only tighten, "
+    "and the desk reads it back before dropping the old stop. Report exactly what it returned, including the refusal reason. You cannot place, flatten or cancel anything else. "
     "Never print tokens or .env.projectx contents. Earlier turns of this conversation are stale: re-read the page or /ai/digest "
     "before stating anything about the current position, orders, price or halt. Terse, blunt, show the numbers."
 )
@@ -83,11 +89,32 @@ def save_images(images) -> list:
     return paths
 
 
+def mcp_token() -> str:
+    tok = os.environ.get("PX_MCP_TOKEN", "").strip()
+    if not tok:
+        try:
+            for line in (ROOT / ".env.projectx").read_text().splitlines():
+                if line.startswith("PX_MCP_TOKEN="):
+                    tok = line.split("=", 1)[1].strip().strip("\"'")
+        except OSError:
+            pass
+    return tok
+
+
 def mcp_config() -> str:
-    return json.dumps({"mcpServers": {"deskbrowser": {
+    servers = {"deskbrowser": {
         "command": "npx",
         "args": ["-y", "@playwright/mcp@0.0.83", "--headless", "--isolated", "--executable-path", CHROME,
-                 "--allowed-origins", DESK, "--viewport-size", "1600x1000"]}}})
+                 "--allowed-origins", DESK, "--viewport-size", "1600x1000"]}}
+    tok = mcp_token() if TRAIL else ""
+    if not tok:
+        return json.dumps({"mcpServers": servers})
+    servers["deskmcp"] = {"type": "http", "url": DESK.rstrip("/") + "/mcp/", "headers": {"Authorization": "Bearer " + tok}}
+    DATA.mkdir(exist_ok=True)
+    fd = os.open(MCP_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        print(json.dumps({"mcpServers": servers}), file=f)
+    return str(MCP_FILE)
 
 
 def load_sessions() -> dict:

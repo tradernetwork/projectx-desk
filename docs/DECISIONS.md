@@ -525,3 +525,12 @@ Two outside reviews (GPT-6 and DeepSeek V4.1 Flash) and the in-house risk lens c
 - **Cancel sweeps.** `flatten` cancels every working order on the contract regardless of type, so a resting TRAIL is removed before the close (tested). The watchdog, flat-by, halt and `_naked` paths all go through `flatten`. Not changed: `_retire_stop_after_close` cancels only the ticket's own stop by id, so an external stop or TRAIL left after a manual close is not swept by it (same as an external STOP before this change).
 - **Plan.** A default-OFF `PX_TRAIL_STOP` that lets the desk arm a trailing stop, only after a sim probe shows how the gateway treats `trailPrice` (units, trigger seeding, what a modify does).
 
+## Round 25: the desk can arm a trailing stop, and the desk agent can ask for one (2026-11-02)
+
+- **Why.** The 10-30 hand-placed trail turned a 7589.25 long into +$117.50 that a static stop would have capped. The trader asked for the desk agent to be able to create a trail itself, knowingly overturning "MCP may only preview and halt" for this one reduce-only action.
+- **What.** `Guard.arm_trail(contract, distance_points, origin)` in `guard.py` (the only order path, pin unchanged). Default OFF (`PX_TRAIL_STOP`), MCP origin needs `PX_MCP_TRAIL`, the agent process needs `PX_AGENT_TRAIL`. Sim only (cancel is sim-only), one position, closing side, the position's size, first trigger strictly tighter than the stop it replaces.
+- **Order of operations keeps the position covered at every moment:** place the TRAIL, read it back from the broker, only then cancel the fixed stop and prove it gone. A trail that does not read back is cancelled and the old stop stays. Unprovable states halt, because a leftover STOP plus a filled TRAIL would open a reverse position.
+- **Unverified.** How the gateway reads `trailPrice` on a PLACE. The body sends `trailPrice` in points and `stopPrice` as the first trigger, which matches the stored 10-30 record (`trailPrice 4.5`, `trailDistance 18` ticks, `stopPrice` = trigger). The read-back accepts the distance from either field and refuses anything else, so a wrong guess cancels itself instead of leaving a mis-set trail. First live use is the probe: one lot, sim, flat afterward.
+- **Not done.** Trail as the DEFAULT entry stop (roadmap item 2, second half), modifying a live trail, a UI button. The agent tool is per request only; the system prompt says so.
+- **Blast radius.** With `PX_MCP_TRAIL=1` Hermes' `projectx` MCP gets the tool too. Leave it off for anything that should stay read-only.
+

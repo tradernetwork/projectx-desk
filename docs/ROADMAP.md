@@ -8,7 +8,7 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
 - A gateway logout no longer leaves a blind cache: unseed, REST reseed every `PX_RESEED_S`, one forced reconnect per 300 s, digest
   prints `UNKNOWN` instead of `NONE` when unverified (Round 23).
 - A trailing stop (order type 5) counts as protection under the same conditions as a plain stop; `move_stop` refuses it; every
-  cancel sweep cancels it (Round 24). The desk does not place one yet.
+  cancel sweep cancels it (Round 24). `Guard.arm_trail` can place one (default OFF, Round 25); first sim probe still to do.
 
 ## Next, in order
 

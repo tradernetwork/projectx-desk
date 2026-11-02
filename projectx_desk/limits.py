@@ -97,6 +97,8 @@ class Limits:
     no_new_after: Optional[str] = None    # "HH:MM" in America/Chicago; unset refuses opens
     intent_block_s: float = 60.0
     flatten_fallback: bool = False        # PX_FLATTEN_FALLBACK=1: after a failed closeContract, send a capped opposite market order. OFF: halt and tell a human
+    trail_stop: bool = False              # PX_TRAIL_STOP=1: the desk may swap a position's fixed stop for a trailing stop (Guard.arm_trail). Sim only
+    mcp_trail: bool = False               # PX_MCP_TRAIL=1: the MCP origin (the desk agent, Hermes) may call arm_trail. Needs trail_stop too
     halt_path: pathlib.Path = field(default_factory=lambda: HERE / "data" / "HALT")
     state_path: pathlib.Path = field(default_factory=lambda: HERE / "data" / "day_state.json")
     audit_path: pathlib.Path = field(default_factory=lambda: HERE / "data" / "audit.jsonl")
@@ -137,6 +139,8 @@ class Limits:
             max_consecutive_losses=_rail("PX_MAX_CONSEC_LOSSES", 3),
             size_after_loss_lock=os.getenv("PX_SIZE_AFTER_LOSS_LOCK", "1") != "0",
             flatten_fallback=os.getenv("PX_FLATTEN_FALLBACK", "0") == "1",
+            trail_stop=os.getenv("PX_TRAIL_STOP", "0") == "1",
+            mcp_trail=os.getenv("PX_MCP_TRAIL", "0") == "1",
             daily_loss_limit=_f("PX_DAILY_LOSS_LIMIT", 0),
             dd_buffer=_f("PX_DRAWDOWN_BUFFER", 0),
             no_new_after=os.getenv("PX_NO_NEW_AFTER") or None,

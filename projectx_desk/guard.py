@@ -20,7 +20,7 @@ import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, time as dtime, timedelta, timezone
-from decimal import Decimal, ROUND_CEILING
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 from typing import Callable, Optional
 
 from projectx_desk import sizing
@@ -1202,14 +1202,53 @@ class Guard:
         body = {"accountId": self.live.account_id, "contractId": t.contract_id, "type": 4,
                 "side": t.stop_plan["side"], "size": size, "limitPrice": None,
                 "stopPrice": t.stop_plan["stop_price"], "trailPrice": None, "customTag": tag}
+        trailing, tick = False, None
+        if self.limits.trail_entry and self.limits.account_kind == "sim":
+            trail_body = await self._entry_trail_body(t, size, tag)
+            if trail_body is not None:
+                (body, tick), trailing = trail_body, True
+            else:       # PX_TRAIL_ENTRY is on but the inputs are unreadable: the fixed stop goes in, and the trader can see it did
+                self._audit("stop", ticket=t.hash8, state="TRAIL_FALLBACK_FIXED")
         ok = late = False
         try:   # no global lock: a hung stop write must not be able to block the watchdog's flatten
             self._set_intent(tag, state="SENDING", hash8=t.hash8, root=t.root, size=size,
                              ts=self.wall().isoformat(timespec="seconds"))
             self._audit("stop", ticket=t.hash8, root=t.root, size=size, state="SENDING")
-            resp = await self.client.write(ORDER_PLACE, body)
-            oid = resp.get("orderId") if isinstance(resp, dict) else None
+            oid = None
+            try:
+                resp = await self.client.write(ORDER_PLACE, body)
+                oid = resp.get("orderId") if isinstance(resp, dict) else None
+            except PXWriteUnknown:
+                if not trailing:
+                    raise
+                resp = None       # unclear reply to a TRAIL: look it up by tag below, never resend
+            if trailing and not (isinstance(resp, dict) and resp.get("success") is True and isinstance(oid, int)) \
+                    and not (isinstance(resp, dict) and resp.get("success") is False):
+                for _ in range(max(1, self.verify_tries)):
+                    try:
+                        hit = next((o for o in await self._working_rest(t.contract_id) if o.get("customTag") == tag), None)
+                    except Exception:  # noqa: BLE001
+                        hit = None
+                    if hit is not None and isinstance(hit.get("id"), int):
+                        resp, oid = {"success": True, "orderId": hit["id"]}, hit["id"]
+                        break
+                    await self.sleep(self.verify_interval)
             if isinstance(resp, dict) and resp.get("success") is True and isinstance(oid, int):
+                if trailing:
+                    got = await self._read_order(oid)       # the broker's own record: a working type 5, closing side, exact size, trigger no wider than planned
+                    if not t.abandoned:                     # the watchdog may have flattened while we read: then this trail is a late orphan, handled below
+                        if not self._entry_trail_ok(got, body["side"], size, t.stop_plan["stop_price"], tick):
+                            self._audit("stop", ticket=t.hash8, state="TRAIL_MISREAD")
+                            t.stop_order_id = oid            # known to the flatten sweep; a stray trail is cancelled with every working order
+                            self._set_intent(tag, state="UNKNOWN", order_id=oid)
+                            t.stop_state = "FAILED"
+                            try:                             # the sweep only sees LISTED orders; a trail the list lags on needs its own cancel
+                                await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id, "orderId": oid})
+                            except Exception:  # noqa: BLE001 - flatten below sweeps and verifies the book anyway
+                                pass
+                            await self._naked(t, "stop_failed")
+                            return
+                        t.trail, t.stop_current = True, float(got["stopPrice"])
                 if t.abandoned:       # the watchdog already flattened and halted; this stop is now an orphan
                     late = True
                     t.stop_state = "ABANDONED"
@@ -1217,7 +1256,8 @@ class Guard:
                     await self._cancel_late_stop(t, oid, clean_ok=(t.state == "CLOSED"))
                 else:
                     t.stop_state, t.stop_order_id, t.stop_size, ok = "ACKED", oid, size, True
-                    t.stop_current = t.stop_plan["stop_price"]
+                    if not trailing:
+                        t.stop_current = t.stop_plan["stop_price"]
                     self._set_intent(tag, state="ACKED", order_id=oid)
                     self._audit("stop", ticket=t.hash8, state="ACKED")
             else:
@@ -1241,6 +1281,44 @@ class Guard:
                 await self._resize_stop(t, now)
         else:
             await self._naked(t, "stop_failed")
+
+    async def _entry_trail_body(self, t: Ticket, size: int, tag: str):
+        """PX_TRAIL_ENTRY: the body of the entry's protective stop as a TRAIL (type 5), as (body, tick), or None to fall back to the fixed stop (contract
+        record or distance unreadable). Distance = the entry stop distance, so 1R does not move. `trailPrice` is an ABSOLUTE level (official docs):
+        last -/+ distance from a FRESH quote, else the planned stop level, so an aged-out quote never leaves the position unprotected."""
+        try:
+            tick = Decimal(str((await self._contract(t.contract_id))["tickSize"]))
+            planned = Decimal(str(t.stop_plan["stop_price"]))
+            d = abs(Decimal(str(t.readback["entry_ref"])) - planned)
+            if tick <= 0 or d <= 0 or (planned / tick) % 1 != 0:
+                return None
+        except Exception:  # noqa: BLE001 - unreadable inputs: the proven fixed stop is the safe choice
+            return None
+        d = (d / tick).to_integral_value(rounding=ROUND_HALF_UP) * tick
+        long_ = t.stop_plan["side"] == 1                      # closing side SELL = we are long
+        level = planned
+        q = self.live.quotes.get(t.contract_id) or {}
+        if self.clock() - q.get("_rx", -1e9) <= self.limits.max_quote_age_s and _finite_pos(q.get("lastPrice")):
+            cand = Decimal(str(q["lastPrice"])) - d if long_ else Decimal(str(q["lastPrice"])) + d
+            if (cand / tick) % 1 == 0 and cand > 0:
+                level = cand
+        return ({"accountId": self.live.account_id, "contractId": t.contract_id, "type": 5, "side": t.stop_plan["side"], "size": size,
+                 "limitPrice": None, "stopPrice": None, "trailPrice": float(level), "customTag": tag}, tick)
+
+    @staticmethod
+    def _entry_trail_ok(got, close_side, size, planned, tick) -> bool:
+        """The broker's own record of the entry trail is a WORKING type 5 on the closing side, EXACTLY the size we sent (a bigger stop flips
+        on a stop-out), with a numeric trigger no more than 2 ticks WIDER than the planned stop (the stop the size and the loss room were
+        computed for). Anything else fails closed."""
+        if not (isinstance(got, dict) and got.get("type") == 5 and got.get("side") == close_side
+                and isinstance(got.get("size"), (int, float)) and abs(got["size"]) == size
+                and (got.get("status") is None or got.get("status") in WORKING_STATUSES) and _finite_pos(got.get("stopPrice"))):
+            return False
+        try:
+            slack = 2 * float(tick)
+            return got["stopPrice"] >= float(planned) - slack if close_side == 1 else got["stopPrice"] <= float(planned) + slack
+        except (TypeError, ValueError):
+            return False
 
     async def _stop_working(self, order_id) -> Optional[bool]:
         """Is this order still in the BROKER's working book? None = could not tell (after retries)."""
@@ -1323,6 +1401,8 @@ class Guard:
             # (Order/modify reads trailPrice as a level, and the broker moved the trigger since). Never. The trail covers only what it was sized to.
             self._audit("stop", ticket=t.hash8, size=size, state="TRAIL_SIZE_MISMATCH")
             self.trip_halt("trail_resize")
+            if t.state != "CLOSED" and not t.abandoned:     # a trail sized to part of the position leaves the rest naked (or flips on a stop-out)
+                await self._naked(t, "stop_resize_failed")
             return
         failed = True
         async with self._stop_lock:

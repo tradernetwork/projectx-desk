@@ -126,3 +126,70 @@ def test_ema21_slope_table_groups_trades_by_slope_against_the_lean_and_skips_old
     labels = {x["label"] for x in tabs["EMA21 slope vs lean"]}
     assert labels <= {"with the lean", "flat", "against the lean"} and "against the lean" in labels
     assert "EMA21 slope vs lean" not in B.regime_tables(B.trades(B.series(rows(px), "v2.1")))
+
+
+# ---- information coefficient -------------------------------------------------------------------------------------------------------------
+
+def walk(n, seed, c="CON.F.US.MES.Z26", t0=BAR):
+    rng = random.Random(seed)
+    price, out = 100.0, []
+    for i in range(n):
+        price += rng.gauss(0, 1)
+        out.append({"contract": c, "bar_ts": t0 + i * BAR, "price": price, "atr": 1.0, "direction": "NEUTRAL", "grade": "C", "score": 0.0,
+                    "rule": "v2.2", "tf": "bias"})
+    return out
+
+
+def lean(r, signed):
+    r["direction"] = "LONG" if signed > 0 else "SHORT" if signed < 0 else "NEUTRAL"
+    r["score"] = abs(signed)
+
+
+def test_ic_rewards_a_score_that_knows_the_future_and_gives_noise_nothing():
+    rs = walk(500, 5)
+    for i in range(len(rs) - 3):
+        lean(rs[i], rs[i + 3]["price"] - rs[i]["price"])          # the cheat: the score IS the next 3 bars' move
+    cheat = B.ic_at({"c": rs}, 3, iters=300)
+    assert cheat["ic"] > 0.9 and cheat["p"] < 0.01 and all(f > 0.8 for f in cheat["folds"])
+    rs = walk(500, 5)
+    rng = random.Random(8)
+    for r in rs:
+        lean(r, rng.uniform(-3, 3))
+    noise = B.ic_at({"c": rs}, 3, iters=300)
+    assert abs(noise["ic"]) < 0.2 and noise["p"] > 0.02
+
+
+def test_ic_forward_move_has_no_lookahead_and_refuses_gaps():
+    rng = random.Random(3)
+    base = walk(40, 9)
+    ref = B.fwd_move(base, 10, 3)
+    past, far = copy.deepcopy(base), copy.deepcopy(base)
+    for r in past[:10]:
+        r["price"] += 50; r["atr"] *= 9
+    for r in far[14:]:
+        r["price"] -= 50
+    assert B.fwd_move(past, 10, 3) == ref and B.fwd_move(far, 10, 3) == ref
+    moved = copy.deepcopy(base)
+    moved[13]["price"] += 7                                         # inside the window it MUST matter
+    assert abs(B.fwd_move(moved, 10, 3) - ref - 7) < 1e-9
+    gap = copy.deepcopy(base)
+    del gap[12]
+    assert B.fwd_move(gap, 10, 3) is None and B.fwd_move(base, 38, 3) is None
+
+
+def test_ic_signed_score_neutral_is_zero_and_missing_is_dropped():
+    r = {"direction": "SHORT", "score": 2.0}
+    assert B.signed_score(r) == -2.0 and B.signed_score({"direction": "LONG", "score": 1.5}) == 1.5
+    assert B.signed_score({"direction": "NEUTRAL", "score": 0.0}) == 0.0 and B.signed_score({"direction": "LONG"}) is None
+
+
+def test_ic_verdict_is_insufficient_until_there_is_a_real_sample():
+    rs = walk(25, 2)                                              # 24 independent looks at the best (1 bar) horizon: under the 30 bar
+    for r in rs:
+        lean(r, 1.0)
+    rep = B.ic_report(rs, "v2.2", iters=50)
+    assert rep["verdict"].startswith("INSUFFICIENT")
+    big = walk(900, 4)
+    for i in range(len(big) - 3):
+        lean(big[i], big[i + 3]["price"] - big[i]["price"])
+    assert B.ic_report(big, "v2.2", horizons=(3,), iters=300)["verdict"].startswith("INFORMATION SHOWN")

@@ -10,10 +10,14 @@ Method (ideas borrowed from the usual quant-lab toolkit, reimplemented here):
                path, so flips are made per block, not per row). The p-value is how often the coin beats the lean
   walk-forward chronological folds, no refit (the rule is hand-set, not fitted): is the edge there in every window or in one lucky stretch?
   monte carlo  block bootstrap of the observed R sequence into trading paths: streak risk and how much of the loss room survives at `risk_pct`
+  IC           rank correlation (Spearman) between the signed score and the ATR-scaled forward return at 1/3/6/12 bars, ALL rows (NEUTRAL scores 0):
+               does the score carry information at all, not just does the lean beat a coin. p-value from circularly shifting each contract's
+               forward returns (keeps autocorrelation and overlap), Bonferroni across horizons, plus chronological folds
   audit        mixed rule versions, duplicate bars that disagree (a repaint), gaps, and a structural no-lookahead guarantee (see `outcome`)
 Overlapping windows mean the effective sample is about n / horizon, not n. A verdict needs enough of that; otherwise it says INSUFFICIENT."""
 import json
 import math
+import operator
 import random
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -284,6 +288,124 @@ def monte_carlo(tr, grades=GOOD, risk_pct=0.10, paths=5000, length=40, block=6, 
             "room_left_p05": round(q(mins, 0.05), 3), "room_left_median_low": round(q(mins, 0.5), 3)}
 
 
+IC_HORIZONS = (1, 3, 6, 12)
+
+
+def signed_score(r):
+    """+score for a LONG lean, -score for a SHORT, 0 for NEUTRAL. None when the score is missing: the row is left out, never guessed."""
+    sc = _num(r.get("score"))
+    if sc is None:
+        return None
+    d = r.get("direction")
+    return sc if d == "LONG" else -sc if d == "SHORT" else 0.0
+
+
+def fwd_move(rs, i, h):
+    """(close h bars later - close now) / ATR now. None for a missing bar inside the window, no ATR, or a window past the data.
+    Same no-lookahead shape as `outcome`: only rs[i] sets the scale, rs[i+1 ..] are read as future prices and nothing before i is read."""
+    if i + h >= len(rs):
+        return None
+    a, p0 = _num(rs[i].get("atr")), _num(rs[i].get("price"))
+    if not a or a <= 0 or p0 is None:
+        return None
+    t0 = rs[i]["bar_ts"]
+    for j in range(1, h + 1):
+        if rs[i + j]["bar_ts"] != t0 + j * BAR_MS or _num(rs[i + j].get("price")) is None:
+            return None
+    return (rs[i + h]["price"] - p0) / a
+
+
+def _ranks(v):
+    """Average ranks (ties share the mean rank)."""
+    order = sorted(range(len(v)), key=v.__getitem__)
+    out = [0.0] * len(v)
+    i = 0
+    while i < len(v):
+        j = i
+        while j + 1 < len(v) and v[order[j + 1]] == v[order[i]]:
+            j += 1
+        for k in range(i, j + 1):
+            out[order[k]] = (i + j) / 2 + 1
+        i = j + 1
+    return out
+
+
+def _pearson(a, b):
+    n = len(a)
+    if n < 3:
+        return None
+    ma, mb = sum(a) / n, sum(b) / n
+    va = sum((x - ma) ** 2 for x in a)
+    vb = sum((y - mb) ** 2 for y in b)
+    if va <= 0 or vb <= 0:
+        return None
+    return sum((x - ma) * (y - mb) for x, y in zip(a, b)) / math.sqrt(va * vb)
+
+
+def ic_at(ser, h, k=3, iters=1000, seed=1):
+    """Spearman IC of the signed score vs the forward ATR move at `h` bars, pooled over contracts. Returns n, eff_n (distinct bar times / h:
+    MES, MNQ and MGC at the same minute are one look at the market, and windows overlap), ic, one-sided p (chance a shifted-forward series
+    correlates at least this well), and the chronological folds' ICs."""
+    segs, sig, fwd, tms = [], [], [], []
+    for c in sorted(ser):
+        rs, start = ser[c], len(sig)
+        for i, r in enumerate(rs):
+            sc, f = signed_score(r), fwd_move(rs, i, h)
+            if sc is not None and f is not None:
+                sig.append(sc); fwd.append(f); tms.append(r["bar_ts"])
+        if len(sig) - start >= 2 * h + 3:                       # a contract too short to shift is left out whole
+            segs.append((start, len(sig)))
+        else:
+            del sig[start:], fwd[start:], tms[start:]
+    n = len(sig)
+    out = {"h": h, "n": n, "eff_n": round(len(set(tms)) / h, 1), "ic": None, "p": None, "folds": []}
+    ra, rb = _ranks(sig), _ranks(fwd)
+    ic = _pearson(ra, rb) if n >= 10 else None
+    if ic is None:
+        return out
+    out["ic"] = round(ic, 4)
+    ma, mb = (n + 1) / 2, (n + 1) / 2
+    da, db = [x - ma for x in ra], [y - mb for y in rb]
+    scale = math.sqrt(sum(x * x for x in da) * sum(y * y for y in db))
+    rng, ge = random.Random(seed), 0
+    for _ in range(iters):
+        tot = 0.0
+        for a, b in segs:
+            m = b - a
+            s = rng.randint(h, m - h)
+            seg = db[a:b]
+            tot += sum(map(operator.mul, da[a:b], seg[s:] + seg[:s]))
+        if tot / scale >= ic - 1e-12:
+            ge += 1
+    out["p"] = round((ge + 1) / (iters + 1), 4)
+    order = sorted(range(n), key=tms.__getitem__)
+    size = n / k
+    for f in range(k):
+        idx = order[int(round(f * size)):int(round((f + 1) * size))]
+        v = _pearson(_ranks([sig[i] for i in idx]), _ranks([fwd[i] for i in idx]))
+        out["folds"].append(None if v is None else round(v, 4))
+    return out
+
+
+def ic_verdict(res, k=3):
+    best = max((r["eff_n"] for r in res), default=0)
+    if best < MIN_EFFECTIVE_N:
+        return f"INSUFFICIENT: about {best:.0f} independent observations at the best horizon (need {MIN_EFFECTIVE_N}); keep logging, this says nothing yet"
+    bar = ALPHA / len(res)                                       # Bonferroni: four horizons were looked at, not one
+    hits = [r for r in res if r["ic"] is not None and r["ic"] > 0 and r["p"] is not None and r["p"] < bar
+            and sum(1 for f in r["folds"] if f is not None and f > 0) >= k - 1]
+    if hits:
+        return "INFORMATION SHOWN at " + ", ".join(f"{r['h']} bars (IC {r['ic']:+.3f}, p={r['p']})" for r in hits) + f" (p < {bar:.4f}, still no costs)"
+    top = max((r for r in res if r["ic"] is not None), key=lambda r: r["ic"], default=None)
+    return "NO INFORMATION SHOWN" + ("" if top is None else f": best IC {top['ic']:+.3f} at {top['h']} bars, p={top['p']} (needs p < {bar:.4f} and positive folds)")
+
+
+def ic_report(rows, rule="v2.2", horizons=IC_HORIZONS, k=3, iters=1000, seed=1):
+    ser = series(rows, rule)
+    res = [ic_at(ser, h, k, iters, seed) for h in horizons]
+    return {"horizons": res, "verdict": ic_verdict(res, k)}
+
+
 def verdict(tr, p, fold_stats, grades=GOOD, horizon=6):
     sel = [t for t in tr if t["grade"] in grades]
     eff = len({t["t"] for t in sel}) / horizon                          # MES, MNQ and MGC leaning at the same minute are one observation of the market, not three
@@ -296,11 +418,11 @@ def verdict(tr, p, fold_stats, grades=GOOD, horizon=6):
     return f"NO EDGE SHOWN: mean {mean:+.2f}R, coin flip p={p}, positive in {pos}/{len(fold_stats)} folds"
 
 
-def report(rows, rule="v2.1", horizon=6, stop_k=1.5, rr=1.5, risk_pct=0.10, k=3, seed=1, iters=5000):
+def report(rows, rule="v2.1", horizon=6, stop_k=1.5, rr=1.5, risk_pct=0.10, k=3, seed=1, iters=5000, ic_iters=1000):
     ser = series(rows, rule)
     tr = trades(ser, horizon, stop_k, rr)
     p = coin_flip_p(tr, GOOD, iters, seed)
     fs = folds(tr, GOOD, k)
     return {"params": {"rule": rule, "horizon_bars": horizon, "stop_atr": stop_k, "target_r": rr, "risk_pct": risk_pct, "folds": k, "seed": seed},
             "audit": audit(rows, rule), "by_grade": by_grade(tr), "regimes": regime_tables(tr), "coin_flip_p_A_B": p, "folds_A_B": fs,
-            "monte_carlo_A_B": monte_carlo(tr, GOOD, risk_pct, seed=seed), "verdict": verdict(tr, p, fs, GOOD, horizon)}
+            "monte_carlo_A_B": monte_carlo(tr, GOOD, risk_pct, seed=seed), "ic": ic_report(rows, rule, IC_HORIZONS, k, ic_iters, seed), "verdict": verdict(tr, p, fs, GOOD, horizon)}

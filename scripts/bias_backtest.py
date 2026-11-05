@@ -44,6 +44,11 @@ def main():
         print(f"\nmonte carlo, {mc['paths']} paths of {mc['length']} trades at {mc['risk_pct']:.0%} risk: P(3 losses in a row)={mc['p_3_losses_in_a_row']:.0%}, "
               f"P(10 in a row)={mc['p_10_losses_in_a_row']:.2%}, median longest streak={mc['median_longest_losing_streak']}, "
               f"loss room left in the worst 5% of paths={mc['room_left_p05']:.0%}")
+    print("\nINFORMATION COEFFICIENT (signed score vs forward move in ATRs, all rows, Spearman; p is one-sided vs shifted-forward series)")
+    for r in rep["ic"]["horizons"]:
+        ic = "n/a" if r["ic"] is None else format(r["ic"], "+.3f")
+        print(f"  {r['h']:>2} bars  n={r['n']:>5} (~{r['eff_n']:.0f} independent)  IC {ic:>7}  p={r['p']}  folds {r['folds']}")
+    print("  ", rep["ic"]["verdict"])
     print("\nVERDICT:", rep["verdict"])
 
 

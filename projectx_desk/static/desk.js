@@ -1009,7 +1009,7 @@ let cur = {ticker: null, tick: 0.25, tickValue: null, name: '', dec: 2};
 // The TraderMatrix chart-card palette (engine constants, not eyeballed): gold up candles, steel down candles with light wicks, the
 // EMA-21 blue, the ink and text tones. Keep in step with the :root tokens in desk.css. Green/magenta stay for OUTCOMES (held/failed,
 // stop lines, badges): a colour that means "price went up" must not also mean "good".
-const C = {up: '#D6A73A', dn: '#7088AD', dnWick: '#C8D8EE', flat: '#6C7A92', grid: 'rgba(200,216,238,.07)', axis: '#1A2238', text: '#6C7A92',
+const C = {up: '#FFC93C', dn: '#9CB8E6', dnWick: '#E4EEFF', flat: '#8D9BB4', grid: 'rgba(200,216,238,.07)', axis: '#1A2238', text: '#6C7A92',
            cyan: '#5FB3D9', amber: '#D6A73A', purple: '#B49AE0', ink: '#F2F5FA', light: '#C8D8EE', green: '#22c55e', mag: '#f43f5e'};
 const EMA_COL = ['#E9EEF6', '#5FB3D9', '#B49AE0'];   // EMA 8 / 21 / 34: the card's SMA light, EMA-21 blue and magnet lilac; keep in step with --ema8/21/34 in desk.css
 const RC = {BOUNCE: C.green, FAIL: C.mag, NEUTRAL: '#76839a', PENDING: C.cyan};

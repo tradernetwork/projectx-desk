@@ -19,7 +19,7 @@
   --border:#1A2238; --border-sub:#161D30; --border-strong:#2A3550;
   /* accents */
   --cyan:#5FB3D9; --blue:#60a5fa; --green:#22c55e; --magenta:#f43f5e; --purple:#B49AE0; --amber:#D6A73A;
-  --gold:#D6A73A; --slate:#7088AD; --light:#C8D8EE;   /* candles up / down, down wicks (desk.js C.up / C.dn / C.dnWick) and the BUY / SELL buttons */
+  --gold:#FFC93C; --slate:#9CB8E6; --light:#E4EEFF;   /* candles up / down, down wicks (desk.js C.up / C.dn / C.dnWick) and the BUY / SELL buttons */
   /* accent ink for small text on dark (AA at 11px) */
   --cyan-ink:#8FCBE6; --green-ink:#4ade80; --mag-ink:#fb7185; --amber-ink:#E3BE62; --purple-ink:#C9B6EA;
   /* tints */

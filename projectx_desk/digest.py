@@ -788,6 +788,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
         "respect": respect,
         "callouts": callouts,
         "flow": flow,
+        "rh": rh_block(app, stream),
         "positions": [position_view(p) for p in live.positions.values()],
         "orders": [order_view(o) for o in live.orders.values()],
         "fills_today": len(live.trades) if live.trades_seeded else None,
@@ -818,6 +819,69 @@ async def _tomorrow_state(app, contract_id):
         except Exception:  # noqa: BLE001 - the record is advisory
             blk["record"] = None
     return blk
+
+
+def rh_block(app, stream=False):
+    """The Robinhood block for the AI surface: read-only snapshot of the MCP account, None when PX_RH is off. Never raises."""
+    r = getattr(app.state, "rh", None)
+    if r is None:
+        return None
+    try:
+        return r.state.ai_block(stream=bool(stream))
+    except Exception:  # noqa: BLE001
+        return {"enabled": True, "connected": False}
+
+
+RH_MAX_ITEMS = 8
+RH_MAX_LINE = 400
+
+
+def _rh_item(x, stream):
+    bits = [str(x.get("symbol") or "NA")]
+    if x.get("asset") == "option":
+        bits += [_f(x.get("expiry")), _f(x.get("strike")) + str(x.get("right") or "?")[:1].upper()]
+    for k in ("side", "type", "status"):
+        if x.get(k):
+            bits.append(str(x[k]))
+    bits.append("qty=" + _f(x.get("qty")))
+    if not stream:
+        for k, label in (("avg_price", "avg"), ("price", "px")):
+            if k in x:
+                bits.append(f"{label}={_f(x[k])}")
+    return " ".join(bits)
+
+
+def _rh_list(label, rows, stream):
+    if rows is None:
+        return f"{label}: UNKNOWN"
+    if not rows:
+        return f"{label}: NONE"
+    shown = "; ".join(_rh_item(x, stream) for x in rows[:RH_MAX_ITEMS])
+    more = f" (+{len(rows) - RH_MAX_ITEMS} more)" if len(rows) > RH_MAX_ITEMS else ""
+    return f"{label}: n={len(rows)} {shown}{more}"[:RH_MAX_LINE]
+
+
+def rh_lines(b):
+    """RH: lines for the digest. Nothing when the feature is off or the block is absent. Counts, symbols and qty; dollars
+    (average price, realized P&L) only outside stream mode. Capped at 5 lines of RH_MAX_LINE characters."""
+    if not isinstance(b, dict) or not b.get("enabled"):
+        return []
+    if not b.get("connected") or "ok" not in b:
+        return ["RH: ENABLED connected=NO"]
+    stream = bool(b.get("stream"))
+    setting = (b.get("approval_setting") or {}).get("human_must_approve")
+    head = (f"RH: ENABLED connected=YES ok={_f(bool(b.get('ok')))} human_approval={_f(setting)}"
+            + (f" unknown={','.join(b.get('unknown') or [])}" if b.get("unknown") else "")
+            + (f" error={b['error']}" if b.get("error") else ""))
+    appr = b.get("approvals")
+    pend = None if appr is None else sum(1 for a in appr if a.get("status") == "pending")
+    L = [head[:RH_MAX_LINE], _rh_list("RH_POS", b.get("positions"), stream), _rh_list("RH_ORD", b.get("orders"), stream),
+         "RH_APPR: UNKNOWN" if appr is None else f"RH_APPR: approvals={pend} " + "; ".join(
+             _rh_item(a, stream) for a in appr[:RH_MAX_ITEMS] if a.get("status") == "pending")]
+    pnl = b.get("pnl")
+    if not stream and isinstance(pnl, dict):
+        L.append(f"RH_PNL: realized={_f(pnl.get('realized'))} window={pnl.get('window')}")
+    return [l[:RH_MAX_LINE] for l in L]
 
 
 def redact_stream(s):
@@ -994,6 +1058,7 @@ def format_digest(s) -> str:
     L.append("POS: " + ("; ".join(f"{p['side']} {_f(p['size'])} {_f(p['contract'])} @ {_f(p['avg_price'])}" for p in s["positions"]) or ("NONE" if seeded else unk)))
     L.append("ORD: " + ("; ".join(f"{o['side']} {o['type']} {_f(o['size'])} {_f(o['contract'])} stop={_f(o['stop'])} limit={_f(o['limit'])} tag={_f(o['tag'])}"
                                   for o in s["orders"]) or ("NONE" if seeded else unk)))
+    L.extend(rh_lines(s.get("rh")))
     L.append(f"FILLS_TODAY: {_f(s['fills_today'])}" + ("" if s.get("stream") else f" pnl_day={_f(r.get('pnl_day'))}"))
     L.append(f"ACTIONS: stage={'ENABLED' if not m['halt'] else 'BLOCKED'} place={'NEEDS_HUMAN' if t else 'NEEDS_TICKET'}")
     L.append("RULE: agent reads and stages; the operator places. Voice never confirms.")

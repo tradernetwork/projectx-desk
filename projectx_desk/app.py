@@ -44,6 +44,7 @@ from projectx_desk import journal as px_journal
 from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
 from projectx_desk import ticks as px_ticks
+from projectx_desk.rh import state as px_rh
 from projectx_desk.guard import Guard, GuardError
 from projectx_desk.limits import Limits
 from projectx_desk.client import live_data, PXAuthError, PXClient, PXError, PXNotConfigured, PXRateLimited
@@ -81,11 +82,13 @@ def record_only_problem(environ=None):
 
 
 def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, connect=True, guard=None, limits=None, mcp_token=None,
-               operator_token=None, allowed_origins=None, record_only=None):
+               operator_token=None, allowed_origins=None, record_only=None, rh=None):
     """Build the app. Tests inject a fake client / hubs and set connect=False.
 
     record_only (default: PX_RECORD_ONLY): a log-only recorder. Only the market hub, the trade tape, the indicator tracker and
-    read-only routes exist: no user hub, no Guard, no watchdog, no MCP, no POST route of any kind."""
+    read-only routes exist: no user hub, no Guard, no watchdog, no MCP, no POST route of any kind.
+
+    rh: an injected Robinhood runtime (tests). Default: built from PX_RH (default 0 = off, nothing built). Never in record-only."""
     rec = record_only_enabled() if record_only is None else bool(record_only)
     if rec:
         why = record_only_problem()
@@ -132,6 +135,14 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             rcfg = None
         app.state.sse = 0
         app.state.boot_error = None
+        app.state.rh = None
+        if not rec:                           # Robinhood reads (phase 0): read-only, off unless PX_RH=1, never in a recorder
+            try:
+                app.state.rh = rh if rh is not None else (await px_rh.open_from_env() if connect else None)
+            except Exception as e:  # noqa: BLE001 - a bad PX_RH_URL must not stop the futures desk
+                print(f"Robinhood off: {getattr(e, 'code', type(e).__name__)}", flush=True)
+            if app.state.rh is not None:
+                app.state.rh.start()
         app.state.bars_cache = {}
         async with AsyncExitStack() as stack:
             if holder.get("mcp_app") is not None:
@@ -158,6 +169,8 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             app.state.journal_task = asyncio.create_task(_journal_loop(app)) if connect and not rec else None
             app.state.reseed_loop_task = asyncio.create_task(_reseed_loop(app)) if connect and not rec else None
             yield
+            if app.state.rh is not None:
+                await app.state.rh.stop()
             for name in ("bias_task", "tledger_task", "mapplan_task", "journal_task", "reseed_loop_task"):
                 if getattr(app.state, name, None) is not None:
                     getattr(app.state, name).cancel()
@@ -410,6 +423,24 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
                 await st.live.unsubscribe_ticks(cid, q)
 
         return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+    if not rec:
+        def _rh_block(request: Request, stream: int = 0):
+            r = getattr(request.app.state, "rh", None)
+            return {"enabled": False} if r is None else r.state.snapshot(stream=bool(stream))
+
+        @app.get("/api/rh/state")
+        async def rh_state(request: Request, stream: int = 0):
+            return _rh_block(request, stream)
+
+        def _rh_section(name):
+            async def route(request: Request, stream: int = 0):
+                b = _rh_block(request, stream)
+                return b if not b.get("enabled") or "ok" not in b else {"as_of": b["as_of"], name: b[name]}
+            return route
+
+        for _name in ("positions", "orders", "approvals"):
+            app.add_api_route(f"/api/rh/{_name}", _rh_section(_name), methods=["GET"])
 
     @app.get("/state.json")
     async def state_json(request: Request, contract: str | None = None, stream: int = 0):

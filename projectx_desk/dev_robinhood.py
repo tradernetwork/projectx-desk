@@ -240,3 +240,44 @@ def make_app(accounts=None):
     ])
     app.state.mock = st
     return app
+
+
+async def start_in_process(token_file, accounts=None, host="127.0.0.1"):
+    """Serve the mock on a free loopback port inside the running event loop and pre-issue a token pair into
+    `token_file` (a TokenStore file, mode 0600) so a demo needs no login. Returns `(mcp_url, stop)`; `await stop()`
+    shuts it down. Dev and tests only: loopback by construction, no order path exists in the mock."""
+    import asyncio
+    import socket
+
+    import uvicorn
+
+    from .rh.tokens import Tokens, TokenStore
+
+    app = make_app(accounts)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind((host, 0))
+    sock.listen(16)
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="off"))
+    task = asyncio.get_running_loop().create_task(server.serve(sockets=[sock]))
+    for _ in range(200):
+        if server.started or task.done():
+            break
+        await asyncio.sleep(0.025)
+    if not server.started:
+        server.should_exit = True
+        sock.close()
+        raise RuntimeError("mock robinhood failed to start")
+    url = f"http://{host}:{sock.getsockname()[1]}/mcp"
+    pair = app.state.mock.issue("mock-client")
+    TokenStore(token_file, base_url=url).save(
+        Tokens(pair["access_token"], pair["refresh_token"], time.time() + pair["expires_in"], "mock-client"))
+
+    async def stop():
+        server.should_exit = True
+        try:
+            await asyncio.wait_for(task, 5)
+        except (asyncio.TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
+            task.cancel()
+        sock.close()
+
+    return url, stop

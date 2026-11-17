@@ -43,3 +43,9 @@ def test_the_mcp_token_file_lives_outside_the_checkout_and_the_deny_list_covers_
     assert d.ROOT not in d.MCP_FILE.parents
     for rule in ("Grep(./data/*.json)", "Grep(./.env*)", "Read(./data/*.json)", "Read(./.env*)"):
         assert rule in d.DENIED
+
+
+def test_the_agent_cannot_read_robinhood_audit_state_or_halt_files():
+    for tool in ("Read", "Grep", "Glob"):
+        assert f"{tool}(./data/rh_*)" in d.DENIED
+    assert "Read(./data/RH_HALT)" in d.DENIED and "Grep(./data/RH_HALT)" in d.DENIED and "Glob(./data/RH_HALT)" in d.DENIED

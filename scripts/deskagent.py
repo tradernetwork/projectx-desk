@@ -44,7 +44,9 @@ TRAIL_TOOLS = ["mcp__deskmcp__" + t for t in ("arm_trail", "get_positions", "get
 # Belt and braces on top of dontAsk: nothing that writes or runs, and the files that hold secrets are unreadable to Read/Grep/Glob.
 DENIED = ["Bash", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent",
           "Read(./.env*)", "Read(./data/agent_token)", "Read(./data/*.json)", "Read(./data/*.db*)",
-          "Grep(./.env*)", "Grep(./data/agent_token)", "Grep(./data/*.json)", "Grep(./data/*.db*)", "Glob(./.env*)", "Glob(./data/agent_*)"]
+          "Grep(./.env*)", "Grep(./data/agent_token)", "Grep(./data/*.json)", "Grep(./data/*.db*)", "Glob(./.env*)", "Glob(./data/agent_*)",
+          # broker audit, ticket, token and halt files: the agent never reads them (the digest carries what it may know)
+          "Read(./data/rh_*)", "Grep(./data/rh_*)", "Glob(./data/rh_*)", "Read(./data/RH_HALT)", "Grep(./data/RH_HALT)", "Glob(./data/RH_HALT)"]
 SYSTEM = (
     "You are the ProjectX Desk agent. Working directory is the desk checkout; read AGENTS.md first for the rules. "
     f"The live desk is {DESK} (open it in the deskbrowser tools to read the DOM/chart; /ai/digest and /state.json are "

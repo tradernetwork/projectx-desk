@@ -691,6 +691,12 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             b = await body(request)
             return await _rh_do(request, lambda g: g.release(b.get("ticket_id")))
 
+        @app.post("/api/rh/reconcile")
+        async def rh_reconcile(request: Request):
+            """Look an UNKNOWN ticket up at Robinhood by its ref_id. Never resends, never clears the halt."""
+            b = await body(request)
+            return await _rh_do(request, lambda g: g.reconcile(b.get("ticket_id")))
+
         @app.post("/api/rh/halt/resolve")
         async def rh_halt_resolve(request: Request):
             """Human-only, like /api/halt/clear. There is deliberately no MCP equivalent."""

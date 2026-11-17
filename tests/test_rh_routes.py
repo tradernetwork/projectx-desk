@@ -14,7 +14,7 @@ from tests.test_rh_app import build
 from tests.test_rh_wiring import env_for, mock_rt
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-RH_POSTS = {"/api/rh/preview", "/api/rh/place", "/api/rh/cancel", "/api/rh/release", "/api/rh/halt/resolve"}
+RH_POSTS = {"/api/rh/preview", "/api/rh/place", "/api/rh/cancel", "/api/rh/release", "/api/rh/reconcile", "/api/rh/halt/resolve"}
 INTENT = {"symbol": "DDD", "side": "buy", "qty": 2, "limit_price": 101.25}
 
 
@@ -183,3 +183,28 @@ def test_a_chat_prompt_cannot_reach_an_rh_route(env):
 def test_no_robinhood_post_in_the_desk_agent_toolset(env):
     src = (ROOT / "scripts" / "deskagent.py").read_text()
     assert "browser_click" not in re.search(r"ALLOWED\s*=\s*\[(.*?)\]", src, re.S).group(1)
+
+
+def test_reconcile_route_codes_only_and_leaves_a_live_ticket_alone(env):
+    c, _ = with_rig()
+    with c:
+        r = Rig(c)
+        assert r.post("/api/rh/reconcile", {"ticket_id": "nope"}).json() == {"ok": False, "code": "ticket_unknown"}
+        assert r.post("/api/rh/reconcile", {"ticket_id": 5}).json() == {"ok": False, "code": "ticket_unknown"}
+        assert r.post("/api/rh/reconcile", {}).json() == {"ok": False, "code": "ticket_unknown"}
+        t = r.post("/api/rh/preview", INTENT).json()["ticket"]
+        out = r.post("/api/rh/reconcile", {"ticket_id": t["ticket_id"]}).json()
+        assert out["ok"] is True and out["state"] == "previewed" and out["ticket"]["ticket_id"] == t["ticket_id"]
+        assert "ref_id" not in str(out) and not r.guard.halted()
+
+
+def test_reconcile_finds_an_unknown_ticket_and_never_clears_the_halt(env):
+    c, _ = with_rig()
+    with c:
+        r = Rig(c)
+        t = r.post("/api/rh/preview", INTENT).json()["ticket"]
+        r.guard.tickets[t["ticket_id"]].state = "unknown"
+        r.guard.trip_halt("place_unknown")
+        out = r.post("/api/rh/reconcile", {"ticket_id": t["ticket_id"]}).json()
+        assert out["ok"] is True and out["state"] == "unknown"       # the mock holds no such order: absence proves nothing
+        assert r.guard.halted()

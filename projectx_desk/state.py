@@ -41,6 +41,8 @@ class LiveState:
         self._listeners = []         # callables(kind, payload) for position/order events (the guard's stop manager)
         self.ticks = TickBars(path=ticks_path)   # tick bars (N prints per bar) from the same tape; sizes from PX_TICK_BARS
         self.flow = FlowStore(path=flow_path, legacy_json=flow_legacy)   # real buy/sell volume per minute, built from every GatewayTrade we receive
+        self._last_print = {}   # contractId -> monotonic time of the last trade print (any side), for the tape-age alarm
+        self._tape_start = {}   # contractId -> monotonic time its trade subscription was (re)sent
         self._tape = []       # contracts whose trade tape stays subscribed with no browser open (oldest first)
         self._subs = {}       # contractId -> set[Queue]
         self._pinned = set()  # contracts whose quotes stay subscribed so the guard/MCP work with no browser open
@@ -73,6 +75,22 @@ class LiveState:
             self.ticks.mark_gap(old)
             if old not in self._subs:
                 await self.market.unsubscribe("SubscribeContractTrades", old)
+        self._tape_start[cid] = time.monotonic()
+        await self.market.subscribe("SubscribeContractTrades", cid, unsub_target="UnsubscribeContractTrades")
+
+    def tape_last(self, cid):
+        """Monotonic time of the last trade print for `cid`, or None when none has arrived."""
+        return self._last_print.get(cid)
+
+    async def resubscribe_tape(self, cid):
+        """Re-send the trade subscription for one recorded contract (a dead per-contract subscription is not a hub drop, so
+        nothing replays it). Read-only. The gap is marked first: whatever printed while it was dead is unknown."""
+        if cid not in self._tape or self.market is None:
+            return
+        self.flow.mark_gap(cid, int(time.time() * 1000))
+        self.ticks.mark_gap(cid)
+        self._tape_start[cid] = time.monotonic()
+        await self.market.unsubscribe("SubscribeContractTrades", cid)
         await self.market.subscribe("SubscribeContractTrades", cid, unsub_target="UnsubscribeContractTrades")
 
     async def subscribe_ticks(self, cid, maxsize=5000):
@@ -136,6 +154,7 @@ class LiveState:
             q.put_nowait(RESYNC)
 
     def _on_trade(self, cid, data):
+        self._last_print[cid] = time.monotonic()
         for t in (data if isinstance(data, list) else [data]):
             self.ticks.add_trade(cid, t, ts_ms)   # tick bars; never raises (a malformed trade marks a gap)
             try:

@@ -56,3 +56,12 @@ def market_quiet(now=None) -> bool:
     local = _aware(now or datetime.now(timezone.utc)).astimezone(CT)
     wd, tm = local.weekday(), local.time()           # Monday is 0
     return (wd == 4 and tm >= QUIET_FROM_FRI) or wd == 5 or (wd == 6 and tm < QUIET_UNTIL_SUN)
+
+
+def market_open(now=None) -> bool:
+    """CME futures are trading: not the weekend window (`market_quiet`) and not the daily 16:00 to 17:00 CT break."""
+    now = _aware(now) if now is not None else datetime.now(CT)
+    now = now.astimezone(CT)
+    if market_quiet(now):
+        return False
+    return not (time(16, 0) <= now.time() < SESSION_OPEN)

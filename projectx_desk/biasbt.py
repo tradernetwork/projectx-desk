@@ -19,8 +19,10 @@ import json
 import math
 import operator
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+
+from projectx_desk.tradeday import trade_date
 
 BAR_MS = 300_000
 LEANS = ("LONG", "SHORT")
@@ -416,6 +418,23 @@ def verdict(tr, p, fold_stats, grades=GOOD, horizon=6):
     if mean > 0 and p is not None and p < ALPHA and fold_stats and pos >= len(fold_stats) - 1:
         return f"EDGE SHOWN: mean {mean:+.2f}R, coin flip p={p}, positive in {pos}/{len(fold_stats)} folds (still close-only, no costs)"
     return f"NO EDGE SHOWN: mean {mean:+.2f}R, coin flip p={p}, positive in {pos}/{len(fold_stats)} folds"
+
+
+def flow_na_by_day(rows):
+    """FLOW_NA fraction per contract per trading day: [{day, contract, n, flow_na, frac}] sorted by day then contract. A row has no
+    flow vote when its `votes` lack "flow" or it carries the FLOW_NA flag. Rows without a `votes` dict are not counted. Read it
+    before blaming a feature change for a shift in grades: a dead trade tape (2026-11-17 MGC) removes the flow vote silently."""
+    acc = {}
+    for r in rows:
+        v, t, c = r.get("votes"), _num(r.get("bar_ts")), r.get("contract")
+        if not isinstance(v, dict) or t is None or not isinstance(c, str):
+            continue
+        na = "flow" not in v or "FLOW_NA" in (r.get("flags") or [])
+        day = trade_date(datetime.fromtimestamp(t / 1000, tz=timezone.utc)).isoformat()
+        a = acc.setdefault((day, c), [0, 0])
+        a[0] += 1
+        a[1] += 1 if na else 0
+    return [{"day": d, "contract": c, "n": n, "flow_na": k, "frac": k / n} for (d, c), (n, k) in sorted(acc.items())]
 
 
 def report(rows, rule="v2.1", horizon=6, stop_k=1.5, rr=1.5, risk_pct=0.10, k=3, seed=1, iters=5000, ic_iters=1000):

@@ -25,13 +25,17 @@ def main():
     ap.add_argument("--folds", type=int, default=3)
     ap.add_argument("--seed", type=int, default=1)
     a = ap.parse_args()
-    rep = biasbt.report(biasbt.load(a.log), a.rule, a.horizon, a.stop_k, a.rr, a.risk, a.folds, a.seed)
+    loaded = biasbt.load(a.log)
+    rep = biasbt.report(loaded, a.rule, a.horizon, a.stop_k, a.rr, a.risk, a.folds, a.seed)
     au = rep["audit"]
     print(f"BIAS BACKTEST  rule={a.rule}  hold={a.horizon} bars  stop={a.stop_k} ATR  target={a.rr}R  (close-only, no costs)")
     print(f"audit: {au['scored_rows']} of {au['rows']} rows scored, rule versions {au['rule_versions']}, repaints={au['repaints']}, gaps={au['gaps']}, no_atr={au['no_atr']}")
     print("\ngrade        n    win   mean R")
     for g, s in rep["by_grade"].items():
         print(f"{g:<10} {s['n']:>4}  {'' if s['win'] is None else format(s['win'], '.0%'):>5}  {'' if s['mean_r'] is None else format(s['mean_r'], '+.3f'):>7}")
+    print("\nFLOW_NA per contract per trading day (rows with no flow vote; a dead tape is not a market change)")
+    for r in biasbt.flow_na_by_day(loaded):
+        print(f"  {r['day']}  {r['contract'].split('.')[-2] if r['contract'].count('.') >= 2 else r['contract']:<5} rows={r['n']:>4}  flow_na={r['flow_na']:>4}  {r['frac']:.0%}")
     print("\nBY REGIME (all leans; lean R vs the opposite side's R; n overlaps, about n/6 independent)")
     for name, tab in rep["regimes"].items():
         print(f"  {name}")

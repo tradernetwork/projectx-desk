@@ -193,3 +193,18 @@ def test_ic_verdict_is_insufficient_until_there_is_a_real_sample():
     for i in range(len(big) - 3):
         lean(big[i], big[i + 3]["price"] - big[i]["price"])
     assert B.ic_report(big, "v2.2", horizons=(3,), iters=300)["verdict"].startswith("INFORMATION SHOWN")
+
+
+def test_flow_na_fraction_per_contract_per_day():
+    day = 1_763_000_000_000                                            # one fixed instant: both bars land on the same trade date
+    a = {"contract": "MGC", "bar_ts": day, "votes": {"5m": 1, "flow": 1}}
+    b = {"contract": "MGC", "bar_ts": day + BAR, "votes": {"5m": 1}, "flags": ["FLOW_NA"]}
+    c = {"contract": "MGC", "bar_ts": day + 2 * BAR, "votes": {"5m": 0}}                   # no flow vote: NA even without the flag
+    d = {"contract": "MES", "bar_ts": day, "votes": {"flow": -1}}
+    e = {"contract": "MES", "bar_ts": day, "price": 1}                                       # no votes dict: not counted
+    out = B.flow_na_by_day([a, b, c, d, e])
+    mgc = [r for r in out if r["contract"] == "MGC"]
+    assert len(mgc) == 1 and mgc[0]["n"] == 3 and mgc[0]["flow_na"] == 2 and abs(mgc[0]["frac"] - 2 / 3) < 1e-9
+    mes = [r for r in out if r["contract"] == "MES"]
+    assert mes[0]["n"] == 1 and mes[0]["flow_na"] == 0
+    assert out == sorted(out, key=lambda r: (r["day"], r["contract"]))

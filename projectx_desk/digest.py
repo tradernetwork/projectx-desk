@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from projectx_desk import anchor as px_anchor
 from projectx_desk import bias as px_bias
 from projectx_desk import feed as px_feed
+from projectx_desk import tapewatch as px_tapewatch
 from projectx_desk import gex as px_gex
 from projectx_desk import regime as px_regime
 from projectx_desk import tomorrow_feed as px_tomorrow
@@ -755,7 +756,8 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
                  "account_kind": lim.account_kind.upper(), "bracket_mode": lim.bracket_mode.upper()},
         "feed": {"market": "UP" if st.market.up else "DOWN", "user": "UP" if st.user.up else "DOWN",
                  "market_age_s": st.market.feed_age_s(), "user_age_s": st.user.feed_age_s(),
-                 "seeded": bool(live.positions_seeded and live.trades_seeded)},
+                 "seeded": bool(live.positions_seeded and live.trades_seeded),
+                 "tape": px_tapewatch.health(app)},
         "contract": {"root": root, "tick": _n(rec.get("tickSize"), 4) if rec else None,
                      "tick_value": _n(rec.get("tickValue"), 4) if rec else None,
                      "active": bool(rec.get("activeContract")) if rec else None},
@@ -934,6 +936,19 @@ def _f(v):
     return str(v)
 
 
+def _tape_lines(tape):
+    """TAPE: per tracked root, the seconds since its last trade print; STALE (and a TAPE_STALE line) when it has gone quiet while
+    the market is open and the hub is up. NONE is a contract with no print yet."""
+    if not tape:
+        return []
+    L = ["TAPE: " + " ".join(f"{r}={_f(v['age_s']) if v['age_s'] is not None else 'NONE'}{'(STALE)' if v['stale'] else ''}"
+                             for r, v in sorted(tape.items()))]
+    bad = sorted(r for r, v in tape.items() if v["stale"])
+    if bad:
+        L.append(f"ALERT: TAPE_STALE roots={','.join(bad)} (no trade print; flow vote is NA)")
+    return L
+
+
 def format_digest(s) -> str:
     """Fixed key order, KEY: k=v, enums uppercase, units suffixed. Absent is NA, never blank."""
     m, f, c, q, se, i, z, r = s["mode"], s["feed"], s["contract"], s["quote"], s["session"], s["ind"], s["size"], s["risk"]
@@ -941,6 +956,7 @@ def format_digest(s) -> str:
          f"MODE: engine={'UNKNOWN_ORDER' if m.get('unknown_order') else 'HALTED' if m['halt'] else 'READY'} trading={'ON' if m['trading'] else 'OFF'} "
          f"mcp_place={'ON' if m['mcp_place'] else 'OFF'} account={m['account_kind']} bracket={m['bracket_mode']}",
          f"FEED: market={f['market']} user={f['user']} seeded={_f(f['seeded'])} market_age_s={_f(f['market_age_s'])}",
+         *_tape_lines(f.get("tape")),
          f"CONTRACT: root={_f(c['root'])} tick={_f(c['tick'])} tickval={_f(c['tick_value'])} active={_f(c['active'])}",
          f"QUOTE: last={_f(q['last'])} bid={_f(q['bid'])} ask={_f(q['ask'])} age_s={_f(q['age_s'])}"]
     if q["last"] is not None and se["vwap"] is not None:

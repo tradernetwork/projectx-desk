@@ -29,6 +29,7 @@ from projectx_desk import grades as px_grades
 from projectx_desk import indicators as px_ind
 from projectx_desk import respect as px_respect
 from projectx_desk import feed as px_feed
+from projectx_desk import tapewatch as px_tapewatch
 from projectx_desk import flow as px_flow
 from projectx_desk import tradeday as px_tradeday
 from projectx_desk import lock as px_lock
@@ -167,11 +168,12 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             app.state.tledger_task = asyncio.create_task(_tomorrow_ledger_loop(app)) if roots else None
             app.state.mapplan_task = asyncio.create_task(_mapplan_shadow_loop(app)) if roots else None
             app.state.journal_task = asyncio.create_task(_journal_loop(app)) if connect and not rec else None
+            app.state.tapewatch_task = asyncio.create_task(px_tapewatch.loop(app, _quiet)) if roots else None
             app.state.reseed_loop_task = asyncio.create_task(_reseed_loop(app)) if connect and not rec else None
             yield
             if app.state.rh is not None:
                 await app.state.rh.stop()
-            for name in ("bias_task", "tledger_task", "mapplan_task", "journal_task", "reseed_loop_task"):
+            for name in ("bias_task", "tledger_task", "mapplan_task", "journal_task", "reseed_loop_task", "tapewatch_task"):
                 if getattr(app.state, name, None) is not None:
                     getattr(app.state, name).cancel()
             if notifier_task is not None:
@@ -456,7 +458,8 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             "quiet": _quiet(request.app),
             "feed": {"market_up": st.market.up, "user_up": st.user.up,
                      "market_age_s": st.market.feed_age_s(), "user_age_s": st.user.feed_age_s(),
-                     "recorder": st.recorder.status if st.recorder is not None else "off"},
+                     "recorder": st.recorder.status if st.recorder is not None else "off",
+                     "tape": px_tapewatch.health(request.app)},
             "seeded": {"positions": live.positions_seeded, "trades": live.trades_seeded},
             "account": {"can_trade": live.account.get("canTrade")} if stream else
                        {"can_trade": live.account.get("canTrade"), "simulated": live.account.get("simulated")},

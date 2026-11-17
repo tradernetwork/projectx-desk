@@ -98,3 +98,14 @@ def test_level_distances_use_the_live_quote_not_the_last_bar_close():
     out = _levels_vs_live(lv, {"lastPrice": 112.5})
     assert out[0]["dist_pt"] == 12.5 and out[0]["pos"] == "ABOVE" and lv[0]["dist_pt"] == -3.0   # input untouched
     assert _levels_vs_live(lv, None) == lv and _levels_vs_live(lv, {"lastPrice": None}) == lv
+
+
+def test_digest_tape_line_and_stale_alert():
+    ok = {"MES": {"age_s": 2.0, "stale": False}, "MGC": {"age_s": 900.0, "stale": True}, "MNQ": {"age_s": None, "stale": False}}
+    t = format_digest(state(feed={"market": "UP", "user": "UP", "market_age_s": 0.4, "user_age_s": 1.0, "seeded": True, "tape": ok}))
+    assert "TAPE: MES=2 MGC=900(STALE) MNQ=NONE" in t
+    assert "ALERT: TAPE_STALE roots=MGC" in t
+    quiet = {"MES": {"age_s": 2.0, "stale": False}}
+    t2 = format_digest(state(feed={"market": "UP", "user": "UP", "market_age_s": 0.4, "user_age_s": 1.0, "seeded": True, "tape": quiet}))
+    assert "TAPE: MES=2" in t2 and "TAPE_STALE" not in t2
+    assert "TAPE:" not in format_digest(state())            # no tracked roots: no line

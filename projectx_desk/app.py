@@ -691,6 +691,13 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             b = await body(request)
             return await _rh_do(request, lambda g: g.release(b.get("ticket_id")))
 
+        @app.post("/api/rh/discard")
+        async def rh_discard(request: Request):
+            """Drop an unplaced preview so its symbol frees up. Nothing is sent to Robinhood; a placed ticket is never touched."""
+            b = await body(request)
+            tid = b.get("ticket_id")
+            return {"ok": True, "discarded": bool(_rh_guard(request).discard(tid)) if isinstance(tid, str) else False}
+
         @app.post("/api/rh/reconcile")
         async def rh_reconcile(request: Request):
             """Look an UNKNOWN ticket up at Robinhood by its ref_id. Never resends, never clears the halt."""

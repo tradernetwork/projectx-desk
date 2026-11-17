@@ -83,7 +83,7 @@ def test_routes_serve_mcp_account_only():
 def test_rh_post_routes_are_exactly_the_phase_1_order_routes():
     app = build(rh=mock_runtime())
     posts = {r.path for r in app.routes if "/rh" in r.path and "POST" in r.methods}
-    assert posts == {"/api/rh/preview", "/api/rh/place", "/api/rh/cancel", "/api/rh/release", "/api/rh/reconcile", "/api/rh/halt/resolve"}
+    assert posts == {"/api/rh/preview", "/api/rh/place", "/api/rh/cancel", "/api/rh/release", "/api/rh/reconcile", "/api/rh/discard", "/api/rh/halt/resolve"}
     for r in app.routes:
         if "/rh" in r.path and r.path not in posts:
             assert set(r.methods) <= {"GET", "HEAD"}, r.path

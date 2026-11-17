@@ -14,7 +14,7 @@ from tests.test_rh_app import build
 from tests.test_rh_wiring import env_for, mock_rt
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-RH_POSTS = {"/api/rh/preview", "/api/rh/place", "/api/rh/cancel", "/api/rh/release", "/api/rh/reconcile", "/api/rh/halt/resolve"}
+RH_POSTS = {"/api/rh/preview", "/api/rh/place", "/api/rh/cancel", "/api/rh/release", "/api/rh/reconcile", "/api/rh/discard", "/api/rh/halt/resolve"}
 INTENT = {"symbol": "DDD", "side": "buy", "qty": 2, "limit_price": 101.25}
 
 
@@ -208,3 +208,18 @@ def test_reconcile_finds_an_unknown_ticket_and_never_clears_the_halt(env):
         out = r.post("/api/rh/reconcile", {"ticket_id": t["ticket_id"]}).json()
         assert out["ok"] is True and out["state"] == "unknown"       # the mock holds no such order: absence proves nothing
         assert r.guard.halted()
+
+
+def test_discard_frees_a_preview_and_touches_nothing_else(env):
+    c, _ = with_rig()
+    with c:
+        r = Rig(c)
+        assert r.post("/api/rh/discard", {"ticket_id": "nope"}).json() == {"ok": True, "discarded": False}
+        t = r.post("/api/rh/preview", INTENT).json()["ticket"]
+        assert r.post("/api/rh/preview", INTENT).json() == {"ok": False, "code": "symbol_busy"}
+        assert r.post("/api/rh/discard", {"ticket_id": t["ticket_id"]}).json() == {"ok": True, "discarded": True}
+        assert r.post("/api/rh/discard", {"ticket_id": t["ticket_id"]}).json() == {"ok": True, "discarded": False}
+        assert r.post("/api/rh/preview", INTENT).json()["ok"] is True
+        t2 = r.post("/api/rh/preview", {**INTENT, "symbol": "EEE"}).json()["ticket"]
+        r.post("/api/rh/place", {"ticket_id": t2["ticket_id"], "confirm_hash": t2["hash8"]})
+        assert r.post("/api/rh/discard", {"ticket_id": t2["ticket_id"]}).json() == {"ok": True, "discarded": False}   # a placed ticket is never discarded

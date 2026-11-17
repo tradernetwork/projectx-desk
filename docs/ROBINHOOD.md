@@ -90,6 +90,11 @@ setting reads ON at the commit point, so the final tap is yours in the Robinhood
 A reply that is not clearly `awaiting_approval` halts Robinhood (`live_order`); a transport error after the send is UNKNOWN
 (`place_unknown`), halts, and is never resent. Only a human clears the halt.
 
+After a place the ticket is `awaiting_approval`. `Guard.track()` polls Robinhood's approvals and orders every 15 s (backing
+off to 60 s on errors) and moves it to `approved`, `declined`, `expired` or `filled`; declined and expired free the symbol
+and the notional budget. An UNKNOWN ticket is looked up by its `ref_id` with `reconcile`; if nothing is found it stays
+UNKNOWN and the halt stays until you clear it. Tickets survive a restart (`PX_RH_STATE_FILE`).
+
 ## Tool drift
 
 ```

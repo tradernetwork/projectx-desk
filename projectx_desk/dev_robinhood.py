@@ -6,7 +6,7 @@ UNVERIFIED against the real service. Write tools are listed (so the capture and 
 compare) and, from phase 1, ACT on this in-memory mock only: `place_equity_order` records an order and a pending approval
 (approvals ON) or a working order (OFF), `cancel_equity_order` cancels it, and `review_equity_order` echoes a review with a
 `ref_id`. Nothing here can reach a real broker. Knobs on `app.state.mock`: `setting_on`, `setting_reply` ("missing"),
-`place_reply` (None, "drop" = order recorded then HTTP 500, "badjson", "no_state", "live" = approvals not honoured, "fail" =
+`place_reply` (None, "drop" = order recorded then HTTP 500, "lost" = HTTP 500 and nothing recorded, "badjson", "no_state", "live" = approvals not honoured, "fail" =
 tool error before anything is created), `quote_age_s`, `quote_ts` (False omits it), `quote_reply` ("empty"), `quote_clock`,
 `orders_extra`, `approvals_extra`, `place_calls` (arguments of every recorded place) and the `approve/decline/expire/fill`
 helpers that move a pending approval.
@@ -294,6 +294,8 @@ def make_app(accounts=None):
             return tool_error(rid, "order_not_found")
         if st.place_reply == "fail":
             return tool_error(rid, "rejected_by_mock")
+        if st.place_reply == "lost":
+            return PlainTextResponse("provider internal detail SECRET-TEXT", status_code=500)
         reply_state, order = st.record_place(args)
         if st.place_reply == "drop":
             return PlainTextResponse("provider internal detail SECRET-TEXT", status_code=500)

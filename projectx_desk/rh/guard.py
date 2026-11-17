@@ -45,6 +45,11 @@ DECLINED, EXPIRED, FILLED = "declined", "expired", "filled"
 ACTIVE = {PREVIEWED, SENDING, AWAITING, APPROVED, PLACED, UNKNOWN}
 WORKING = {"queued", "unconfirmed", "confirmed", "partially_filled", "pending", "unknown"}   # an unreadable status counts as working
 
+TRACK_S, TRACK_MAX_S = 15, 60
+KEEP_TERMINAL = 100
+FIELDS = ("ticket_id", "ref_id", "symbol", "side", "qty", "limit_price", "created", "expires_at", "hash8", "state",
+          "order_id", "approval_id", "updated")
+
 SAFE = re.compile(r"^[A-Za-z0-9_.\-]{1,64}$")
 AUDIT_KEYS = ("ts", "event", "ticket", "symbol", "side", "qty", "limit_price", "state", "code", "order_id")
 WARNINGS = ("no_paper_trading", "fill_unprotected", "approve_in_app")
@@ -124,6 +129,55 @@ class Guard:
         self.market_open = market_open or (lambda: market_open_now(datetime.fromtimestamp(self.clock(), timezone.utc)))
         self.tickets: dict[str, Ticket] = {}
         self._lock = asyncio.Lock()
+        self._interval, self._next_track = TRACK_S, 0.0
+        self._load()
+
+    # ---- persistence ------------------------------------------------------------------------------------------
+    def _save(self) -> bool:
+        """Atomic write of the ticket file (all live tickets plus the newest terminal ones). False when it could not be written."""
+        live = [t for t in self.tickets.values() if t.state in ACTIVE]
+        done = sorted((t for t in self.tickets.values() if t.state not in ACTIVE), key=lambda t: t.updated)[-KEEP_TERMINAL:]
+        self.tickets = {t.ticket_id: t for t in sorted(live + done, key=lambda t: t.created)}
+        rows = {t.ticket_id: {k: getattr(t, k) for k in FIELDS} for t in self.tickets.values()}
+        tmp = self.state_path.with_name(self.state_path.name + ".tmp")
+        try:
+            self.state_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(tmp, "w", encoding="utf-8") as f:
+                print(json.dumps({"tickets": rows}), file=f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.state_path)
+            return True
+        except OSError:
+            return False
+
+    def _load(self) -> None:
+        """Read the ticket file. A missing file is a fresh start. An unreadable file or ticket halts (`state_unreadable`): an
+        in-flight order could be hiding in it. A ticket caught mid-send (`sending`) is UNKNOWN and halts (`place_unknown`)."""
+        try:
+            raw = self.state_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return
+        except (OSError, ValueError):
+            self.trip_halt("state_unreadable")
+            return
+        try:
+            rows = json.loads(raw)["tickets"]
+            for tid, d in rows.items():
+                t = Ticket(**{k: d[k] for k in FIELDS})
+                ok = (isinstance(t.ticket_id, str) and t.ticket_id == tid and isinstance(t.ref_id, str)
+                      and views.symbol(t.symbol) and t.side in views.SIDES and isinstance(t.qty, int)
+                      and _num(t.limit_price) is not None and isinstance(t.state, str) and isinstance(t.hash8, str)
+                      and _num(t.created) is not None and _num(t.expires_at) is not None)
+                if not ok:
+                    raise ValueError("ticket")
+                if t.state == SENDING:
+                    t.state = UNKNOWN
+                    self.trip_halt("place_unknown")
+                self.tickets[tid] = t
+        except (ValueError, KeyError, TypeError, AttributeError):
+            self.tickets.clear()
+            self.trip_halt("state_unreadable")
 
     # ---- halt and audit ---------------------------------------------------------------------------------------
     def halted(self) -> bool:
@@ -287,6 +341,7 @@ class Guard:
         t = Ticket(ticket_id=secrets.token_hex(8), ref_id=ref, hash8=_hash8(it, ref), created=now,
                    expires_at=now + self.limits.ticket_ttl_s, updated=now, **it)
         self.tickets[t.ticket_id] = t
+        self._save()
         self._audit("preview", t, state=t.state)
         return t
 
@@ -296,6 +351,7 @@ class Guard:
         if t is None or t.state != PREVIEWED:
             return False
         t.state = DISCARDED
+        self._save()
         self._audit("discard", t, state=t.state)
         return True
 
@@ -303,11 +359,13 @@ class Guard:
     def _refuse_ticket(self, t: Ticket, r: Refused) -> Refused:
         if t.state == PREVIEWED:
             t.state = REFUSED                             # a refused place consumes the ticket: preview again
+            self._save()
         self._audit("refuse", t, state=t.state, code=r.code)
         return r
 
     def _unknown(self, t: Ticket, code: str) -> dict:
         t.state = UNKNOWN
+        self._save()
         self.trip_halt(code)
         self._audit("unknown", t, state=UNKNOWN, code=code)
         return {"outcome": "unknown", "state": t.state, "ticket": t.view()}
@@ -341,6 +399,9 @@ class Guard:
                 raise self._refuse_ticket(t, r) from None
             # ---- commit point: from here a crash or timeout means UNKNOWN, never "probably not sent"
             t.state, t.updated = SENDING, self.clock()
+            if not self._save():                          # the intent must be on disk BEFORE the send, or a crash hides an order
+                t.state = REFUSED
+                raise self._refuse_ticket(t, Refused("state_unwritable"))
             self._audit("place", t, state=SENDING)
             args = {"account_number": ev.account, "symbol": t.symbol, "side": t.side, "type": "limit",
                     "time_in_force": "gfd", "quantity": _fmt(t.qty), "limit_price": _fmt(t.limit_price), "ref_id": t.ref_id}
@@ -350,6 +411,7 @@ class Guard:
                 if e.sent:
                     return self._unknown(t, "place_unknown")
                 t.state, t.updated = REJECTED, self.clock()          # the server answered and did not act
+                self._save()
                 self._audit("reject", t, state=REJECTED, code=e.code if SAFE.match(e.code) else "rejected")
                 return {"outcome": "rejected", "state": t.state, "ticket": t.view()}
             except BaseException:                       # includes cancellation mid-send: the outcome is unknown
@@ -367,18 +429,113 @@ class Guard:
         t.order_id = views.ident(order.get("id")) or None
         t.approval_id = views.ident(order.get("approval_id") or data.get("approval_id")) or None
         t.updated = self.clock()
+        due = t.updated + TRACK_S                       # first look 15 s after the place, never later than an earlier schedule
+        self._next_track = due if self._next_track <= t.updated else min(self._next_track, due)
         if state == AWAITING:
             t.state = AWAITING
+            self._save()
             self._audit("ack", t, state=AWAITING, order_id=t.order_id)
             return {"outcome": "awaiting_approval", "state": t.state, "ticket": t.view()}
         if state in ("rejected", "failed", "cancelled", "canceled"):
             t.state = REJECTED
+            self._save()
             self._audit("reject", t, state=REJECTED, code="rejected")
             return {"outcome": "rejected", "state": t.state, "ticket": t.view()}
         t.state = PLACED                                # anything else may be a LIVE order: exposure, halt
+        self._save()
         self.trip_halt("live_order")
         self._audit("ack", t, state=PLACED, code="live_order", order_id=t.order_id)
         return {"outcome": "placed", "state": t.state, "ticket": t.view()}
+
+    # ---- approvals: track and reconcile (read-only; nothing here can send a write) -----------------------------
+    @staticmethod
+    def _match(t: Ticket, orders, approvals):
+        o = next((x for x in orders if x.get("ref_id") == t.ref_id), None) or \
+            next((x for x in orders if t.order_id and x.get("id") == t.order_id), None)
+        a = next((x for x in approvals if x.get("ref_id") == t.ref_id), None) or \
+            next((x for x in approvals if t.approval_id and x.get("id") == t.approval_id), None)
+        return o, a
+
+    @staticmethod
+    def _resolve(o, a, unknown: bool) -> Optional[str]:
+        """The state the broker's rows say a ticket is in, or None when they say nothing about it."""
+        os_, as_ = (o or {}).get("status"), (a or {}).get("status")
+        if os_ == FILLED:
+            return FILLED
+        if os_ in ("cancelled", "canceled", "rejected", "failed"):
+            return EXPIRED if as_ == EXPIRED else DECLINED
+        if os_ == "expired":
+            return EXPIRED
+        if as_ == "pending":
+            return AWAITING
+        if as_ in (APPROVED, DECLINED, EXPIRED):
+            return as_
+        if o is not None and os_ in WORKING and as_ is None:
+            return PLACED if unknown else APPROVED          # live with no approval on record: after an UNKNOWN that is exposure
+        return None
+
+    async def _read_rows(self):
+        with self.reader.cycle():
+            return await self.reader.orders(), await self.reader.approvals()
+
+    async def track(self) -> bool:
+        """One tick of the app's once-a-second loop. While any ticket is `awaiting_approval` or `approved`, read approvals and
+        orders every 15 s (doubling to 60 s while reads fail) and move tickets to approved, declined, expired or filled.
+        Declined and expired free their symbol and notional. True when it read, False when it did nothing or the read failed."""
+        watched = [t for t in self.tickets.values() if t.state in (AWAITING, APPROVED)]
+        now = self.clock()
+        if not watched:
+            self._interval, self._next_track = TRACK_S, 0.0
+            return False
+        if now < self._next_track:
+            return False
+        try:
+            orders, approvals = await self._read_rows()
+        except (McpError, Unknown):
+            self._interval = min(self._interval * 2, TRACK_MAX_S)
+            self._next_track = now + self._interval
+            return False
+        self._interval, self._next_track = TRACK_S, now + TRACK_S
+        changed = False
+        for t in watched:
+            o, a = self._match(t, orders, approvals)
+            new = self._resolve(o, a, unknown=False)
+            if o and o.get("id") and not t.order_id:
+                t.order_id = views.ident(o["id"]) or None
+            if a and a.get("id") and not t.approval_id:
+                t.approval_id = views.ident(a["id"]) or None
+            if new and new != t.state:
+                t.state, t.updated = new, now
+                changed = True
+                self._audit("state", t, state=new)
+        if changed:
+            self._save()
+        return True
+
+    async def reconcile(self, ticket_id: str) -> dict:
+        """Look an UNKNOWN ticket up by its ref_id (orders, then approvals). Found: the ticket takes the state the rows show.
+        Not found or unreadable: it stays UNKNOWN (absence proves nothing). Never resends and never clears the halt."""
+        t = self.tickets.get(ticket_id) if isinstance(ticket_id, str) else None
+        if t is None:
+            raise Refused("ticket_unknown")
+        if t.state != UNKNOWN:
+            return {"state": t.state, "ticket": t.view()}
+        try:
+            orders, approvals = await self._read_rows()
+        except (McpError, Unknown):
+            self._audit("reconcile", t, state=UNKNOWN, code="read_failed")
+            return {"state": t.state, "ticket": t.view()}
+        o, a = self._match(t, orders, approvals)
+        new = self._resolve(o, a, unknown=True)
+        if new:
+            t.state, t.updated = new, self.clock()
+            if o and o.get("id"):
+                t.order_id = views.ident(o["id"]) or None
+            if a and a.get("id"):
+                t.approval_id = views.ident(a["id"]) or None
+            self._save()
+        self._audit("reconcile", t, state=t.state, code="found" if new else "not_found")
+        return {"state": t.state, "ticket": t.view()}
 
     def ticket_views(self) -> list:
         return [t.view() for t in self.tickets.values()]

@@ -23,6 +23,7 @@ DEFAULT_POLL_S = 30.0
 MIN_POLL_S = 10.0
 WORKING = {"queued", "unconfirmed", "confirmed", "partially_filled", "pending"}
 DOLLAR_KEYS = ("avg_price", "price")
+TICKET_DOLLARS = ("limit_price", "notional")
 SECTIONS = ("account", "positions", "orders", "approvals", "approval_setting", "pnl")
 
 
@@ -38,6 +39,11 @@ def poll_interval(env) -> float:
     if v != v or v in (float("inf"), float("-inf")):
         return DEFAULT_POLL_S
     return max(v, MIN_POLL_S)
+
+
+def _public(rows):
+    """Rows as the desk shows them: the guard's `ref_id` (an idempotency id) stays inside the reader and the guard."""
+    return None if rows is None else [{k: v for k, v in r.items() if k != "ref_id"} for r in rows]
 
 
 def _strip_dollars(rows):
@@ -56,6 +62,7 @@ class RhState:
         self.reset()
 
     def reset(self):
+        self.guard = getattr(self, "guard", None)
         self.polled = False
         self.as_of = None
         self.error = None
@@ -69,18 +76,29 @@ class RhState:
         orders, appr = self.data.get("orders") or [], self.data.get("approvals") or []
         return not any(o.get("status") in WORKING for o in orders) and not any(a.get("status") == "pending" for a in appr)
 
+    def _guard_block(self, stream) -> dict:
+        """`tickets` (safe views) and `halt` (a fixed word or None) when the Robinhood guard is attached."""
+        g = self.guard
+        if g is None:
+            return {}
+        tickets = g.ticket_views()
+        if stream:                                   # prices and notionals never reach a stream-safe view
+            tickets = [{k: v for k, v in t.items() if k not in TICKET_DOLLARS} for t in tickets]
+        return {"tickets": tickets, "halt": g.halt_cause()}
+
     def snapshot(self, stream=False) -> dict:
         if not self.polled:
-            return {"enabled": True, "connected": False}
+            return {"enabled": True, "connected": False, **self._guard_block(stream)}
         d = self.data
         unknown = [k for k in SECTIONS if d[k] is None]
-        pos, ords = d["positions"], d["orders"]
+        pos, ords, appr = d["positions"], _public(d["orders"]), _public(d["approvals"])
         out = {"enabled": True, "connected": self.error != "unauthorized", "ok": not unknown and self.error is None,
                "as_of": self.as_of, "unknown": unknown, "stream": bool(stream), "account": d["account"],
-               "positions": pos, "orders": ords, "approvals": d["approvals"], "approval_setting": d["approval_setting"],
+               "positions": pos, "orders": ords, "approvals": appr, "approval_setting": d["approval_setting"],
                "pnl": d["pnl"]}
         if self.error:
             out["error"] = self.error
+        out.update(self._guard_block(stream))
         if stream:                                   # Robinhood money values never reach a stream-safe view
             out["positions"], out["orders"] = _strip_dollars(pos), _strip_dollars(ords)
             out["pnl"] = None
@@ -108,6 +126,10 @@ class Runtime:
         self._market_quiet = market_quiet or px_tradeday.market_quiet
         self._closer = closer
         self._task = None
+
+    def attach_guard(self, guard) -> None:
+        """Phase 1: show the guard's ticket views and halt word in the snapshot. Read-only; the state never calls the guard's writers."""
+        self.state.guard = guard
 
     def quiet(self) -> bool:
         return bool(self._market_quiet()) and self.state.flat()

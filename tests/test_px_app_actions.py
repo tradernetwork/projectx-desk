@@ -20,7 +20,7 @@ LLM_POSTS = {"/api/llm/config", "/api/llm/clear", "/api/llm/test", "/api/llm/log
 # Robinhood order routes (phase 1, tests/test_rh_routes.py): registered only when PX_RH is on and never in record-only, so the default
 # desk (PX_RH unset) keeps the exact set above. Deliberately listed here so adding one is a conscious edit.
 RH_POSTS = {"/api/rh/preview", "/api/rh/place", "/api/rh/cancel", "/api/rh/release", "/api/rh/reconcile", "/api/rh/discard", "/api/rh/halt/resolve"}
-CHAT_POSTS = {"/api/chat"}                    # the relay to the read-only desk agent (chat.py); tests/test_px_chat.py covers it
+CHAT_POSTS = {"/api/chat", "/api/ag-ui"}                    # the relay to the read-only desk agent (chat.py); tests/test_px_chat.py covers it
 
 
 def make_app(tmp_path, **over):

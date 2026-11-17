@@ -36,6 +36,7 @@ from projectx_desk import lock as px_lock
 from projectx_desk import mcp as px_mcp
 from projectx_desk import net as px_net
 from projectx_desk import notify as px_notify
+from projectx_desk import agui as px_agui
 from projectx_desk import chat as px_chat
 from projectx_desk import llm_chat as px_llm_chat
 from projectx_desk import llm_config as px_llm_cfg
@@ -828,6 +829,38 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             return await chat_of(request.app).ask_full(b.get("prompt"), b.get("images"), digest)
         except px_chat.ChatError as e:
             raise HTTPException(e.status, e.code)
+
+    @app.post("/api/ag-ui")
+    async def ag_ui_run(request: Request):
+        """The Ask box as an AG-UI event stream (text subset, agui.py). Same gate, same prompt rules, same busy/429 as /api/chat."""
+        try:
+            if int(request.headers.get("content-length") or 0) > px_agui.MAX_BODY:
+                raise HTTPException(413, "too big")
+        except ValueError:
+            raise HTTPException(400, "bad length")
+        b = await body(request)
+        try:
+            run = px_agui.parse_run_input(b)
+        except px_agui.AguiError as e:
+            raise HTTPException(e.status, e.code)
+        digest = None
+        if px_llm_cfg.route() == "http":
+            try:
+                digest = px_digest.format_digest(await _ai(request, None, "long", px_digest.DEFAULT_RISK_PCT, 1.5, 1))
+            except Exception:
+                digest = None
+        try:
+            res = await chat_of(request.app).ask_full(run["prompt"], None, digest)
+            events = px_agui.run_events(run["threadId"], run["runId"], res)
+        except px_chat.ChatError as e:
+            if e.status == 429:
+                raise HTTPException(429, e.code)
+            events = px_agui.error_events(run["threadId"], run["runId"], e.code)
+
+        async def gen():
+            for ev in events:
+                yield px_agui.sse(ev)
+        return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
     # ---- Ask box provider: choice, test, OpenRouter sign-in. The key is never returned by any of these ----
 

@@ -94,6 +94,21 @@ a sign-in button; on a headless desk (venus) the callback cannot arrive, so past
 reads like advice) and grounded (numbers not in the digest) as soft flags that never block a reply. Env: `PX_LLM_CONFIG`,
 `PX_LLM_KEY` (headless override, hosted providers only), `PX_LLM_EXPERIMENTAL=1` (shows the Hermes CLI card).
 
+## Talking to the Ask box over AG-UI
+
+`POST /api/ag-ui` exposes the same Ask box as an [AG-UI](https://docs.ag-ui.com) event stream (`text/event-stream`, one
+`data: <json>` frame per event). It is a TEXT-ONLY subset: `RUN_STARTED`, `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT` (the reply in
+chunks of about 80 characters), `TEXT_MESSAGE_END`, then `RUN_FINISHED`, or `RUN_ERROR` with a fixed `code` (never provider text).
+The lint and ungrounded soft flags ride in one `CUSTOM` event named `px.reply_flags`. There are no tool calls and no state sync.
+
+The body is a RunAgentInput, but only `threadId`, `runId` and `messages` (role `user` or `assistant`, string `content`) are read.
+The last user message is the prompt, exactly as `/api/chat` takes it; `tools`, `state`, `context` and `forwardedProps` are ignored and
+never forwarded. Limits: 64 KB, 50 messages, 2000 characters. A busy box is HTTP 429. Not registered in `PX_RECORD_ONLY`.
+
+Same Origin + JSON + CSRF gate as every desk POST (`GET /api/csrf`, header `x-px-csrf`). A standalone AG-UI client such as a
+stock `HttpAgent` cannot send that header on its own, so this works from the desk's own page and from clients that can set it;
+it is not a drop-in endpoint for arbitrary AG-UI clients. Code: `projectx_desk/agui.py`, `tests/test_px_agui.py`.
+
 ## Reading the digest
 
 One idea per line, fixed key order, `KEY: k=v`, enums uppercase, units suffixed (`pt` points, `t` ticks), `NA` for unknown.

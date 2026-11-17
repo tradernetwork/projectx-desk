@@ -2,7 +2,8 @@
 
 `Runtime` owns a `Reader` and an `RhState`. `poll_once` makes NO call when the token file is missing (login is a later
 task) or when the market is quiet (Fri 16:05 CT to Sun 16:55 CT) and the last snapshot shows no working order and no
-pending approval. A section that could not be read is None (UNKNOWN), never an empty list. A failed read leaves only a
+pending approval AND every section of the last snapshot was read (a missing snapshot or an unknown section keeps
+polling). A section that could not be read is None (UNKNOWN), never an empty list. A failed read leaves only a
 fixed error code. `PX_RH=0` (the default) means `from_env` returns None and nothing is built.
 """
 from __future__ import annotations
@@ -61,7 +62,10 @@ class RhState:
         self.data = {k: None for k in SECTIONS}
 
     def flat(self) -> bool:
-        """No known working order and no known pending approval. Unknown sections are ignored (see module doc)."""
+        """Provably flat: a snapshot exists, every section was read, and there is no working order or pending approval.
+        A missing snapshot or any unknown section is NOT flat (anything unknown or exposed is not quiet)."""
+        if not self.polled or self.error is not None or any(self.data.get(k) is None for k in SECTIONS):
+            return False
         orders, appr = self.data.get("orders") or [], self.data.get("approvals") or []
         return not any(o.get("status") in WORKING for o in orders) and not any(a.get("status") == "pending" for a in appr)
 

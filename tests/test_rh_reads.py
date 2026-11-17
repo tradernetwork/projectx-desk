@@ -200,11 +200,39 @@ async def test_disabled_and_no_token_make_no_request():
     assert t.n == 0
 
 
-async def test_weekend_quiet_makes_no_request_when_flat():
-    t = CountingTransport()
-    c = Client("http://127.0.0.1/mcp", Provider(dev_robinhood.make_app().state.mock), transport=t)
-    rt = rh_state.Runtime(reads.Reader(c), token_present=lambda: True, market_quiet=lambda: True)
-    assert await rt.poll_once() is False and t.n == 0
+async def test_weekend_boot_with_token_and_no_snapshot_polls():
+    _, _, spy = make()
+    rt = runtime(spy, market_quiet=lambda: True)
+    assert await rt.poll_once() is True and len(spy.seen) > 0      # no snapshot yet: unknown is not quiet
+
+
+async def test_weekend_quiet_makes_no_request_when_provably_flat():
+    _, st, spy = make()
+    open_mkt = [False]
+    rt = runtime(spy, market_quiet=lambda: open_mkt[0])
+    await rt.poll_once()
+    rt.state.data["orders"], rt.state.data["approvals"] = [], []   # a fully read, flat snapshot
+    open_mkt[0] = True
+    n = len(spy.seen)
+    assert await rt.poll_once() is False and len(spy.seen) == n
+
+
+async def test_weekend_unknown_section_keeps_polling():
+    _, _, spy = make()
+    open_mkt = [False]
+    rt = runtime(spy, market_quiet=lambda: open_mkt[0])
+    await rt.poll_once()
+    rt.state.data["orders"], rt.state.data["approvals"], rt.state.data["pnl"] = [], [], None
+    open_mkt[0] = True
+    n = len(spy.seen)
+    assert await rt.poll_once() is True and len(spy.seen) > n
+
+
+async def test_weekend_failed_poll_keeps_polling():
+    _, _, spy = make([{"account_number": "A1", "agentic_allowed": True}, {"account_number": "A2", "agentic_allowed": True}])
+    rt = runtime(spy, market_quiet=lambda: True)
+    assert await rt.poll_once() is True
+    assert await rt.poll_once() is True
 
 
 async def test_weekend_still_polls_when_not_flat():

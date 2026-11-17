@@ -294,3 +294,24 @@ async def test_failed_resolution_in_a_poll_calls_no_data_tool():
     await rt.poll_once()
     assert [t for t, _ in spy.seen] == ["get_accounts"]
     assert rt.state.snapshot()["error"] == "account_unknown"
+
+
+async def test_quote_freshness_uses_the_newest_venue_timestamp_and_none_when_absent():
+    """The live quote (2026-11-17 capture) has venue_bid_time, venue_ask_time and venue_last_trade_time and no updated_at."""
+    from projectx_desk.rh import reads as rh_reads
+
+    class FakeClient:
+        def __init__(self, q):
+            self.q = q
+
+        async def call(self, tool, args):
+            return {"results": [{"quote": self.q}]}
+
+    base = {"symbol": "SPY", "bid_price": "1.00", "ask_price": "1.02", "last_trade_price": "1.01"}
+    r = rh_reads.Reader(FakeClient({**base, "venue_bid_time": "2026-11-17T15:00:00Z", "venue_ask_time": "2026-11-17T15:00:05Z",
+                                    "venue_last_trade_time": "2026-11-17T14:59:00Z"}))
+    q = await r.quote("SPY")
+    assert q["updated_at"] == 1794927605.0 and q["bid"] == 1.0
+    assert (await rh_reads.Reader(FakeClient(base)).quote("SPY"))["updated_at"] is None
+    bad = {**base, "venue_bid_time": "garbage", "venue_ask_time": None}
+    assert (await rh_reads.Reader(FakeClient(bad)).quote("SPY"))["updated_at"] is None

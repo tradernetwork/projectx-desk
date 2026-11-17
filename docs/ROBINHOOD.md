@@ -140,6 +140,27 @@ The Ask box agent cannot read `data/rh_*` or the Robinhood halt file, and cannot
 Both are the offline mock (`./run_dev.sh`) with invented symbols (AAA, BBB, CCC); no real account was involved. `python scripts/screenshots.py`
 (offline mock only, needs Playwright) also has a Robinhood scene for regenerating them.
 
+## Verified against the live Trading MCP (2026-11-17)
+
+Signed in with this desk's own OAuth code (`scripts/rh_capture.py`, localhost) and read the real server. Checked:
+
+- **Login works** through this repo's Python port: dynamic client registration, PKCE with a loopback redirect, token saved at mode 0600.
+- **96 tools** listed (`tests/fixtures/rh/tools_live_2026-11-17.json`, names and schema structure only). All 11 read tools the desk calls exist with the
+  inputs it sends. Every non-`get_` tool is pinned as a write (`test_every_live_rh_write_tool_is_pinned`), so a new tool breaks the test until someone decides.
+- **Read shapes** (checked with `scripts/rh_shapes.py`, which prints types and never values): `get_accounts` returns `{accounts: [...]}` with an
+  `agentic_allowed` boolean; positions, orders and approvals come back as `{positions|orders|approvals: [...]}`; `get_trade_approval_setting`
+  returns `{setting: {human_must_approve_trades: bool}}`; `get_equity_quotes` has `venue_bid_time`, `venue_ask_time` and `venue_last_trade_time` and
+  no `updated_at`. The desk's reader and one full poll run clean against the live account (positions, orders and approvals empty on that account).
+- **Bug the live check found:** the guard measured quote age from an `updated_at` field that the real quote does not have, so every order would have
+  been refused `quote_stale`. It now uses the newest of the three venue times (fixed, tested, mock matches the live shape).
+- **The agent-enabled account had `human_must_approve_trades: false`** (approvals OFF) when checked. The guard refuses with `approvals_off`, which is the
+  intended brake: turn the setting on in the Robinhood app before any order can leave this desk.
+
+Still unverified (nothing has been sent): the reply shapes of `review_equity_order`, `place_equity_order` and `cancel_equity_order` (the tool text says
+`review` returns `customer_approval_required` and `place` takes an optional `ref_id`), whether Robinhood echoes that `ref_id` on orders and approvals,
+the shape of a non-empty approvals list, how long a pending approval lives, and whether a fixed callback port (`PX_RH_CALLBACK_PORT`) is accepted for
+the headless `ssh -L` route.
+
 ## Tool drift
 
 ```

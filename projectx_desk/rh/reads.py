@@ -69,17 +69,22 @@ class Reader:
         return number
 
     async def quote(self, symbol):
-        """{bid, ask, last, updated_at} for one symbol; a number or timestamp that is missing or bad is None. updated_at is
-        epoch seconds (UNVERIFIED field name: `updated_at`). An unreadable or empty reply is None."""
+        """{bid, ask, last, updated_at} for one symbol; a number or timestamp that is missing or bad is None. updated_at is epoch
+        seconds of the NEWEST of venue_bid_time, venue_ask_time and venue_last_trade_time (the live quote has no `updated_at`; checked
+        against the real Trading MCP 2026-11-17), so a quote whose bid and ask have not moved reads as old. An unreadable or empty
+        reply is None."""
         data = await self.client.call("get_equity_quotes", {"symbols": [symbol]})
         for row in _items(data, "results"):
             q = row.get("quote") if isinstance(row, dict) else None
             if isinstance(q, dict) and views.symbol(q.get("symbol")) == symbol:
-                ts = None
-                try:
-                    ts = px_tradeday.parse_ts(q["updated_at"]).timestamp() if q.get("updated_at") else None
-                except (ValueError, TypeError, OverflowError):
-                    ts = None
+                stamps = []
+                for k in ("venue_bid_time", "venue_ask_time", "venue_last_trade_time", "updated_at"):
+                    try:
+                        if q.get(k):
+                            stamps.append(px_tradeday.parse_ts(q[k]).timestamp())
+                    except (ValueError, TypeError, OverflowError):
+                        pass
+                ts = max(stamps) if stamps else None
                 return {"bid": views.num(q.get("bid_price")), "ask": views.num(q.get("ask_price")),
                         "last": views.num(q.get("last_trade_price")), "updated_at": ts}
         return None

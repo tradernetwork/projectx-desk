@@ -110,10 +110,11 @@ def _tool_payload(name, args, accounts, st=None):
         rows = []
         for sym in (args.get("symbols") or []):
             q = {"symbol": sym, "last_trade_price": "101.25", "bid_price": "101.20", "ask_price": "101.30",
-                 "previous_close": "100.00"}
-            if st is None or st.quote_ts:
-                q["updated_at"] = datetime.fromtimestamp((st.quote_clock() if st else time.time())
-                                                         - (st.quote_age_s if st else 0), timezone.utc).isoformat()
+                 "previous_close": "100.00", "has_traded": True, "state": "active"}
+            if st is None or st.quote_ts:       # the live shape (2026-11-17 capture) has venue_*_time fields and no updated_at
+                stamp = datetime.fromtimestamp((st.quote_clock() if st else time.time())
+                                               - (st.quote_age_s if st else 0), timezone.utc).isoformat()
+                q["venue_bid_time"] = q["venue_ask_time"] = q["venue_last_trade_time"] = stamp
             rows.append({"quote": q})
         return {"results": rows}
     if name == "get_option_chains":

@@ -1,4 +1,5 @@
 """AI provider table, CLI detection and URL guard (ported from the TraderMatrix Desktop test matrix). Pure, offline."""
+import sys
 import ast
 import os
 import pathlib
@@ -54,6 +55,7 @@ def test_scan_finds_by_exact_name_on_absolute_entries_and_runs_nothing(tmp_path)
     assert not marker.exists()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes and exec bits")
 def test_scan_skips_relative_empty_nonexec_and_directories(tmp_path):
     (tmp_path / "claude").write_text("x")           # not executable
     (tmp_path / "codex").mkdir()                    # a directory
@@ -75,6 +77,7 @@ def test_alias_binaries_are_found(tmp_path):
     assert [f["binary"] for f in lp.scan(str(tmp_path))] == ["clawdbot"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes and exec bits")
 def test_check_version_runs_only_the_named_entry_and_cleans_output(tmp_path):
     fake_bin(tmp_path, "claude")
     assert lp.check_version("claude", str(tmp_path)) == ("tool 1.2.3", None)
@@ -82,6 +85,7 @@ def test_check_version_runs_only_the_named_entry_and_cleans_output(tmp_path):
     assert lp.check_version("codex", str(tmp_path)) == (None, "not_installed")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes and exec bits")
 def test_check_version_timeout_and_bad_exit(tmp_path, monkeypatch):
     p = tmp_path / "claude"
     p.write_text("#!/bin/sh\nsleep 5\n")

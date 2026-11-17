@@ -1,4 +1,5 @@
 """Phase 0, task 3: the read-only Robinhood routes, the digest lines and the in-process mock."""
+import sys
 import asyncio
 import time
 
@@ -133,6 +134,7 @@ def test_digest_length_cap():
     assert len(lines) <= 8 and all(len(l) <= 400 for l in lines)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes and exec bits")
 async def test_dev_mock_in_process_and_tokens(tmp_path):
     from projectx_desk.rh.tokens import TokenStore
     f = tmp_path / "mock_tokens.json"

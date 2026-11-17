@@ -15,6 +15,7 @@ def png(w=64, h=64):
     return base64.b64encode(b"\x89PNG\r\n\x1a\n" + (13).to_bytes(4, "big") + b"IHDR" + w.to_bytes(4, "big") + h.to_bytes(4, "big") + b"0" * 9).decode()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes and exec bits")
 def test_saved_private_random_named_and_pruned(tmp_path, monkeypatch):
     monkeypatch.setattr(d, "UPLOADS", tmp_path / "up")
     (p,) = d.save_images([{"data": png(), "name": "../../etc/passwd", "ext": "sh"}])

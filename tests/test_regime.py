@@ -64,7 +64,7 @@ def test_js_twin_matches_python_on_random_bars():
     cases = [walk(n, s, drift=d, vol=v) for n, s, d, v in ((90, 1, 0.8, 0.5), (60, 2, -0.5, 1.0), (45, 3, 0.0, 1.2), (150, 4, 0.1, 0.7))]
     js = ("const R=require(process.argv[1]);const cases=JSON.parse(require('fs').readFileSync(0,'utf8'));"
           "console.log(JSON.stringify(cases.map(b=>R.tfRegime(b))))")
-    out = subprocess.run(["node", "-e", js, str(STATIC / "regime.js")], input=json.dumps(cases), capture_output=True, text=True, timeout=30)
+    out = subprocess.run(["node", "-e", js, str(STATIC / "regime.js")], input=json.dumps(cases), capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert out.returncode == 0, out.stderr
     for got, bars in zip(json.loads(out.stdout), cases):
         want = R.tf_regime(bars)
@@ -100,7 +100,7 @@ def test_bias_log_line_carries_the_regime_fields(monkeypatch):
 def _ribbon(bars):
     js = ("const R=require(process.argv[1]);const b=JSON.parse(require('fs').readFileSync(0,'utf8'));"
           "console.log(JSON.stringify(R.ribbonSlopes(b,[8,13,21,34,55,89],5,0.03)))")
-    out = subprocess.run(["node", "-e", js, str(STATIC / "regime.js")], input=json.dumps(bars), capture_output=True, text=True, timeout=30)
+    out = subprocess.run(["node", "-e", js, str(STATIC / "regime.js")], input=json.dumps(bars), capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)
 
@@ -124,7 +124,7 @@ def test_ribbon_slopes_read_up_down_flat_and_a_ribbon_that_is_only_starting_to_t
 
 
 def _node(js, payload):
-    out = subprocess.run(["node", "-e", js, str(STATIC / "regime.js")], input=json.dumps(payload), capture_output=True, text=True, timeout=30)
+    out = subprocess.run(["node", "-e", js, str(STATIC / "regime.js")], input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert out.returncode == 0, out.stderr
     return json.loads(out.stdout)
 

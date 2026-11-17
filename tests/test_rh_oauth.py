@@ -1,4 +1,5 @@
 """Phase 0, task 2: OAuth PKCE login and the rotating token store, end to end against the mock."""
+import sys
 import asyncio
 import json
 import logging
@@ -63,6 +64,7 @@ def seeded(st, store, clock, ttl=10):
     return t
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes and exec bits")
 async def test_full_login_end_to_end_then_the_client_uses_the_stored_token(tmp_path):
     app, st, tr, clock, store = rig(tmp_path)
     tasks = []
@@ -231,6 +233,7 @@ async def test_no_refresh_without_a_base_url(tmp_path):
         await s.access_token()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes and exec bits")
 async def test_file_mode_is_0600_even_over_a_loose_umask_and_no_temp_left(tmp_path):
     old = os.umask(0o000)
     try:

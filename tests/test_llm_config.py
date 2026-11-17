@@ -1,3 +1,4 @@
+import sys
 import json
 import os
 import stat
@@ -25,6 +26,7 @@ def test_unconfigured_when_missing(path):
     assert lc.route(path, {}) == "cli"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes and exec bits")
 def test_save_hosted_mode_atomic_and_no_key_in_view(path):
     v = lc.save({"provider": "openrouter", "key": KEY}, path, {})
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600

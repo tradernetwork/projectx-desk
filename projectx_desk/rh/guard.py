@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Callable, Optional
 from zoneinfo import ZoneInfo
 
+from .. import ROOT
 from . import views
 from .limits import RhLimits
 from .mcp import McpError, mint_write_cap
@@ -131,6 +132,17 @@ class Guard:
         self._lock = asyncio.Lock()
         self._interval, self._next_track = TRACK_S, 0.0
         self._load()
+
+    @classmethod
+    def from_env(cls, reader, client, environ=None, **kw) -> "Guard":
+        """The guard as the app builds it: limits from `PX_RH_TRADING` and the caps, files from `PX_RH_AUDIT` (data/rh_audit.jsonl),
+        `PX_RH_HALT_FILE` (data/RH_HALT) and `PX_RH_STATE_FILE` (data/rh_state.json). `kw` is for tests (clock, market_open)."""
+        env = os.environ if environ is None else environ
+
+        def path(key, default):
+            return (env.get(key) or "").strip() or str(ROOT / "data" / default)
+        return cls(reader, client, RhLimits.from_env(env), path("PX_RH_AUDIT", "rh_audit.jsonl"),
+                   path("PX_RH_HALT_FILE", "RH_HALT"), path("PX_RH_STATE_FILE", "rh_state.json"), **kw)
 
     # ---- persistence ------------------------------------------------------------------------------------------
     def _save(self) -> bool:

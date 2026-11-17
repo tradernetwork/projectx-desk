@@ -46,6 +46,7 @@ from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
 from projectx_desk import ticks as px_ticks
 from projectx_desk.rh import state as px_rh
+from projectx_desk.rh.guard import Guard as RhGuard
 from projectx_desk.guard import Guard, GuardError
 from projectx_desk.limits import Limits
 from projectx_desk.client import live_data, PXAuthError, PXClient, PXError, PXNotConfigured, PXRateLimited
@@ -137,12 +138,15 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         app.state.sse = 0
         app.state.boot_error = None
         app.state.rh = None
+        app.state.rh_guard = None
         if not rec:                           # Robinhood reads (phase 0): read-only, off unless PX_RH=1, never in a recorder
             try:
                 app.state.rh = rh if rh is not None else (await px_rh.open_from_env() if connect else None)
             except Exception as e:  # noqa: BLE001 - a bad PX_RH_URL must not stop the futures desk
                 print(f"Robinhood off: {getattr(e, 'code', type(e).__name__)}", flush=True)
             if app.state.rh is not None:
+                app.state.rh_guard = RhGuard.from_env(app.state.rh.reader, app.state.rh.reader.client)
+                app.state.rh.attach_guard(app.state.rh_guard)
                 app.state.rh.start()
         app.state.bars_cache = {}
         async with AsyncExitStack() as stack:
@@ -170,10 +174,11 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             app.state.journal_task = asyncio.create_task(_journal_loop(app)) if connect and not rec else None
             app.state.tapewatch_task = asyncio.create_task(px_tapewatch.loop(app, _quiet)) if roots else None
             app.state.reseed_loop_task = asyncio.create_task(_reseed_loop(app)) if connect and not rec else None
+            app.state.rh_track_task = asyncio.create_task(_rh_track_loop(app)) if app.state.rh_guard is not None else None
             yield
             if app.state.rh is not None:
                 await app.state.rh.stop()
-            for name in ("bias_task", "tledger_task", "mapplan_task", "journal_task", "reseed_loop_task", "tapewatch_task"):
+            for name in ("bias_task", "tledger_task", "mapplan_task", "journal_task", "reseed_loop_task", "tapewatch_task", "rh_track_task"):
                 if getattr(app.state, name, None) is not None:
                     getattr(app.state, name).cancel()
             if notifier_task is not None:
@@ -963,6 +968,24 @@ async def _deadline_loop(app):
             raise
         except Exception as e:  # noqa: BLE001 - the loop must survive anything
             print(f"deadline loop: {type(e).__name__}", flush=True)
+
+
+async def _rh_track_loop(app, sleep=asyncio.sleep):
+    """Once a second: let the Robinhood guard poll its approvals (`Guard.track` keeps its own 15 s cadence and backoff). Read-only.
+    An unexpected error here doubles an extra pause (2 s up to 60 s) so a broken loop cannot spin; it never ends the loop."""
+    pause = 0
+    while True:
+        try:
+            await sleep(1.0 + pause)
+            g = getattr(app.state, "rh_guard", None)
+            if g is not None:
+                await g.track()
+            pause = 0
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 - the loop must survive anything
+            pause = min(max(pause * 2, 2), 60)
+            print(f"rh track loop: {type(e).__name__}", flush=True)
 
 
 async def _indicators_eval(app, cid, tf, res=None):

@@ -72,9 +72,9 @@ anything, because a failed sign-in creates no exposure.
   `?stream=1` strips dollar values.
 - `RH:` lines in `/ai/digest` and an `rh` key in `/ai/state`: counts, symbols, quantities, approval counts. No account
   number, balance or provider text.
-- No POST route exists for Robinhood yet (phase 1 routes are a later task). `PX_RECORD_ONLY` registers none of this.
+- Phase 1 order routes (below), only when `PX_RH` is on. `PX_RECORD_ONLY` registers none of this, no POST included.
 
-## Phase 1: the order guard (`rh/guard.py`, no routes yet)
+## Phase 1: the order guard (`rh/guard.py`) and its routes
 
 Equities only, whole shares, limit orders, buy to open and sell to close up to the held quantity, one working or pending
 order per symbol. A fill is unprotected: the desk owns no stops. A write is sent only when Robinhood's trade-approvals
@@ -94,6 +94,22 @@ After a place the ticket is `awaiting_approval`. `Guard.track()` polls Robinhood
 off to 60 s on errors) and moves it to `approved`, `declined`, `expired` or `filled`; declined and expired free the symbol
 and the notional budget. An UNKNOWN ticket is looked up by its `ref_id` with `reconcile`; if nothing is found it stays
 UNKNOWN and the halt stays until you clear it. Tickets survive a restart (`PX_RH_STATE_FILE`).
+
+### Routes, cancel and release
+
+All POSTs use the desk's Origin + JSON + CSRF gate and answer `{"ok": false, "code": "<fixed word>"}` on a refusal, never
+provider text. `GET /api/rh/tickets` lists tickets and the halt word (`?stream=1` drops prices).
+
+| Route | What it does |
+|---|---|
+| `POST /api/rh/preview` | `{symbol, side, qty, limit_price}` returns a hashed ticket |
+| `POST /api/rh/place` | `{ticket_id, confirm_hash}`; the hash is required |
+| `POST /api/rh/cancel` | `{ticket_id}` cancels an awaiting, approved or placed order; works while halted; one attempt |
+| `POST /api/rh/release` | `{ticket_id}` human only: frees a ticket whose order and approval both vanished at Robinhood (it checks first) |
+| `POST /api/rh/halt/resolve` | human only: clears the Robinhood halt |
+
+Neither the desk's MCP, the Ask box nor the desk agent can reach any of them. A cancel that gets no clear answer is UNKNOWN
+and halts (`cancel_unknown`); look at the Robinhood app, then `reconcile` or `release`. Nothing resends a write.
 
 ## Tool drift
 

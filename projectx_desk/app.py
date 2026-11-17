@@ -46,7 +46,7 @@ from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
 from projectx_desk import ticks as px_ticks
 from projectx_desk.rh import state as px_rh
-from projectx_desk.rh.guard import Guard as RhGuard
+from projectx_desk.rh.guard import Guard as RhGuard, Refused as RhRefused
 from projectx_desk.guard import Guard, GuardError
 from projectx_desk.limits import Limits
 from projectx_desk.client import live_data, PXAuthError, PXClient, PXError, PXNotConfigured, PXRateLimited
@@ -646,6 +646,63 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         await body(request)
         n = request.app.state.guard.resolve_not_found()
         return {"resolved": n, "unreconciled": request.app.state.guard.unreconciled()}
+
+    # ---- Robinhood orders (phase 1): the same gate as every POST, fixed codes only. Present only when the runtime and its guard
+    # exist (PX_RH on) and never in a recorder. `release` and `halt/resolve` are human-only: no MCP tool, no chat path. ----
+    if not rec and (rh is not None or _truthy(os.environ.get("PX_RH"))):
+        def _rh_guard(request: Request):
+            g = getattr(request.app.state, "rh_guard", None)
+            if g is None:
+                raise HTTPException(503, "robinhood off")
+            return g
+
+        async def _rh_do(request: Request, fn):
+            """Run a guard call; a Refused becomes {ok: false, code}: the code only, never the detail."""
+            try:
+                out = await fn(_rh_guard(request))
+            except RhRefused as e:
+                return {"ok": False, "code": e.code}
+            return {"ok": True, **out}
+
+        @app.post("/api/rh/preview")
+        async def rh_preview(request: Request):
+            b = await body(request)
+            return await _rh_do(request, lambda g: _rh_preview(g, b))
+
+        async def _rh_preview(g, b):
+            return {"ticket": (await g.preview(b)).view()}
+
+        @app.post("/api/rh/place")
+        async def rh_place(request: Request):
+            b = await body(request)
+            h = b.get("confirm_hash")
+            if not isinstance(h, str):                    # the hash is the trader's echo of what they saw: it is not optional
+                return {"ok": False, "code": "hash_mismatch"}
+            return await _rh_do(request, lambda g: g.place(b.get("ticket_id"), confirm_hash=h))
+
+        @app.post("/api/rh/cancel")
+        async def rh_cancel(request: Request):
+            b = await body(request)
+            return await _rh_do(request, lambda g: g.cancel(b.get("ticket_id")))
+
+        @app.post("/api/rh/release")
+        async def rh_release(request: Request):
+            """Human-only. Frees a ticket whose order and approval vanished at the broker. No MCP equivalent."""
+            b = await body(request)
+            return await _rh_do(request, lambda g: g.release(b.get("ticket_id")))
+
+        @app.post("/api/rh/halt/resolve")
+        async def rh_halt_resolve(request: Request):
+            """Human-only, like /api/halt/clear. There is deliberately no MCP equivalent."""
+            await body(request)
+            g = _rh_guard(request)
+            g.clear_halt()
+            return {"ok": True, "halted": g.halted()}
+
+        @app.get("/api/rh/tickets")
+        async def rh_tickets(request: Request, stream: int = 0):
+            r = getattr(request.app.state, "rh", None)
+            return {"enabled": False} if r is None else {"enabled": True, **r.state.guard_view(bool(stream))}
 
     # ---- phone alerts (Web Push): full desk only. The service worker, the key, and a handful of CSRF-gated POSTs ----
 

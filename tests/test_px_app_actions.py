@@ -17,6 +17,9 @@ EXPECTED_POSTS = {"/api/preview", "/api/readiness", "/api/place", "/api/flatten"
 # Phone-alert routes (Web Push): same Origin + JSON + CSRF gate, no money path. Covered in tests/test_px_push.py.
 PUSH_POSTS = {"/api/push/subscribe", "/api/push/prefs", "/api/push/unsubscribe", "/api/push/test"}
 LLM_POSTS = {"/api/llm/config", "/api/llm/clear", "/api/llm/test", "/api/llm/login/start"}   # the Ask box provider choice (llm_config.py); tests/test_px_llm_routes.py covers the gate
+# Robinhood order routes (phase 1, tests/test_rh_routes.py): registered only when PX_RH is on and never in record-only, so the default
+# desk (PX_RH unset) keeps the exact set above. Deliberately listed here so adding one is a conscious edit.
+RH_POSTS = {"/api/rh/preview", "/api/rh/place", "/api/rh/cancel", "/api/rh/release", "/api/rh/halt/resolve"}
 CHAT_POSTS = {"/api/chat"}                    # the relay to the read-only desk agent (chat.py); tests/test_px_chat.py covers it
 
 
@@ -51,6 +54,23 @@ def test_the_post_surface_is_exactly_the_expected_set_and_not_reachable_by_get(t
     with TestClient(app) as c:
         for p in EXPECTED_POSTS:
             assert c.get(p).status_code == 405
+
+
+def test_the_rh_posts_are_added_only_with_a_robinhood_runtime_and_never_in_record_only(tmp_path, monkeypatch):
+    from test_rh_wiring import mock_rt
+    for k in ("PX_RH", "PX_RECORD_ONLY"):
+        monkeypatch.delenv(k, raising=False)
+    fake = FakeClient()
+
+    def posts(**kw):
+        app = create_app(client=fake, market_hub=SignalRHub(fake, "market", url="ws://127.0.0.1:1/x"),
+                         user_hub=None if kw.get("record_only") else SignalRHub(fake, "user", url="ws://127.0.0.1:1/y"),
+                         allowed_hosts={"testserver"}, connect=False, **kw)
+        return {r.path for r in app.routes if "POST" in getattr(r, "methods", set())}
+    base = EXPECTED_POSTS | PUSH_POSTS | CHAT_POSTS | LLM_POSTS
+    assert posts() == base
+    assert posts(rh=mock_rt()[0]) == base | RH_POSTS
+    assert posts(rh=mock_rt()[0], record_only=True) == set()
 
 
 @pytest.mark.parametrize("path", sorted(EXPECTED_POSTS))

@@ -86,6 +86,10 @@ class RhState:
             tickets = [{k: v for k, v in t.items() if k not in TICKET_DOLLARS} for t in tickets]
         return {"tickets": tickets, "halt": g.halt_cause()}
 
+    def guard_view(self, stream=False) -> dict:
+        """Public face of `_guard_block` for the tickets route: `tickets` and `halt`, or {} with no guard attached."""
+        return self._guard_block(stream)
+
     def snapshot(self, stream=False) -> dict:
         if not self.polled:
             return {"enabled": True, "connected": False, **self._guard_block(stream)}

@@ -1,0 +1,32 @@
+/* Ask box provider picker (llmsetup.js). Scoped to the chat dock; hidden on stream like the rest of the Ask box. */
+.chat-gear{min-width:28px;padding:0 6px}
+.llm-route{padding:4px var(--pad);border-bottom:1px solid var(--border);font-size:var(--fs-xs);line-height:1.4}
+.llm-route-top{color:var(--cyan-ink)}
+.llm-route-note{color:var(--text-2);opacity:.75}
+.llm-panel{position:absolute;inset:0;z-index:2;overflow:auto;padding:var(--pad);background:var(--bg-card);display:flex;flex-direction:column;gap:8px;font-size:var(--fs-xs)}
+.llm-panel[hidden]{display:none}
+.llm-top{display:flex;align-items:center;gap:8px}
+.llm-note{color:var(--text-2);line-height:1.45;margin:0}
+.llm-note.dim{opacity:.7}
+.llm-note.bad,.llm-msg.bad,.llm-err{color:var(--amber-ink)}
+.llm-cards{display:flex;flex-direction:column;gap:6px}
+.llm-card{text-align:left;display:block;padding:7px 9px;background:var(--bg-app);border:1px solid var(--border);border-radius:var(--r-sm);color:inherit;cursor:pointer}
+.llm-card.on{border-color:var(--cyan-line)}
+.llm-card-t{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.llm-name{font-weight:600}
+.llm-blurb,.llm-price{color:var(--text-2);margin-top:2px}
+.llm-price{opacity:.7}
+.llm-pill{padding:0 7px;border-radius:9px;border:1px solid var(--cyan-line);color:var(--cyan-ink);font-size:.85em}
+.llm-pill.cur{border-color:var(--border);color:var(--text-2)}
+.llm-pill.warn{border-color:var(--amber-ink);color:var(--amber-ink)}
+.llm-form{display:flex;flex-direction:column;gap:8px;padding-top:4px;border-top:1px solid var(--border)}
+.llm-field{display:flex;flex-direction:column;gap:3px}
+.llm-lab{color:var(--text-2)}
+.llm-field input[type=text],.llm-field input[type=url],.llm-field input[type=password]{background:var(--bg-app);color:inherit;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 8px;font:inherit}
+.llm-check{display:flex;gap:6px;align-items:center}
+.llm-keystate{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.llm-btns{display:flex;gap:6px}
+.llm-login{display:flex;flex-direction:column;gap:4px}
+.llm-linkline{overflow-wrap:anywhere;user-select:all}
+.llm-link{color:var(--cyan-ink)}
+body.streaming .llm-panel,body.streaming .llm-route{display:none}

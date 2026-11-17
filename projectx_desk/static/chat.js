@@ -151,6 +151,10 @@
     return {x, y};
   }
   function home(){dock.style.left = dock.style.top = dock.style.right = dock.style.bottom = ''; lsSet(null)}
+  const gear = document.createElement('button');   // provider picker lives in llmsetup.js
+  gear.type = 'button'; gear.className = 'ghost chat-gear'; gear.textContent = '\u2699'; gear.title = 'Choose the AI for this box'; gear.setAttribute('aria-label', 'AI settings');
+  gear.onclick = () => {if(window.pxLlmSetup && window.pxLlmSetup.open) window.pxLlmSetup.open()};
+  head.insertBefore(gear, $('chat-clear'));
   head.style.cursor = 'move'; head.style.touchAction = 'none';
   head.addEventListener('pointerdown', (e) => {
     if(e.target.closest('button')) return;

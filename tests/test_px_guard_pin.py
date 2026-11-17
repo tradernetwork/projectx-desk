@@ -19,6 +19,17 @@ MONEY_ATTRS = {"place", "flatten", "cancel_order", "close_position", "move_stop"
 # anywhere else in the tree must not inherit an exemption.
 PKG = "projectx_desk"
 GUARD_FILE = f"{PKG}/guard.py"
+RH_GUARD_FILE = f"{PKG}/rh/guard.py"          # the second allowed writer (Robinhood, phase 1). It does not exist yet.
+GUARD_FILES = {GUARD_FILE, RH_GUARD_FILE}
+# Every Robinhood write tool name: a string constant with one of these (or any place_*/cancel_* *order* shape) outside a
+# guard module fails. Read tools (get_*) are never on the list. Watchlist, alert and scanner writes are listed by their
+# expected names (UNVERIFIED against the live tool list; scripts/rh_drift.py shows new tools so this list can grow).
+RH_WRITE_TOOLS = {"place_equity_order", "cancel_equity_order", "place_option_order", "cancel_option_order",
+                  "replace_equity_order", "replace_option_order", "exercise_option", "decline_trade_approval",
+                  "approve_trade_approval", "create_watchlist", "update_watchlist", "delete_watchlist",
+                  "add_to_watchlist", "remove_from_watchlist", "create_alert", "delete_alert", "save_scanner",
+                  "delete_scanner"}
+RH_WRITE_SHAPE = re.compile(r"\b(place|cancel|replace|modify)_[a-z_]*order\b", re.I)
 MONEY_ALLOWED_FILES = {f"{PKG}/app.py"}       # guard.py itself is exempt from every rule
 EXTRA_ALLOWED = {"arm_trail": {f"{PKG}/mcp.py"}}   # the MCP tool is the one other caller of arm_trail, gated by PX_MCP_TRAIL and the human-typed window
 
@@ -31,11 +42,11 @@ BANNED_ATTRS = {"__dict__", "__getattribute__", "_http"}        # reach around t
 TOKEN_ALLOWED_FILES = {f"{PKG}/client.py", f"{PKG}/hub.py"}              # only these may hold or mint the bearer token
 # Server-side mocks SERVE the endpoints and never call them. Exempt by name, and test_mock_is_server_only
 # proves they import no client code, so the exemption cannot quietly become a second order path.
-SERVER_SIDE_MOCKS = {f"{PKG}/dev_gateway.py"}
+SERVER_SIDE_MOCKS = {f"{PKG}/dev_gateway.py", f"{PKG}/dev_robinhood.py"}
 
 
 def violations(source: str, filename: str):
-    if filename == GUARD_FILE or filename in SERVER_SIDE_MOCKS:
+    if filename in GUARD_FILES or filename in SERVER_SIDE_MOCKS:
         return []
     out, tree = [], ast.parse(source)
     for node in ast.walk(tree):
@@ -43,6 +54,8 @@ def violations(source: str, filename: str):
             text = node.value.decode("utf-8", "ignore") if isinstance(node.value, bytes) else node.value
             if WRITE_ENDPOINT.search(text):
                 out.append(f"{filename}:{node.lineno} endpoint literal {text!r}")
+            if RH_WRITE_SHAPE.search(text) or any(re.search(rf"\b{t}\b", text) for t in RH_WRITE_TOOLS):
+                out.append(f"{filename}:{node.lineno} Robinhood write tool name in {text[:40]!r}")
         if isinstance(node, ast.Name) and node.id in GUARD_ONLY_NAMES | DYNAMIC_NAMES:
             out.append(f"{filename}:{node.lineno} uses {node.id}")
         if isinstance(node, ast.alias) and node.name in GUARD_ONLY_NAMES | DYNAMIC_NAMES:

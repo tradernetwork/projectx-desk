@@ -19,6 +19,10 @@ if [ -z "$PX_MCP_TOKEN" ]; then
 fi
 # The mock must never inherit the real desk's settings: no .env.projectx, no advisory feeds, its own tape file.
 unset PX_FEED_URL PX_FEED_KEY PX_GEX_KEY PX_GEX_URL TD_API_KEY PX_MLL_FLOOR PX_FLAT_BY
+# Robinhood demo: the desk starts the mock Robinhood MCP in-process on a free loopback port with a pre-issued token in
+# $D (never data/rh_tokens.json), so a fresh clone shows the Robinhood reads with no login. Read-only, no order path.
+unset PX_RH_URL PX_RH_CALLBACK_PORT
+export PX_RH=1 PX_RH_MOCK=1 PX_RH_DEMO=1 PX_RH_TOKEN_FILE="$D/rh_tokens.mock.json"
 export PX_WEEKEND_QUIET=0 PX_NO_ENV_FILE=1 PX_FLOW_FILE="$D/flow.json" PX_LOCK_FILE="$D/desk.lock" PX_GRADES_FILE="$D/grades.jsonl"   # own lock and log: a real desk on this box keeps its own
 export PROJECTX_API=http://127.0.0.1:$GWP PROJECTX_HUB_BASE=ws://127.0.0.1:$GWP/hubs \
   PROJECTX_USERNAME=dev PROJECTX_API_KEY=dev PX_ACCOUNT_ID=4242 PX_ACCOUNT_KIND=sim PX_BRACKET_MODE=position \
@@ -30,6 +34,7 @@ if ! curl -fs "http://127.0.0.1:$APPP/healthz" >/dev/null 2>&1; then
   echo "The desk did not start. Last lines of its log ($D/app.log):" >&2; tail -n 15 "$D/app.log" >&2; exit 1
 fi
 echo "desk: http://127.0.0.1:$APPP/?ai=1   (mock gateway, SIM account; PX_TRADING=1 applies to the mock only)"
+echo "robinhood: mock MCP in-process (DEMO data, read-only): curl http://127.0.0.1:$APPP/api/rh/state"
 echo "AI digest:  curl 'http://127.0.0.1:$APPP/ai/digest?contract=CON.F.US.MES.Z26&risk_pct=0.05'"
 if [ -f "$D/mcp.token" ]; then
   echo "MCP:        claude mcp add --transport http projectx http://127.0.0.1:$APPP/mcp/ --header \"Authorization: Bearer \$(cat $D/mcp.token)\""

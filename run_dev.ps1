@@ -36,10 +36,11 @@ try {
         [IO.File]::WriteAllText("$D\mcp.token", $env:PX_MCP_TOKEN)
     }
     # The mock must never inherit the real desk's settings: no .env.projectx, no advisory feeds, its own tape file.
-    foreach ($k in "PX_FEED_URL", "PX_FEED_KEY", "PX_GEX_KEY", "PX_GEX_URL", "TD_API_KEY", "PX_MLL_FLOOR", "PX_FLAT_BY") {
+    foreach ($k in "PX_FEED_URL", "PX_FEED_KEY", "PX_GEX_KEY", "PX_GEX_URL", "TD_API_KEY", "PX_MLL_FLOOR", "PX_FLAT_BY", "PX_RH_URL", "PX_RH_CALLBACK_PORT") {
         Remove-Item "Env:$k" -ErrorAction SilentlyContinue
     }
     $vars = @{
+        PX_RH = "1"; PX_RH_MOCK = "1"; PX_RH_DEMO = "1"; PX_RH_TOKEN_FILE = "$D\rh_tokens.mock.json"   # in-process mock Robinhood MCP, DEMO data, read-only
         PX_WEEKEND_QUIET = "0"; PX_NO_ENV_FILE = "1"; PX_FLOW_FILE = "$D\flow.json"; PX_LOCK_FILE = "$D\desk.lock"
         PX_GRADES_FILE = "$D\grades.jsonl"
         PROJECTX_API = "http://127.0.0.1:$GWP"; PROJECTX_HUB_BASE = "ws://127.0.0.1:$GWP/hubs"
@@ -63,6 +64,7 @@ try {
         exit 1
     }
     Write-Host "desk: http://127.0.0.1:$APPP/?ai=1   (mock gateway, SIM account; PX_TRADING=1 applies to the mock only)"
+    Write-Host "robinhood: mock MCP in-process (DEMO data, read-only): curl.exe http://127.0.0.1:$APPP/api/rh/state"
     Write-Host "AI digest:  curl.exe 'http://127.0.0.1:$APPP/ai/digest?contract=CON.F.US.MES.Z26&risk_pct=0.05'"
     if (Test-Path "$D\mcp.token") {
         Write-Host "MCP:        claude mcp add --transport http projectx http://127.0.0.1:$APPP/mcp/ --header `"Authorization: Bearer `$(Get-Content $D\mcp.token)`""

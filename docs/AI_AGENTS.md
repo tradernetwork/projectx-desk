@@ -81,6 +81,19 @@ plus navigate, snapshot, screenshot, console and network. Bash, Edit, Write, cli
 its answer is as fresh as the desk; the reply is plain text and is not streamed (about 40 s, the box shows a counter). It has
 no path to the guard: it cannot place, cancel, flatten or clear a halt, and it is not a second MCP.
 
+### No Claude subscription? Pick another AI
+
+The gear in the Ask box opens a provider picker (`static/llmsetup.js`, backed by `llm_providers.py`, `llm_config.py`, `llm_chat.py`).
+The desk detects what is on the computer (installed CLIs by name, Ollama, LM Studio; it runs nothing to do that) and offers
+OpenRouter, OpenAI, Venice, the Anthropic API, Ollama, LM Studio, any OpenAI-compatible endpoint, or the installed Claude.
+Only the installed Claude (via `deskagent.py`) can see the live page; an HTTP provider is text only: it gets fixed desk rules plus
+the stream-mode `/ai/digest` and answers from that, with no tools and no images. The key goes in a password box once, is stored in
+`data/llm_config.json` (mode 0600), is sealed to that provider and address, and is never shown or returned again. OpenRouter also has
+a sign-in button; on a headless desk (venus) the callback cannot arrive, so paste a key, or tunnel with
+`ssh -L PORT:localhost:PORT host` as in [ROBINHOOD.md](ROBINHOOD.md). Replies are redacted for secrets, and linted (wording that
+reads like advice) and grounded (numbers not in the digest) as soft flags that never block a reply. Env: `PX_LLM_CONFIG`,
+`PX_LLM_KEY` (headless override, hosted providers only), `PX_LLM_EXPERIMENTAL=1` (shows the Hermes CLI card).
+
 ## Reading the digest
 
 One idea per line, fixed key order, `KEY: k=v`, enums uppercase, units suffixed (`pt` points, `t` ticks), `NA` for unknown.

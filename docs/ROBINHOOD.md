@@ -133,9 +133,12 @@ The Ask box agent cannot read `data/rh_*` or the Robinhood halt file, and cannot
 
 ### Screenshots
 
-`python scripts/screenshots.py` (offline mock only) also writes `docs/img/ui-robinhood-panel.png` and `ui-robinhood-ticket.png` from the
-in-process mock broker with invented symbols. They are not committed until someone has looked at them: this repo's author could not
-render the panel on the machine it was built on.
+![Robinhood panel against the offline mock: DEMO banner, account line, positions, read-only option positions, working orders and a pending approval](img/ui-robinhood-demo.jpg)
+
+![The order ticket: the permanent warning (no paper trading, real money, a fill is unprotected, approve in the Robinhood app), the entry form and the ticket list](img/ui-robinhood-ticket.jpg)
+
+Both are the offline mock (`./run_dev.sh`) with invented symbols (AAA, BBB, CCC); no real account was involved. `python scripts/screenshots.py`
+(offline mock only, needs Playwright) also has a Robinhood scene for regenerating them.
 
 ## Tool drift
 

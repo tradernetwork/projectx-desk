@@ -139,6 +139,8 @@ It will not make you profitable. It stands between you and the leaks.
 | **Practice market** | A built-in mock ProjectX gateway with fills, resting stops, and switches that force timeouts, rejections and dropped feeds. |
 | **On camera** | Stream mode removes balance, P&L and risk dollars from the page. |
 | **AI-ready** | A plain-text digest and an MCP server for assistants. They can read and stage. Only you place. |
+| **The Ask box runs on any AI** | Not just a Claude subscription: a gear opens a picker that detects what is installed and offers OpenRouter, OpenAI, Venice, the Anthropic API, Ollama, LM Studio or your own endpoint. Text only, no tools, secrets redacted from questions and replies, wording that reads like advice flagged. [Details](docs/AI_AGENTS.md#no-claude-subscription-pick-another-ai) |
+| **Robinhood, for personal money** | A second broker next to the prop-firm one, in its own package with its own guard: read your positions, orders and option positions through Robinhood's official Trading MCP, and place whole-share limit orders only while Robinhood's trade-approvals setting is verified ON, so the last tap is yours in their app. Runs against a mock with no account (`./run_dev.sh` shows it). No paper trading exists at Robinhood and a fill carries no stop: read [docs/ROBINHOOD.md](docs/ROBINHOOD.md) first. |
 
 ## What it does not model
 
@@ -193,6 +195,19 @@ More in [known limitations](docs/LIMITATIONS.md).
 
 <sub>Screenshots are regenerated from the offline mock desk by <code>scripts/screenshots.py</code> (Playwright; see
 <code>requirements-screenshots.txt</code>). They never show a real account.</sub>
+
+## Robinhood (your own money, separate from the prop-firm path)
+
+<p align="center"><img src="docs/img/ui-robinhood-demo.jpg" alt="The Robinhood panel against the offline mock broker: DEMO banner, positions, option positions, working orders and a pending approval" width="900"></p>
+
+Phase 0 and 1 are built: a mock Robinhood MCP server, OAuth login with a rotating token store, read-only positions, orders and
+approvals (only the dedicated agent-enabled account, never the others), and an order guard that mirrors the ProjectX one: kill
+switches default off, caps that refuse when blank, a hashed single-use ticket, no replay of an ambiguous write, a separate halt
+and audit file. Only `projectx_desk/rh/guard.py` may send a Robinhood write, pinned by an AST test. The desk places nothing without
+Robinhood's own approval toggle verified ON, and the mock is the only thing the demo and the screenshots touch. Options are
+read-only for now, and the real tool shapes are unverified until a live capture (`scripts/rh_capture.py`).
+[Everything, including the headless login route: docs/ROBINHOOD.md](docs/ROBINHOOD.md). Design and plans:
+`docs/superpowers/`.
 
 ## Connect an AI assistant
 

@@ -23,12 +23,9 @@ RH_GUARD_FILE = f"{PKG}/rh/guard.py"          # the second allowed writer (Robin
 GUARD_FILES = {GUARD_FILE, RH_GUARD_FILE}
 # Every Robinhood write tool name: a string constant with one of these (or any place_*/cancel_* *order* shape) outside a
 # guard module fails. Read tools (get_*) are never on the list. Watchlist, alert and scanner writes are listed by their
-# expected names (UNVERIFIED against the live tool list; scripts/rh_drift.py shows new tools so this list can grow).
-RH_WRITE_TOOLS = {"place_equity_order", "cancel_equity_order", "review_equity_order", "place_option_order", "cancel_option_order",
-                  "replace_equity_order", "replace_option_order", "exercise_option", "decline_trade_approval",
-                  "approve_trade_approval", "create_watchlist", "update_watchlist", "delete_watchlist",
-                  "add_to_watchlist", "remove_from_watchlist", "create_alert", "delete_alert", "save_scanner",
-                  "delete_scanner"}
+# names. Checked against the live tool list captured 2026-11-17 (tests/fixtures/rh/tools_live_2026-11-17.json): every non-get tool in it
+# must be on this list (test_every_live_rh_write_tool_is_pinned), so a new Robinhood tool forces a decision here.
+RH_WRITE_TOOLS = {"place_equity_order", "cancel_equity_order", "review_equity_order", "place_option_order", "cancel_option_order", "replace_equity_order", "replace_option_order", "exercise_option", "cancel_option_exercise", "decline_trade_approval", "approve_trade_approval", "place_crypto_order", "cancel_crypto_order", "preview_crypto_order", "place_advanced_order", "cancel_advanced_order", "review_advanced_order", "review_option_order", "create_watchlist", "update_watchlist", "delete_watchlist", "add_to_watchlist", "remove_from_watchlist", "add_option_to_watchlist", "remove_option_from_watchlist", "follow_watchlist", "unfollow_watchlist", "create_alert", "update_alert", "delete_alert", "mark_alerts_read", "create_scan", "update_scan_config", "update_scan_filters", "run_scan", "preview_scan", "add_legend_indicator", "update_legend_indicator", "remove_legend_indicator", "set_legend_chart_settings", "save_scanner", "delete_scanner"}
 RH_WRITE_SHAPE = re.compile(r"\b(place|cancel|replace|modify)_[a-z_]*order\b", re.I)
 MONEY_ALLOWED_FILES = {f"{PKG}/app.py"}       # guard.py itself is exempt from every rule
 EXTRA_ALLOWED = {"arm_trail": {f"{PKG}/mcp.py"}}   # the MCP tool is the one other caller of arm_trail, gated by PX_MCP_TRAIL and the human-typed window
@@ -159,3 +156,13 @@ def test_mock_is_server_only_so_its_exemption_is_safe():
                 assert node.id not in ("PXClient", "ClientSession"), (name, node.id)
             if isinstance(node, ast.Attribute):
                 assert node.attr not in ("ws_connect",), (name, node.attr)
+
+
+def test_every_live_rh_write_tool_is_pinned():
+    """The tool list captured from the real Robinhood MCP (names only, no account data): anything that is not a get_* read must be pinned."""
+    import json
+    d = json.loads((ROOT / "tests" / "fixtures" / "rh" / "tools_live_2026-11-17.json").read_text(encoding="utf-8"))
+    names = {t["name"] for t in (d["tools"] if isinstance(d, dict) else d)}
+    unpinned = sorted(n for n in names if not n.startswith("get_") and n != "search" and n not in RH_WRITE_TOOLS)
+    assert unpinned == [], f"live Robinhood tools that mutate or review but are not pinned: {unpinned}"
+    assert len(names) == 96

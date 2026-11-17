@@ -8,7 +8,7 @@ import subprocess
 import pytest
 
 STATIC = pathlib.Path(__file__).resolve().parent.parent / "projectx_desk" / "static"
-SRC = (STATIC / "llmsetup.js").read_text()
+SRC = (STATIC / "llmsetup.js").read_text(encoding="utf-8")
 ALLOWED = {"/api/csrf", "/api/llm/detect", "/api/llm/config", "/api/llm/clear", "/api/llm/test", "/api/llm/login/start", "/api/llm/login/status"}
 
 OR = {"id": "openrouter", "label": "OpenRouter", "kind": "http", "needs_key": True, "takes_key": True, "url_editable": False,
@@ -128,12 +128,12 @@ def test_a_key_never_reaches_the_dom_storage_or_console():
 
 
 def test_wiring_in_page_and_chat_box():
-    html = (STATIC / "index.html").read_text()
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
     assert html.count('src="/static/llmsetup.js"') == 1 and html.count('href="/static/llmsetup.css"') == 1
     assert html.index("/static/chat.js") < html.index("/static/llmsetup.js")
-    assert "pxLlmSetup.open()" in (STATIC / "chat.js").read_text()
-    css = (STATIC / "llmsetup.css").read_text()
+    assert "pxLlmSetup.open()" in (STATIC / "chat.js").read_text(encoding="utf-8")
+    css = (STATIC / "llmsetup.css").read_text(encoding="utf-8")
     assert "body.streaming .llm-panel" in css and "body.streaming .llm-route" in css
     for f in ("llmsetup.js", "llmsetup.css"):
-        t = (STATIC / f).read_text()
+        t = (STATIC / f).read_text(encoding="utf-8")
         assert "—" not in t and "–" not in t, f

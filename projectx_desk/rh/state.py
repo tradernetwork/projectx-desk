@@ -119,9 +119,10 @@ class Runtime:
         steps = (("account", lambda: r.accounts()), ("positions", self._positions), ("orders", r.orders),
                  ("approvals", r.approvals), ("approval_setting", r.approval_setting), ("pnl", r.realized_pnl))
         try:
-            for name, fn in steps:
-                v = await fn()
-                got[name] = v[0] if name == "account" else v
+            with r.cycle():
+                for name, fn in steps:
+                    v = await fn()
+                    got[name] = v[0] if name == "account" else v
         except Unknown as e:
             error = e.code
         except McpError as e:

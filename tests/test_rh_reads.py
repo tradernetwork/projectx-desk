@@ -242,3 +242,22 @@ def test_env_gate_and_defaults(tmp_path):
     assert rt.state.snapshot() == {"enabled": True, "connected": False}
     with pytest.raises(Exception):
         rh_state.from_env({"PX_RH": "1", "PX_RH_URL": "http://evil.example/mcp"})
+
+
+async def test_one_poll_makes_exactly_one_get_accounts_call():
+    _, _, spy = make()
+    rt = runtime(spy, market_quiet=lambda: False)
+    await rt.poll_once()
+    assert [t for t, _ in spy.seen].count("get_accounts") == 1
+    assert rt.state.snapshot()["ok"] is True
+    await rt.poll_once()                                   # a fresh poll re-resolves
+    assert [t for t, _ in spy.seen].count("get_accounts") == 2
+
+
+async def test_failed_resolution_in_a_poll_calls_no_data_tool():
+    accounts = [{"account_number": "A1", "agentic_allowed": True}, {"account_number": "A2", "agentic_allowed": True}]
+    _, _, spy = make(accounts)
+    rt = runtime(spy, market_quiet=lambda: False)
+    await rt.poll_once()
+    assert [t for t, _ in spy.seen] == ["get_accounts"]
+    assert rt.state.snapshot()["error"] == "account_unknown"

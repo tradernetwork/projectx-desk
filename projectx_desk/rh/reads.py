@@ -6,6 +6,8 @@ goes into tool arguments and nowhere else: not into a view, not into an exceptio
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 from . import views
 
 
@@ -29,8 +31,27 @@ def _items(data, *keys):
 class Reader:
     def __init__(self, client):
         self.client = client
+        self._cycle = None
+
+    @contextmanager
+    def cycle(self):
+        """Inside this block the MCP account is resolved once (one get_accounts call per poll). A fresh block
+        re-resolves. A failed or ambiguous resolution raises and is never cached."""
+        self._cycle = {}
+        try:
+            yield
+        finally:
+            self._cycle = None
 
     async def _resolve(self):
+        if self._cycle is not None and "hit" in self._cycle:
+            return self._cycle["hit"]
+        hit = await self._resolve_fresh()
+        if self._cycle is not None:
+            self._cycle["hit"] = hit
+        return hit
+
+    async def _resolve_fresh(self):
         data = await self.client.call("get_accounts", {})
         mine = [a for a in _items(data, "accounts") if isinstance(a, dict) and a.get("agentic_allowed") is True]
         if len(mine) != 1:

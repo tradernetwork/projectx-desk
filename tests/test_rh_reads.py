@@ -264,7 +264,12 @@ async def test_stream_mode_hides_dollars():
 
 
 def test_env_gate_and_defaults(tmp_path):
-    assert rh_state.from_env({}) is None and rh_state.from_env({"PX_RH": "0"}) is None
+    # ON by default (the owner's call, 2026-11-17): unset or blank is on; only an explicit 0/false/no/off turns it off
+    for off in ("0", "false", "no", "off", " OFF "):
+        assert rh_state.from_env({"PX_RH": off}) is None, off
+    for on in (None, "", "1", "true"):
+        assert rh_state.enabled({} if on is None else {"PX_RH": on}), on
+    assert rh_state.from_env({"PX_RH_TOKEN_FILE": str(tmp_path / "u.json")}).state.snapshot() == {"enabled": True, "connected": False, "demo": False}
     rt = rh_state.from_env({"PX_RH": "1", "PX_RH_TOKEN_FILE": str(tmp_path / "t.json")})
     assert rt is not None and rt.reader.client.base_url == "https://agent.robinhood.com/mcp/trading"
     assert rt.state.snapshot() == {"enabled": True, "connected": False, "demo": False}

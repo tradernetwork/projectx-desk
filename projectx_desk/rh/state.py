@@ -4,7 +4,7 @@
 task) or when the market is quiet (Fri 16:05 CT to Sun 16:55 CT) and the last snapshot shows no working order and no
 pending approval AND every section of the last snapshot was read (a missing snapshot or an unknown section keeps
 polling). A section that could not be read is None (UNKNOWN), never an empty list. A failed read leaves only a
-fixed error code. `PX_RH=0` (the default) means `from_env` returns None and nothing is built.
+fixed error code. `PX_RH` is ON unless set to 0/false/no/off (then `from_env` returns None and nothing is built).
 """
 from __future__ import annotations
 
@@ -29,6 +29,13 @@ SECTIONS = ("account", "positions", "orders", "approvals", "approval_setting", "
 
 def _truthy(v):
     return str(v or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def enabled(env):
+    """Robinhood reads are ON unless PX_RH is explicitly 0, false, no or off (unset or blank means on). On with no token file it makes no
+    call and the state reads connected=false; placement has its own switch (PX_RH_TRADING, default 0) and is not touched by this."""
+    v = str(env.get("PX_RH") or "").strip().lower()
+    return v not in ("0", "false", "no", "off")
 
 
 def poll_interval(env) -> float:
@@ -200,9 +207,9 @@ class Runtime:
 
 
 def from_env(environ=None, transport=None, closer=None):
-    """A Runtime when PX_RH is truthy, else None. Raises McpError for a URL that is neither https nor loopback http."""
+    """A Runtime unless PX_RH is explicitly off, else None. Raises McpError for a URL that is neither https nor loopback http."""
     env = os.environ if environ is None else environ
-    if not _truthy(env.get("PX_RH")):
+    if not enabled(env):
         return None
     url = (env.get("PX_RH_URL") or "").strip() or ENDPOINT
     path = (env.get("PX_RH_TOKEN_FILE") or "").strip() or str(ROOT / "data" / "rh_tokens.json")
@@ -219,7 +226,7 @@ async def open_from_env(environ=None, transport=None):
     PX_RH_TOKEN_FILE (default data/rh_tokens.mock.json, never the real token file) so the demo needs no login."""
     env = dict(os.environ if environ is None else environ)
     stop = None
-    if _truthy(env.get("PX_RH")) and _truthy(env.get("PX_RH_MOCK")):
+    if enabled(env) and _truthy(env.get("PX_RH_MOCK")):
         from .. import dev_robinhood
         tf = (env.get("PX_RH_TOKEN_FILE") or "").strip() or str(ROOT / "data" / "rh_tokens.mock.json")
         url, stop = await dev_robinhood.start_in_process(tf)

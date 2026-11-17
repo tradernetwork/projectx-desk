@@ -32,7 +32,7 @@ compare) but refuses to run them.
 
 | Variable | Meaning |
 |---|---|
-| `PX_RH` | `1` turns the feature on. Default `0`: nothing is built, no outbound traffic. |
+| `PX_RH` | ON by default (unset or blank is on). `0`, `false`, `no` or `off` turns the whole feature off: nothing is built, no outbound traffic. On with no token file the desk makes no call and the panel says it is not connected. Placing orders is a separate switch, `PX_RH_TRADING`, which stays `0` by default. |
 | `PX_RH_TOKEN_FILE` | Token file, default `data/rh_tokens.json` (mode 0600, gitignored). |
 | `PX_RH_POLL_S` | Poll interval, default 30, floor 10. |
 | `PX_RH_CALLBACK_PORT` | Fixed loopback port for the sign-in redirect (headless hosts). Default: ephemeral. |
@@ -46,7 +46,7 @@ shows no working order and no pending approval; a missing snapshot or any unknow
 
 Run `python scripts/rh_capture.py`. With no token file it opens the Robinhood sign-in in your browser, catches the
 redirect on `localhost` (an ephemeral loopback port), saves the token pair (atomic, 0600) and writes the tool list.
-Then set `PX_RH=1` and restart the desk.
+Then restart the desk (`PX_RH` is on by default; set it to `0` only to switch the feature off).
 
 ### Sign in on a headless host (for example venus)
 
@@ -115,7 +115,7 @@ and halts (`cancel_unknown`); look at the Robinhood app, then `reconcile` or `re
 
 ## Phase 1: using the panel
 
-Click **Robinhood** in the switch at the bottom left of the desk (it only appears when `PX_RH=1`). The panel shows the account
+Click **Robinhood** in the switch at the bottom left of the desk (it appears unless `PX_RH=0`). The panel shows the account
 type and state (never the number), your trade-approvals setting, positions, option positions (read only), working orders, pending
 approvals and every ticket with a plain-words line for its state. In stream mode (`body.streaming`) dollar values are not drawn.
 

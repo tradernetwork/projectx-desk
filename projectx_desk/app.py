@@ -90,7 +90,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
     record_only (default: PX_RECORD_ONLY): a log-only recorder. Only the market hub, the trade tape, the indicator tracker and
     read-only routes exist: no user hub, no Guard, no watchdog, no MCP, no POST route of any kind.
 
-    rh: an injected Robinhood runtime (tests). Default: built from PX_RH (default 0 = off, nothing built). Never in record-only."""
+    rh: an injected Robinhood runtime (tests). Default: built unless PX_RH is explicitly off (0/false/no/off). Never in record-only."""
     rec = record_only_enabled() if record_only is None else bool(record_only)
     if rec:
         why = record_only_problem()
@@ -139,7 +139,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         app.state.boot_error = None
         app.state.rh = None
         app.state.rh_guard = None
-        if not rec:                           # Robinhood reads (phase 0): read-only, off unless PX_RH=1, never in a recorder
+        if not rec:                           # Robinhood reads (phase 0): read-only, on unless PX_RH=0, never in a recorder
             try:
                 app.state.rh = rh if rh is not None else (await px_rh.open_from_env() if connect else None)
             except Exception as e:  # noqa: BLE001 - a bad PX_RH_URL must not stop the futures desk
@@ -649,7 +649,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
 
     # ---- Robinhood orders (phase 1): the same gate as every POST, fixed codes only. Present only when the runtime and its guard
     # exist (PX_RH on) and never in a recorder. `release` and `halt/resolve` are human-only: no MCP tool, no chat path. ----
-    if not rec and (rh is not None or _truthy(os.environ.get("PX_RH"))):
+    if not rec and (rh is not None or (connect and px_rh.enabled(os.environ))):
         def _rh_guard(request: Request):
             g = getattr(request.app.state, "rh_guard", None)
             if g is None:

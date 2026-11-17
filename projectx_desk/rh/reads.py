@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
+from .. import tradeday as px_tradeday
 from . import views
 
 
@@ -60,6 +61,28 @@ class Reader:
         if not isinstance(number, str) or not number:
             raise Unknown()
         return number, mine[0]
+
+    async def write_account(self):
+        """The resolved MCP account number, for `rh/guard.py` to put in a tool argument and nowhere else (never a view,
+        an audit line, a log or an exception). Zero or several MCP accounts raises Unknown."""
+        number, _ = await self._resolve()
+        return number
+
+    async def quote(self, symbol):
+        """{bid, ask, last, updated_at} for one symbol; a number or timestamp that is missing or bad is None. updated_at is
+        epoch seconds (UNVERIFIED field name: `updated_at`). An unreadable or empty reply is None."""
+        data = await self.client.call("get_equity_quotes", {"symbols": [symbol]})
+        for row in _items(data, "results"):
+            q = row.get("quote") if isinstance(row, dict) else None
+            if isinstance(q, dict) and views.symbol(q.get("symbol")) == symbol:
+                ts = None
+                try:
+                    ts = px_tradeday.parse_ts(q["updated_at"]).timestamp() if q.get("updated_at") else None
+                except (ValueError, TypeError, OverflowError):
+                    ts = None
+                return {"bid": views.num(q.get("bid_price")), "ask": views.num(q.get("ask_price")),
+                        "last": views.num(q.get("last_trade_price")), "updated_at": ts}
+        return None
 
     async def accounts(self):
         """Views of the MCP account only (a list of one)."""

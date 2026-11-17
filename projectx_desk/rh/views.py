@@ -118,6 +118,9 @@ def order_view(raw):
     oid = ident(raw.get("id"))
     if oid:
         out["id"] = oid
+    ref = ident(raw.get("ref_id"))
+    if ref:
+        out["ref_id"] = ref                       # the desk's own idempotency id, echoed: how reconcile finds an order
     side = enum(raw.get("side"), SIDES)
     if side:
         out["side"] = side
@@ -134,6 +137,11 @@ def order_view(raw):
     return out
 
 
+def po_ref(raw):
+    po = raw.get("proposed_order")
+    return po.get("ref_id") if isinstance(po, dict) else None
+
+
 def approval_view(raw):
     if not isinstance(raw, dict):
         return None
@@ -141,6 +149,9 @@ def approval_view(raw):
     aid = ident(raw.get("approval_id") or raw.get("id"))
     if aid:
         out["id"] = aid
+    ref = ident(raw.get("ref_id") or po_ref(raw))
+    if ref:
+        out["ref_id"] = ref
     ac = str(raw.get("asset_class") or "").lower()
     out["asset"] = "option" if "option" in ac else "equity"
     st = str(raw.get("state") or "").lower().replace("approval_state_", "")

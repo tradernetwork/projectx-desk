@@ -19,12 +19,12 @@ MONEY_ATTRS = {"place", "flatten", "cancel_order", "close_position", "move_stop"
 # anywhere else in the tree must not inherit an exemption.
 PKG = "projectx_desk"
 GUARD_FILE = f"{PKG}/guard.py"
-RH_GUARD_FILE = f"{PKG}/rh/guard.py"          # the second allowed writer (Robinhood, phase 1). It does not exist yet.
+RH_GUARD_FILE = f"{PKG}/rh/guard.py"          # the second allowed writer (Robinhood, phase 1).
 GUARD_FILES = {GUARD_FILE, RH_GUARD_FILE}
 # Every Robinhood write tool name: a string constant with one of these (or any place_*/cancel_* *order* shape) outside a
 # guard module fails. Read tools (get_*) are never on the list. Watchlist, alert and scanner writes are listed by their
 # expected names (UNVERIFIED against the live tool list; scripts/rh_drift.py shows new tools so this list can grow).
-RH_WRITE_TOOLS = {"place_equity_order", "cancel_equity_order", "place_option_order", "cancel_option_order",
+RH_WRITE_TOOLS = {"place_equity_order", "cancel_equity_order", "review_equity_order", "place_option_order", "cancel_option_order",
                   "replace_equity_order", "replace_option_order", "exercise_option", "decline_trade_approval",
                   "approve_trade_approval", "create_watchlist", "update_watchlist", "delete_watchlist",
                   "add_to_watchlist", "remove_from_watchlist", "create_alert", "delete_alert", "save_scanner",

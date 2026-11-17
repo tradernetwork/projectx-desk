@@ -2,8 +2,14 @@
 
 Serves Streamable-HTTP JSON-RPC at POST /mcp plus stub OAuth endpoints. Every number, id and symbol is invented; the
 shapes follow the synthetic fixtures of tradermatrix-desktop (numbers as strings, `{"data": ...}` envelopes) and are
-UNVERIFIED against the real service. Write tools are LISTED (so the capture and drift scripts have something to
-compare) but a call to one returns a fixed error: this mock can never place an order.
+UNVERIFIED against the real service. Write tools are listed (so the capture and drift scripts have something to
+compare) and, from phase 1, ACT on this in-memory mock only: `place_equity_order` records an order and a pending approval
+(approvals ON) or a working order (OFF), `cancel_equity_order` cancels it, and `review_equity_order` echoes a review with a
+`ref_id`. Nothing here can reach a real broker. Knobs on `app.state.mock`: `setting_on`, `setting_reply` ("missing"),
+`place_reply` (None, "drop" = order recorded then HTTP 500, "badjson", "no_state", "live" = approvals not honoured, "fail" =
+tool error before anything is created), `quote_age_s`, `quote_ts` (False omits it), `quote_reply` ("empty"), `quote_clock`,
+`orders_extra`, `approvals_extra`, `place_calls` (arguments of every recorded place) and the `approve/decline/expire/fill`
+helpers that move a pending approval.
 
 `make_app(accounts=None)` returns a Starlette app. `app.state.mock` exposes knobs for tests: `fault` (None, "redirect",
 "huge", "badjson", "rate", "500"), `access_ttl`, `calls` (list of tool names called) and `requests` (count of /mcp posts).
@@ -11,11 +17,13 @@ compare) but a call to one returns a fixed error: this mock can never place an o
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
 import json
 import secrets
 import time
 import urllib.parse
+from datetime import datetime, timezone
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -46,6 +54,7 @@ READ_TOOL_DEFS = [
     ("get_trade_approval_setting", "Whether a human must approve trades.", ["account_number"]),
 ]
 WRITE_TOOL_DEFS = [
+    ("review_equity_order", "Preview an equity order.", ["account_number", "symbol", "side", "quantity"]),
     ("place_equity_order", "Place an equity order.", ["account_number", "symbol", "side", "quantity"]),
     ("cancel_equity_order", "Cancel an equity order.", ["account_number", "order_id"]),
     ("place_option_order", "Place an option order.", ["account_number"]),
@@ -67,7 +76,7 @@ def _data(payload):
     return {"data": payload, "guide": "mock"}
 
 
-def _tool_payload(name, args, accounts):
+def _tool_payload(name, args, accounts, st=None):
     if name == "get_accounts":
         return {"accounts": accounts}
     if name == "get_portfolio":
@@ -87,7 +96,7 @@ def _tool_payload(name, args, accounts):
              "expiration_date": "2026-12-18", "strike_price": "18.00", "option_type": "put"},
         ], "next": ""}
     if name == "get_equity_orders":
-        return {"orders": [
+        return {"orders": (st.orders_extra if st else []) + [
             {"id": "mock-eo-1", "symbol": "AAA", "side": "buy", "type": "limit", "state": "filled",
              "quantity": "10.00000000", "price": "100.50000000", "average_price": "100.45"},
             {"id": "mock-eo-2", "symbol": "BBB", "side": "sell", "type": "limit", "state": "queued",
@@ -96,9 +105,17 @@ def _tool_payload(name, args, accounts):
     if name == "get_option_orders":
         return {"orders": [], "next": ""}
     if name == "get_equity_quotes":
-        return {"results": [{"quote": {"symbol": s, "last_trade_price": "101.25", "bid_price": "101.20",
-                                       "ask_price": "101.30", "previous_close": "100.00"}}
-                            for s in (args.get("symbols") or [])]}
+        if st is not None and st.quote_reply == "empty":
+            return {"results": []}
+        rows = []
+        for sym in (args.get("symbols") or []):
+            q = {"symbol": sym, "last_trade_price": "101.25", "bid_price": "101.20", "ask_price": "101.30",
+                 "previous_close": "100.00"}
+            if st is None or st.quote_ts:
+                q["updated_at"] = datetime.fromtimestamp((st.quote_clock() if st else time.time())
+                                                         - (st.quote_age_s if st else 0), timezone.utc).isoformat()
+            rows.append({"quote": q})
+        return {"results": rows}
     if name == "get_option_chains":
         return {"chains": [{"id": "chain-1", "symbol": args.get("symbol", "AAA"),
                             "expiration_dates": ["2026-12-18", "2027-01-15"], "trade_value_multiplier": "100.0000"}]}
@@ -106,11 +123,13 @@ def _tool_payload(name, args, accounts):
         return {"window": "month", "data_points": [{"realized_gain": "12.50", "number_of_trades": 3}],
                 "total_returns": "12.50"}
     if name == "get_trade_approvals":
-        return {"approvals": [{"approval_id": "mock-appr-1", "asset_class": "ASSET_CLASS_EQUITY",
-                               "state": "APPROVAL_STATE_PENDING",
-                               "proposed_order": {"symbol": "AAA", "side": "buy", "quantity": "1"}}], "next": ""}
+        return {"approvals": (st.approvals_extra if st else []) + [
+            {"approval_id": "mock-appr-1", "asset_class": "ASSET_CLASS_EQUITY", "state": "APPROVAL_STATE_PENDING",
+             "proposed_order": {"symbol": "AAA", "side": "buy", "quantity": "1"}}], "next": ""}
     if name == "get_trade_approval_setting":
-        return {"setting": {"human_must_approve_trades": True}}
+        if st is not None and st.setting_reply == "missing":
+            return {"setting": {}}
+        return {"setting": {"human_must_approve_trades": True if st is None else st.setting_on}}
     return None
 
 
@@ -126,6 +145,65 @@ class MockState:
         self.access = {}             # access token -> expiry
         self.refresh = {}            # live refresh token -> client_id (single use)
         self.session = "mock-session-" + secrets.token_hex(4)
+        # phase 1 write behaviour (in-memory only)
+        self.setting_on = True
+        self.setting_reply = None
+        self.place_reply = None
+        self.quote_age_s = 0
+        self.quote_ts = True
+        self.quote_reply = None
+        self.quote_clock = time.time
+        self.orders_extra = []        # dicts in get_equity_orders shape; newest first
+        self.approvals_extra = []
+        self.place_calls = []         # arguments of every recorded place (account number included: it is the mock's)
+        self.review_calls = []
+        self.cancel_calls = []
+
+    def place_for(self, number) -> bool:
+        """True when an order for this account number is accepted: the account exists and is flagged agentic_allowed."""
+        return any(a.get("account_number") == number and a.get("agentic_allowed") is True for a in self.accounts)
+
+    def _find(self, ref_id):
+        o = next((o for o in self.orders_extra if o.get("ref_id") == ref_id), None)
+        a = next((a for a in self.approvals_extra if a.get("ref_id") == ref_id), None)
+        return o, a
+
+    def approve(self, ref_id, fill=False):
+        o, a = self._find(ref_id)
+        a["state"] = "APPROVAL_STATE_APPROVED"
+        o["state"] = "filled" if fill else "confirmed"
+
+    def decline(self, ref_id):
+        o, a = self._find(ref_id)
+        a["state"] = "APPROVAL_STATE_DECLINED"
+        o["state"] = "cancelled"
+
+    def expire(self, ref_id):
+        o, a = self._find(ref_id)
+        a["state"] = "APPROVAL_STATE_EXPIRED"
+        o["state"] = "cancelled"
+
+    def fill(self, ref_id):
+        o, _ = self._find(ref_id)
+        o["state"] = "filled"
+
+    def record_place(self, args):
+        """What a place does on the mock. Approvals ON: a pending approval and an unconfirmed order. OFF (or place_reply
+        'live'): a working order, no approval. Returns (reply_state, order)."""
+        self.place_calls.append(dict(args))
+        n = len(self.orders_extra) + 1
+        live = (not self.setting_on) or self.place_reply == "live"
+        order = {"id": f"mock-new-{n}", "ref_id": args.get("ref_id"), "symbol": args.get("symbol"),
+                 "side": args.get("side"), "type": "limit", "state": "queued" if live else "unconfirmed",
+                 "quantity": str(args.get("quantity")), "price": str(args.get("limit_price"))}
+        self.orders_extra.insert(0, order)
+        if not live:
+            self.approvals_extra.insert(0, {
+                "approval_id": f"mock-new-appr-{n}", "ref_id": args.get("ref_id"), "asset_class": "ASSET_CLASS_EQUITY",
+                "state": "APPROVAL_STATE_PENDING",
+                "proposed_order": {"symbol": args.get("symbol"), "side": args.get("side"),
+                                   "quantity": str(args.get("quantity")), "ref_id": args.get("ref_id")}})
+        return ("placed" if live else "awaiting_approval"), order
 
     def issue(self, client_id):
         a, r = "mock-at-" + secrets.token_hex(8), "mock-rt-" + secrets.token_hex(8)
@@ -136,7 +214,7 @@ class MockState:
 
 
 def make_app(accounts=None):
-    st = MockState(list(DEFAULT_ACCOUNTS if accounts is None else accounts))
+    st = MockState(copy.deepcopy(DEFAULT_ACCOUNTS if accounts is None else accounts))
 
     def origin(request: Request):
         return f"{request.url.scheme}://{request.headers.get('host', 'localhost')}"
@@ -190,6 +268,42 @@ def make_app(accounts=None):
     def rpc_ok(rid, result):
         return JSONResponse({"jsonrpc": "2.0", "id": rid, "result": result}, headers={"Mcp-Session-Id": st.session})
 
+    def tool_error(rid, text):
+        return rpc_ok(rid, {"isError": True, "content": [{"type": "text", "text": text}]})
+
+    def ok_env(rid, payload):
+        env = _data(payload)
+        return rpc_ok(rid, {"content": [{"type": "text", "text": json.dumps(env)}], "structuredContent": env})
+
+    def write(rid, name, args):
+        if name not in ("place_equity_order", "cancel_equity_order", "review_equity_order"):
+            return tool_error(rid, "write_disabled_in_mock")
+        if not st.place_for(args.get("account_number")):
+            return tool_error(rid, "account_not_allowed")
+        if name == "review_equity_order":
+            st.review_calls.append(dict(args))
+            return ok_env(rid, {"review": {"symbol": args.get("symbol"), "side": args.get("side"),
+                                           "quantity": str(args.get("quantity")),
+                                           "ref_id": args.get("ref_id") or "mock-ref-" + secrets.token_hex(4)}})
+        if name == "cancel_equity_order":
+            st.cancel_calls.append(dict(args))
+            for o in st.orders_extra:
+                if o.get("id") == args.get("order_id"):
+                    o["state"] = "cancelled"
+                    return ok_env(rid, {"order": {"id": o["id"], "state": "cancelled"}})
+            return tool_error(rid, "order_not_found")
+        if st.place_reply == "fail":
+            return tool_error(rid, "rejected_by_mock")
+        reply_state, order = st.record_place(args)
+        if st.place_reply == "drop":
+            return PlainTextResponse("provider internal detail SECRET-TEXT", status_code=500)
+        if st.place_reply == "badjson":
+            return Response(b"{not json", media_type="application/json")
+        body = {"order": {"id": order["id"], "ref_id": order["ref_id"], "state": reply_state}}
+        if st.place_reply == "no_state":
+            body = {"order": {"id": order["id"], "ref_id": order["ref_id"]}}
+        return ok_env(rid, body)
+
     async def mcp(request: Request):
         st.requests += 1
         fault = st.fault
@@ -223,8 +337,8 @@ def make_app(accounts=None):
             name, args = params.get("name"), params.get("arguments") or {}
             st.calls.append(name)
             if name in {n for n, _, _ in WRITE_TOOL_DEFS}:
-                return rpc_ok(rid, {"isError": True, "content": [{"type": "text", "text": "write_disabled_in_mock"}]})
-            payload = _tool_payload(name, args, st.accounts)
+                return write(rid, name, args)
+            payload = _tool_payload(name, args, st.accounts, st)
             if payload is None:
                 return JSONResponse({"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": "unknown tool"}})
             env = _data(payload)

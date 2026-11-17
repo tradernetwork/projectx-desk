@@ -228,7 +228,7 @@ def test_plain_http_to_a_remote_host_refused():
     Client("http://127.0.0.1:9/mcp", None)
 
 
-async def test_mock_write_tools_cannot_place_even_if_called_raw():
+async def test_mock_write_without_an_agentic_account_is_refused_even_if_called_raw():
     app, st, _, c = make()
     await c.list_tools()
     tok = st.issue("c")["access_token"]
@@ -237,4 +237,5 @@ async def test_mock_write_tools_cannot_place_even_if_called_raw():
             "jsonrpc": "2.0", "id": 9, "method": "tools/call",
             "params": {"name": "place_equity_order", "arguments": {}}})
     res = r.json()["result"]
-    assert res["isError"] is True and "write_disabled_in_mock" in res["content"][0]["text"]
+    assert res["isError"] is True and "account_not_allowed" in res["content"][0]["text"]
+    assert not st.place_calls

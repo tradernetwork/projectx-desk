@@ -72,7 +72,23 @@ anything, because a failed sign-in creates no exposure.
   `?stream=1` strips dollar values.
 - `RH:` lines in `/ai/digest` and an `rh` key in `/ai/state`: counts, symbols, quantities, approval counts. No account
   number, balance or provider text.
-- No POST route exists for Robinhood. `PX_RECORD_ONLY` registers none of this.
+- No POST route exists for Robinhood yet (phase 1 routes are a later task). `PX_RECORD_ONLY` registers none of this.
+
+## Phase 1: the order guard (`rh/guard.py`, no routes yet)
+
+Equities only, whole shares, limit orders, buy to open and sell to close up to the held quantity, one working or pending
+order per symbol. A fill is unprotected: the desk owns no stops. A write is sent only when Robinhood's trade-approvals
+setting reads ON at the commit point, so the final tap is yours in the Robinhood app. Robinhood has no paper account.
+
+| Env | Default | Meaning |
+|---|---|---|
+| `PX_RH_TRADING` | 0 | kill switch; blank or garbled is 0 |
+| `PX_RH_MAX_NOTIONAL`, `PX_RH_MAX_QTY` | unset | zero, blank or garbled refuses every order (`cap_unset`) |
+| `PX_RH_TICKET_TTL_S`, `PX_RH_QUOTE_MAX_AGE_S` | 120, 5 | ticket life, quote freshness |
+| `PX_RH_HALT_FILE`, `PX_RH_AUDIT`, `PX_RH_STATE_FILE` | `data/` | separate from ProjectX's halt and audit |
+
+A reply that is not clearly `awaiting_approval` halts Robinhood (`live_order`); a transport error after the send is UNKNOWN
+(`place_unknown`), halts, and is never resent. Only a human clears the halt.
 
 ## Tool drift
 

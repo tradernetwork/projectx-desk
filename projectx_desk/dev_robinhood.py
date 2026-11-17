@@ -158,6 +158,7 @@ class MockState:
         self.place_calls = []         # arguments of every recorded place (account number included: it is the mock's)
         self.review_calls = []
         self.cancel_calls = []
+        self.cancel_reply = None      # None | "fail" (tool error) | "drop" (HTTP 500) | "badjson"
 
     def place_for(self, number) -> bool:
         """True when an order for this account number is accepted: the account exists and is flagged agentic_allowed."""
@@ -287,9 +288,18 @@ def make_app(accounts=None):
                                            "ref_id": args.get("ref_id") or "mock-ref-" + secrets.token_hex(4)}})
         if name == "cancel_equity_order":
             st.cancel_calls.append(dict(args))
+            if st.cancel_reply == "fail":
+                return tool_error(rid, "cancel_rejected_by_mock")
+            if st.cancel_reply == "drop":
+                return PlainTextResponse("provider internal detail SECRET-TEXT", status_code=500)
+            if st.cancel_reply == "badjson":
+                return Response(b"{not json", media_type="application/json")
             for o in st.orders_extra:
                 if o.get("id") == args.get("order_id"):
                     o["state"] = "cancelled"
+                    for a in st.approvals_extra:                  # cancelling the order voids its pending approval
+                        if a.get("ref_id") == o.get("ref_id") and a.get("state") == "APPROVAL_STATE_PENDING":
+                            a["state"] = "APPROVAL_STATE_DECLINED"
                     return ok_env(rid, {"order": {"id": o["id"], "state": "cancelled"}})
             return tool_error(rid, "order_not_found")
         if st.place_reply == "fail":

@@ -33,16 +33,19 @@ from .mcp import McpError, mint_write_cap
 from .reads import Unknown
 
 PLACE_TOOL = "place_equity_order"
-_KEY = mint_write_cap(frozenset({PLACE_TOOL}))      # module-private: nothing else can submit a write
+CANCEL_TOOL = "cancel_equity_order"
+_KEY = mint_write_cap(frozenset({PLACE_TOOL, CANCEL_TOOL}))      # module-private: nothing else can submit a write
 
 CODES = ("trading_off", "halted", "account_unknown", "approvals_off", "approvals_unknown", "bad_intent", "qty_cap",
          "notional_cap", "symbol_busy", "sell_exceeds_position", "no_position", "market_closed", "quote_stale", "cap_unset",
          # beyond the plan's list (reported in the task notes): reads that failed, and ticket lifecycle refusals
-         "read_failed", "ticket_unknown", "ticket_used", "ticket_expired", "hash_mismatch", "state_unwritable")
+         "read_failed", "ticket_unknown", "ticket_used", "ticket_expired", "hash_mismatch", "state_unwritable",
+         "bad_state", "no_order", "still_live")
 
 PREVIEWED, SENDING, AWAITING, APPROVED, PLACED = "previewed", "sending", "awaiting_approval", "approved", "placed"
 UNKNOWN, REJECTED, REFUSED, DISCARDED = "unknown", "rejected", "refused", "discarded"
 DECLINED, EXPIRED, FILLED = "declined", "expired", "filled"
+CANCELLED, RELEASED = "cancelled", "released"
 ACTIVE = {PREVIEWED, SENDING, AWAITING, APPROVED, PLACED, UNKNOWN}
 WORKING = {"queued", "unconfirmed", "confirmed", "partially_filled", "pending", "unknown"}   # an unreadable status counts as working
 
@@ -548,6 +551,76 @@ class Guard:
             self._save()
         self._audit("reconcile", t, state=t.state, code="found" if new else "not_found")
         return {"state": t.state, "ticket": t.view()}
+
+    # ---- cancel and release (the only other writer, and a human-only bookkeeping step) ---------------------------------
+    async def cancel(self, ticket_id: str) -> dict:
+        """Cancel the broker order of a ticket that is `awaiting_approval`, `approved` or `placed`. A reducing action: allowed while
+        halted and with trading off. ONE attempt through the guard-only write path, never retried. A reply that clearly says the
+        order is cancelled ends the ticket (`cancelled`, frees its symbol); a clear refusal leaves the ticket as it was and does not
+        halt; any ambiguity (transport, unreadable reply, any other state) is UNKNOWN: persisted, halts RH, `reconcile` decides.
+        Raises `Refused` (nothing sent) for an unknown ticket, a state with nothing to cancel, or no order id on record."""
+        async with self._lock:
+            t = self.tickets.get(ticket_id) if isinstance(ticket_id, str) else None
+            if t is None:
+                raise Refused("ticket_unknown")
+            if t.state not in (AWAITING, APPROVED, PLACED):
+                raise Refused("bad_state", "nothing to cancel in state " + t.state)
+            if not t.order_id:
+                raise Refused("no_order")
+            try:
+                with self.reader.cycle():
+                    account = await self.reader.write_account()
+            except (McpError, Unknown):
+                raise Refused("account_unknown") from None
+            prior = t.state
+            t.state, t.updated = SENDING, self.clock()
+            if not self._save():
+                t.state = prior
+                raise Refused("state_unwritable")
+            self._audit("cancel", t, state=SENDING, order_id=t.order_id)
+            try:
+                data = await self.client.submit(CANCEL_TOOL, {"account_number": account, "order_id": t.order_id}, _guard_key=_KEY)
+            except McpError as e:
+                if e.sent:
+                    return self._unknown(t, "cancel_unknown")
+                t.state, t.updated = prior, self.clock()          # the server answered and did not cancel: still what it was
+                self._save()
+                self._audit("cancel", t, state=prior, code="rejected")
+                return {"outcome": "rejected", "state": t.state, "ticket": t.view()}
+            except BaseException:
+                self._unknown(t, "cancel_unknown")
+                raise
+            order = data.get("order") if isinstance(data, dict) and isinstance(data.get("order"), dict) else None
+            raw = None if order is None else order.get("state")
+            if not (isinstance(raw, str) and raw.strip().lower() in ("cancelled", "canceled")):
+                return self._unknown(t, "cancel_unknown")
+            t.state, t.updated = CANCELLED, self.clock()
+            self._save()
+            self._audit("cancel", t, state=CANCELLED, code="cancelled")
+            return {"outcome": "cancelled", "state": t.state, "ticket": t.view()}
+
+    async def release(self, ticket_id: str) -> dict:
+        """HUMAN ONLY (a UI route; never an MCP tool). Mark a ticket `released` (terminal, frees its symbol and notional) once
+        the broker shows neither its order nor its approval, which is how a place that never landed stays stuck as UNKNOWN. It
+        reads orders and approvals first: any matching row refuses (`still_live`), an unreadable row refuses (`read_failed`), so
+        it can never hide a live order. Sends nothing, and does not clear the halt."""
+        async with self._lock:
+            t = self.tickets.get(ticket_id) if isinstance(ticket_id, str) else None
+            if t is None:
+                raise Refused("ticket_unknown")
+            if t.state not in (AWAITING, APPROVED, PLACED, UNKNOWN):
+                raise Refused("bad_state", "nothing to release in state " + t.state)
+            try:
+                orders, approvals = await self._read_rows()
+            except (McpError, Unknown):
+                raise Refused("read_failed") from None
+            o, a = self._match(t, orders, approvals)
+            if o is not None or a is not None:
+                raise Refused("still_live", "the broker still shows it")
+            t.state, t.updated = RELEASED, self.clock()
+            self._save()
+            self._audit("release", t, state=RELEASED)
+            return {"state": t.state, "ticket": t.view()}
 
     def ticket_views(self) -> list:
         return [t.view() for t in self.tickets.values()]

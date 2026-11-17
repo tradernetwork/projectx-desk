@@ -9,17 +9,22 @@ pattern (MES, MNQ, ...), BUY/SELL, LONG/SHORT, and, when PX_PUSH_AMOUNTS=1, the 
 never an account id, order tag, contract name or message text). A hostile name falls back to the word "contract".
 
 Config (env): PX_PUSH_AMOUNTS (default 0), PX_PUSH_GRACE_S (default 10), PX_PUSH_INTERVAL_S (default 5, min 2).
+Caps: HOURLY_CAP overall and PER_CONTRACT_CAP per contract per rolling hour; what a cap holds back is logged (`Notifier.log`) and later
+sent as ONE "N alerts held back" summary. `LevelWatch` is the pure M17 level-cross rule set (not yet wired to a level source).
 Events (each a per-subscription toggle): halt, flat, fill, stop, room, feed (default ON); callout, regime (default OFF).
 """
 import asyncio
 import os
 import re
 import time
+from collections import deque
 from typing import NamedTuple
 
 TITLE = "ProjectX Desk"
 DEBOUNCE_S = 60.0
 HOURLY_CAP = 20
+PER_CONTRACT_CAP = 5
+MAX_QUOTE_AGE_S = 20.0
 FEED_DOWN_S = 30.0
 ROOM_LOW, ROOM_REARM = 0.25, 0.35
 CALLOUT_FRESH_S = 300
@@ -53,28 +58,102 @@ def _num(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) != float("inf") else None
 
 
+def _contract_of(key):
+    """The contract root inside an event key such as stop:MES or callout:MNQ:LONG, else None (halt, room:daily and feed keys have none)."""
+    parts = key.split(":") if isinstance(key, str) else []
+    return parts[1] if len(parts) > 1 and _ROOT_RE.match(parts[1]) else None
+
+
 def money(v):
     return f"{'+' if v >= 0 else '-'}${abs(v):,.0f}"
 
 
 class Limiter:
-    """One notification per key per DEBOUNCE_S, at most HOURLY_CAP per rolling hour overall."""
+    """One notification per key per DEBOUNCE_S, at most HOURLY_CAP per rolling hour overall and PER_CONTRACT_CAP per contract.
 
-    def __init__(self, debounce=DEBOUNCE_S, cap=HOURLY_CAP):
-        self.debounce, self.cap = debounce, cap
-        self.last, self.sent = {}, []
+    A notification refused by a CAP (not by the debounce, which only drops a repeat) is counted as held back and never charged to the
+    window. When the window frees, `take_held` hands back the count once so the notifier can send ONE summary instead of a flood.
+    A timestamp exactly 3600 s old is outside the window."""
 
-    def allow(self, key, now):
+    def __init__(self, debounce=DEBOUNCE_S, cap=HOURLY_CAP, contract_cap=PER_CONTRACT_CAP):
+        self.debounce, self.cap, self.contract_cap = debounce, cap, contract_cap
+        self.last, self.sent, self.by_contract = {}, [], {}
+        self.held, self.held_by, self.held_kind = 0, {}, None
+
+    def _prune(self, now):
         self.sent = [t for t in self.sent if now - t < 3600]
-        if len(self.sent) >= self.cap:
-            return False
+        self.by_contract = {c: v for c, v in ((c, [t for t in ts if now - t < 3600]) for c, ts in self.by_contract.items()) if v}
+
+    def allow(self, key, now, contract=None, kind=None):
+        self._prune(now)
         if key in self.last and now - self.last[key] < self.debounce:
+            return False
+        if len(self.sent) >= self.cap or (contract is not None and len(self.by_contract.get(contract, ())) >= self.contract_cap):
+            self.held += 1
+            self.held_by[contract] = self.held_by.get(contract, 0) + 1
+            self.held_kind = kind or self.held_kind
             return False
         self.last[key] = now
         self.sent.append(now)
+        if contract is not None:
+            self.by_contract.setdefault(contract, []).append(now)
         if len(self.last) > 500:
             self.last = {k: t for k, t in self.last.items() if now - t < self.debounce}
         return True
+
+    def take_held(self, now):
+        """The number of held-back alerts once the global window and every affected contract have room again; None otherwise. Resets the count."""
+        if not self.held:
+            return None
+        self._prune(now)
+        if len(self.sent) >= self.cap or any(c is not None and len(self.by_contract.get(c, ())) >= self.contract_cap for c in self.held_by):
+            return None
+        n, self.held, self.held_by = self.held, 0, {}
+        self.sent.append(now)                      # the summary itself is one notification
+        return n
+
+
+class LevelWatch:
+    """Pure level-cross watcher with the M17 rules. observe(levels {key: price}, px, quote_age_s, now) -> [Event].
+
+    First sight of a level records the side only. A cross fires when price moves to the other side by more than `hyst`; a gap fires once.
+    The same key and direction then waits until price has retreated `rearm` beyond the level on the other side. A level that disappears
+    snoozes with exactly one "Level gone" event and comes back as a fresh silent baseline. A quote older than MAX_QUOTE_AGE_S (or unknown,
+    or a non-finite price) is skipped and changes nothing. Text is a closed template; the key never reaches it. Says what happened, never what to do."""
+
+    def __init__(self, hyst=0.0, rearm=0.0):
+        self.hyst, self.rearm = hyst, rearm
+        self.sides, self.armed, self.gone = {}, {}, set()
+
+    def observe(self, levels, px, quote_age_s, now):
+        out = []
+        age = _num(quote_age_s)
+        if _num(px) is None or age is None or age > MAX_QUOTE_AGE_S or not isinstance(levels, dict):
+            return out
+        for key in [k for k in self.sides if k not in levels]:
+            del self.sides[key]
+            self.armed = {k: v for k, v in self.armed.items() if k[0] != key}
+            self.gone.add(key)
+            out.append(Event("level", f"level_gone:{key}", "Level gone"))
+        for key, lv in levels.items():
+            lv = _num(lv)
+            if lv is None:
+                continue
+            self.gone.discard(key)
+            side = 1 if px > lv + self.hyst else -1 if px < lv - self.hyst else 0
+            if side == 0:
+                continue
+            prev = self.sides.get(key)
+            self.sides[key] = side
+            if abs(px - lv) >= self.rearm:
+                self.armed[(key, -side)] = True
+            if prev is None or prev == side:
+                continue
+            if self.armed.get((key, side)) is False:
+                continue
+            self.armed[(key, side)] = False
+            out.append(Event("level", f"level:{key}:{'up' if side > 0 else 'down'}", "Level crossed up" if side > 0 else "Level crossed down"))
+        return out
 
 
 class Detector:
@@ -218,6 +297,7 @@ class Notifier:
         self.armed_at = self.t0 = None
         self.last_regime_poll = -1e9
         self.sent = 0
+        self.log = deque(maxlen=500)     # every event that reached the sender stage, pushed or held back
 
     def wants(self, kind):
         return any(s["prefs"]["events"].get(kind) for s in self.pusher.store.subs.values())
@@ -248,13 +328,22 @@ class Notifier:
         for ev in events:
             if ev.kind not in ("feed", "halt") and (not seeded or baseline):
                 continue                 # positions and fills are not known until seeded, so nothing is "new" yet
+            self.log.append(ev)
             if not self.pusher.store.subs or not self.wants(ev.kind):
                 continue
-            if not self.limiter.allow(ev.key, now):
+            if not self.limiter.allow(ev.key, now, _contract_of(ev.key), ev.kind):
                 continue
             n = await self.pusher.broadcast(ev.kind, {"title": TITLE, "body": ev.text, "tag": ev.key, "kind": ev.kind}, ev.critical)
             self.sent += n
             sent.append(ev)
+        kind = self.limiter.held_kind
+        if self.limiter.held and kind and self.pusher.store.subs and self.wants(kind):
+            n = self.limiter.take_held(now)
+            if n:
+                summary = Event(kind, "summary", f"{n} alerts held back")
+                self.log.append(summary)
+                self.sent += await self.pusher.broadcast(kind, {"title": TITLE, "body": summary.text, "tag": summary.key, "kind": kind}, False)
+                sent.append(summary)
         return sent
 
 

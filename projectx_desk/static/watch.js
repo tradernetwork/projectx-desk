@@ -5,8 +5,11 @@
 (function(root){
   const fin = v => typeof v === 'number' && isFinite(v);
   /* items: [{price, roles: ['TRAPDOOR', ...]}]; sides and fired are Maps the caller keeps between calls; returns [{key, price, role, side}] (side -1 down, +1 up). */
-  function crossEvents(items, p, hyst, sides, fired, now, cooldownMs, roleFilter){
-    const out = [];
+  function crossEvents(items, p, hyst, sides, fired, now, cooldownMs, roleFilter, opts){
+    /* opts (optional): {rearm, armed}. After key+direction fires, the same key+direction stays quiet until price has been `rearm` or more
+       beyond the level on the OTHER side (armed is a Map the caller keeps). Without opts nothing changes. */
+    const out = [], rearm = opts && fin(opts.rearm) && opts.armed ? opts.rearm : null, armed = rearm !== null ? opts.armed : null;
+
     if(!fin(p) || !Array.isArray(items)) return out;
     for(const it of items){
       if(!it || !fin(it.price)) continue;
@@ -16,11 +19,14 @@
         if(side === 0) continue;                                   // inside the band around the level: keep the last side, announce nothing
         const prev = sides.get(key);
         sides.set(key, side);
+        if(armed && Math.abs(p - it.price) >= rearm) armed.set(key + '|' + (-side), true);   // far enough on this side: the opposite-direction cross is re-armed
         if(prev === undefined || prev === side) continue;           // first sight is a silent baseline
         const k = key + '|' + side;
         const was = fired.get(k);
         if(was !== undefined && now - was < cooldownMs) continue;      // never fired is not "fired at time zero"
+        if(armed && armed.get(k) === false) continue;                  // fired before and price has not retreated far enough yet
         fired.set(k, now);
+        if(armed) armed.set(k, false);
         out.push({key, price: it.price, role, side});
       }
     }

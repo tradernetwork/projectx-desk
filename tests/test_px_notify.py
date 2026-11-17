@@ -323,3 +323,127 @@ def test_record_only_has_no_push_or_sw_routes_and_no_post_at_all(monkeypatch):
     assert not [p for p in paths if p.startswith("/api/push") or p in ("/sw.js", "/static")]
     for r in app.routes:
         assert set(getattr(r, "methods", ()) or ()) <= {"GET", "HEAD"}
+
+
+# ---- hysteresis, per-contract cap, held-back summary (Task A) ---------------------------------------------------------
+
+from projectx_desk.notify import LevelWatch
+
+
+def test_per_contract_cap_is_five_per_hour_and_held_alerts_do_not_consume_the_window():
+    lim = Limiter()
+    assert [lim.allow(f"fill:MES:{i}", i, "MES") for i in range(7)] == [True] * 5 + [False] * 2
+    assert lim.held == 2 and len(lim.sent) == 5                            # held ones are counted, not charged to the window
+    assert lim.allow("fill:MNQ", 8, "MNQ")                                 # another contract is unaffected
+
+
+def test_an_alert_exactly_one_hour_old_is_outside_the_window():
+    lim = Limiter()
+    assert all(lim.allow(f"k{i}", 0) for i in range(20))
+    assert not lim.allow("x", 3599.9)
+    assert lim.allow("y", 3600.0)                                          # exactly 3600 s old: out of the window
+    lim = Limiter()
+    assert all(lim.allow(f"m{i}", 0, "MES") for i in range(5))
+    assert not lim.allow("m5", 3599, "MES") and lim.allow("m6", 3600, "MES")
+
+
+def test_summary_is_due_once_when_the_window_frees_and_never_before():
+    lim = Limiter()
+    for i in range(5):
+        lim.allow(f"a{i}", i, "MES")
+    lim.allow("b", 10, "MES"); lim.allow("c", 11, "MES"); lim.allow("d", 12, "MES")
+    assert lim.held == 3
+    assert lim.take_held(100) is None                                      # window still full for MES
+    assert lim.take_held(3600.0 + 4) == 3                                  # the first five aged out
+    assert lim.take_held(3600.0 + 5) is None and lim.held == 0             # once only
+
+
+def test_global_cap_holds_are_counted_too():
+    lim = Limiter(cap=2)
+    lim.allow("a", 0); lim.allow("b", 1)
+    assert not lim.allow("c", 2) and lim.held == 1
+    assert lim.take_held(3601.0) == 1
+
+
+async def test_notifier_sends_one_fixed_summary_and_logs_every_event_even_when_held():
+    states = [state()] + [state(positions=[pos()]) if i % 2 == 0 else state() for i in range(1, 15)]
+    seq = list(states)
+
+    async def state_fn(c):
+        return seq.pop(0) if len(seq) > 1 else seq[0]
+
+    clk, fp = Clock(), FakePusher({"events": {"flat": True, "fill": True, "stop": True}})
+    trades, n = [], None
+    extras = lambda: {"orders": {}, "trades": list(trades)}                 # noqa: E731
+    n = Notifier(fp, state_fn, extras, lambda: MES, grace_s=0.0, clock=clk, limiter=Limiter(debounce=0.0))
+    for i in range(14):
+        if i % 2 == 1:
+            trades.append(trade(i, order=99))
+        await n.tick()
+        clk.t += 1
+    bodies = [p["body"] for _, p, _ in fp.sent]
+    assert len([b for b in bodies if b.startswith("Flat MES")]) <= 5       # per-contract cap
+    logged = [e for e in n.log if e.text.startswith("Flat MES")]
+    assert len(logged) > 5                                                  # logged even when not pushed
+    clk.t += 3600
+    seq[:] = [state()]
+    await n.tick()
+    summ = [p["body"] for _, p, _ in fp.sent if "held back" in p["body"]]
+    assert summ and re.fullmatch(r"\d+ alerts held back", summ[0])
+    clk.t += 5
+    await n.tick()
+    assert len([1 for _, p, _ in fp.sent if "held back" in p["body"]]) == 1
+
+
+# five M17 cases for a level watch
+
+def lw():
+    return LevelWatch(hyst=0.0, rearm=0.0)
+
+
+def test_m17_first_observation_records_the_side_and_never_fires():
+    w = lw()
+    assert w.observe({"apex": 100.0}, 101.0, 1.0, 0) == []
+    assert w.observe({"apex": 100.0}, 101.5, 1.0, 1) == []
+
+
+def test_m17_a_gap_through_a_level_fires_exactly_once():
+    w = lw()
+    w.observe({"apex": 100.0}, 98.0, 1.0, 0)
+    ev = w.observe({"apex": 100.0}, 103.0, 1.0, 1)
+    assert [(e.kind, e.text) for e in ev] == [("level", "Level crossed up")]
+    assert w.observe({"apex": 100.0}, 104.0, 1.0, 2) == []
+
+
+def test_m17_touching_without_crossing_does_not_fire():
+    w = lw()
+    w.observe({"apex": 100.0}, 99.0, 1.0, 0)
+    assert w.observe({"apex": 100.0}, 100.0, 1.0, 1) == []
+    assert w.observe({"apex": 100.0}, 99.5, 1.0, 2) == []
+
+
+def test_m17_a_vanished_level_snoozes_with_exactly_one_event_never_a_fire():
+    w = lw()
+    w.observe({"apex": 100.0}, 99.0, 1.0, 0)
+    ev = w.observe({}, 103.0, 1.0, 1)
+    assert [(e.kind, e.text) for e in ev] == [("level", "Level gone")]
+    assert w.observe({}, 104.0, 1.0, 2) == []                               # exactly one
+    assert w.observe({"apex": 100.0}, 99.0, 1.0, 3) == []                  # it comes back as a fresh silent baseline
+
+
+def test_m17_a_stale_quote_skips_and_records_nothing():
+    w = lw()
+    w.observe({"apex": 100.0}, 99.0, 1.0, 0)
+    assert w.observe({"apex": 100.0}, 103.0, 25.0, 1) == []                 # older than 20 s
+    assert w.observe({"apex": 100.0}, 103.0, None, 2) == []
+    assert [e.text for e in w.observe({"apex": 100.0}, 103.0, 20.0, 3)] == ["Level crossed up"]   # the side was never overwritten
+
+
+def test_levelwatch_rearm_needs_a_retreat_and_text_is_a_closed_template():
+    w = LevelWatch(hyst=0.25, rearm=1.0)
+    w.observe({"a": 100.0}, 99.0, 1.0, 0)
+    assert [e.text for e in w.observe({"a": 100.0}, 101.0, 1.0, 1)] == ["Level crossed up"]
+    w.observe({"a": 100.0}, 99.5, 1.0, 2)
+    assert w.observe({"a": 100.0}, 101.0, 1.0, 3) == []                     # only 0.5 retreat
+    w.observe({"a": 100.0}, 98.9, 1.0, 4)
+    assert [e.text for e in w.observe({"a": 100.0}, 101.0, 1.0, 5)] == ["Level crossed up"]

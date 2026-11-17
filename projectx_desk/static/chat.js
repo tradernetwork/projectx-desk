@@ -86,7 +86,20 @@
     if(r.status === 403) r = await go();           // a restarted desk mints a new token
     const data = await r.json().catch(() => ({}));
     if(!r.ok) throw new Error(data.detail || ('HTTP ' + r.status));
-    return data.reply;
+    return data;
+  }
+
+  // Soft flags from the desk: muted plain text under the reply, never blocks or rewrites it, never saved to history.
+  function notice(data){
+    const bits = [];
+    if(Array.isArray(data.lint) && data.lint.length) bits.push('Some wording may read like advice: ' + data.lint.slice(0, 3).join('; ') + '. The agent describes the data; any decision is yours.');
+    if(Array.isArray(data.ungrounded) && data.ungrounded.length) bits.push('Not in the desk data I checked: ' + data.ungrounded.slice(0, 6).join(', ') + '.');
+    if(!bits.length) return;
+    const d = document.createElement('div');
+    d.className = 'chat-msg bot note';
+    d.style.opacity = '0.6'; d.style.fontSize = '0.85em';
+    d.textContent = bits.join(' ');
+    log.append(d); log.scrollTop = log.scrollHeight;
   }
 
   async function submit(){
@@ -102,9 +115,13 @@
     const tick = setInterval(() => {wait.textContent = 'reading the desk... ' + Math.round((Date.now() - t0) / 1000) + 's'}, 1000);
     wait.textContent = 'reading the desk... 0s';
     try{
-      add('bot', await ask(text, pics.map((p) => ({data: p.data}))));
+      const data = await ask(text, pics.map((p) => ({data: p.data})));
+      add('bot', data.reply);
+      notice(data);
     }catch(e){
-      add('bot', e.message === 'busy' ? 'Still answering the last question. Try again in a moment.' : 'No answer: ' + e.message, true);
+      add('bot', e.message === 'busy' ? 'Still answering the last question. Try again in a moment.'
+        : e.message === 'key_like' ? 'That looks like a key or token, so it was not sent. Ask the question without pasting the secret.'
+        : 'No answer: ' + e.message, true);
     }
     clearInterval(tick); wait.remove();
     st.busy = false; send.disabled = false; input.focus();

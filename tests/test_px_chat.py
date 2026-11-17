@@ -78,7 +78,7 @@ def test_relays_the_prompt_with_the_token_and_a_fixed_session_and_never_leaks_th
     with TestClient(app) as c:
         tok = c.get("/api/csrf").json()["token"]
         r = hpost(c, tok, {"prompt": "  what is open?  ", "session": "../../etc/passwd"})
-    assert r.json() == {"reply": "Flat. No working orders."}
+    assert r.json() == {"reply": "Flat. No working orders.", "lint": [], "ungrounded": []}
     assert seen["auth"] == "Bearer " + TOKEN and seen["url"] == "http://127.0.0.1:9315/ask"
     assert '"session":"desk"' in seen["body"].replace(" ", "") and "passwd" not in seen["body"]
     assert TOKEN not in r.text
@@ -247,3 +247,36 @@ def test_chat_body_is_capped_and_a_typed_trail_request_opens_the_agents_window()
         r = c.post("/api/chat", content=b"{}", headers={"origin": "http://testserver", "x-px-csrf": tok, "content-type": "application/json",
                                                          "content-length": str(chat.MAX_BODY + 1)})
         assert r.status_code in (413, 400)
+
+
+# ---- redaction, key_like, soft flags -------------------------------------------------------------------------------------
+
+def test_key_like_prompt_is_refused_and_a_pasted_key_is_redacted_before_relay():
+    seen = []
+    app = app_with(agent(lambda r: seen.append(r.read().decode()) or httpx.Response(200, json={"result": "ok"})))
+    with TestClient(app) as c:
+        tok = c.get("/api/csrf").json()["token"]
+        r = hpost(c, tok, {"prompt": "9f" * 32})
+        assert (r.status_code, r.json()["detail"]) == (400, "key_like") and not seen
+        r = hpost(c, tok, {"prompt": "why did sk-proj-abcdefghijklmnop1234 fail?"})
+        assert r.status_code == 200
+    assert "abcdefghijklmnop" not in seen[0] and "[redacted]" in seen[0]
+
+
+def test_reply_is_redacted_and_carries_soft_flags():
+    secret = "sk-proj-abcdefghijklmnop1234"
+    ch = chat.Chat(("http://127.0.0.1:9315", TOKEN), agent(lambda r: httpx.Response(
+        200, json={"result": f"You should flatten now. MES last 7999.5 stop 7698.25. key {secret}"})))
+    import asyncio
+    out = asyncio.run(ch.ask_full("what now?", None, "MES last=7704.5 stop=7698.25"))
+    assert secret not in out["reply"] and "[redacted]" in out["reply"]
+    assert any("flatten" in m.lower() for m in out["lint"])
+    assert out["ungrounded"] == ["7999.5"]
+    # no digest: no grounding flags, and a clean reply has no flags at all, but the reply is still returned
+    ch2 = chat.Chat(("http://127.0.0.1:9315", TOKEN), agent(lambda r: httpx.Response(200, json={"result": "Price closed above the 21 EMA."})))
+    assert asyncio.run(ch2.ask_full("hi")) == {"reply": "Price closed above the 21 EMA.", "lint": [], "ungrounded": []}
+
+
+def test_chat_js_renders_flags_as_text_only():
+    js = (STATIC / "chat.js").read_text()
+    assert "data.lint" in js and "data.ungrounded" in js and "key_like" in js

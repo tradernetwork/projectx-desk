@@ -36,6 +36,10 @@ from projectx_desk import mcp as px_mcp
 from projectx_desk import net as px_net
 from projectx_desk import notify as px_notify
 from projectx_desk import chat as px_chat
+from projectx_desk import llm_chat as px_llm_chat
+from projectx_desk import llm_config as px_llm_cfg
+from projectx_desk import llm_login as px_llm_login
+from projectx_desk import llm_providers as px_llm
 from projectx_desk import journal as px_journal
 from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
@@ -688,6 +692,12 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
     async def chat_state(request: Request):
         return {"enabled": chat_of(request.app).enabled}
 
+    @app.get("/api/llm/detect")
+    async def llm_detect():
+        """Read-only: which AI providers this computer can use (installed CLIs by NAME, local runtimes, hosted cards). Runs nothing, no keys."""
+        gate = px_llm.Gate(experimental=_truthy(os.environ.get("PX_LLM_EXPERIMENTAL")))
+        return await asyncio.to_thread(px_llm.detect, None, gate)
+
     @app.post("/api/chat")
     async def chat_ask(request: Request):
         try:
@@ -698,10 +708,63 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         b = await body(request)
         if isinstance(b.get("prompt"), str) and re.search(r"\btrail", b["prompt"], re.I) and getattr(request.app.state, "guard", None):
             request.app.state.guard.open_trail_window()           # the trader typed a trail request: the agent may arm one for the next 2 minutes
+        digest = None
+        if px_llm_cfg.route() == "http":
+            # the digest goes to a third-party provider here, so build it in stream mode (the same trimmed view the stream-safe page shows)
+            try:
+                digest = px_digest.format_digest(await _ai(request, None, "long", px_digest.DEFAULT_RISK_PCT, 1.5, 1))
+            except Exception:
+                digest = None
         try:
-            return {"reply": await chat_of(request.app).ask(b.get("prompt"), b.get("images"))}
+            return await chat_of(request.app).ask_full(b.get("prompt"), b.get("images"), digest)
         except px_chat.ChatError as e:
             raise HTTPException(e.status, e.code)
+
+    # ---- Ask box provider: choice, test, OpenRouter sign-in. The key is never returned by any of these ----
+
+    def llm_login_of(a):
+        o = getattr(a.state, "or_login", None)
+        if o is None:
+            o = a.state.or_login = px_llm_login.OrLogin()
+        return o
+
+    @app.get("/api/llm/config")
+    async def llm_cfg_get():
+        return px_llm_cfg.view()
+
+    @app.post("/api/llm/config")
+    async def llm_cfg_set(request: Request):
+        b = await body(request)
+        try:
+            return px_llm_cfg.save(b)
+        except px_llm_cfg.ConfigError as e:
+            raise HTTPException(400, e.code)
+
+    @app.post("/api/llm/clear")
+    async def llm_cfg_clear(request: Request):
+        await body(request)
+        px_llm_cfg.clear()
+        return px_llm_cfg.view()
+
+    @app.post("/api/llm/test")
+    async def llm_test(request: Request):
+        await body(request)
+        cfg = px_llm_cfg.resolve()
+        if cfg is None:
+            return {"ok": False, "code": "not_configured"}
+        return await px_llm_chat.test(cfg)
+
+    @app.post("/api/llm/login/start")
+    async def llm_login_start(request: Request):
+        await body(request)
+        try:
+            return await llm_login_of(request.app).start()
+        except px_llm_login.LoginError as e:
+            raise HTTPException(429 if e.code == "rate_limited" else 502, e.code)
+
+    @app.get("/api/llm/login/status")
+    async def llm_login_status(request: Request, pending_id: str = ""):
+        return {"status": llm_login_of(request.app).status(pending_id)}
 
     mimetypes.add_type("text/javascript", ".js")   # Windows reads the registry, which can say text/plain
     mimetypes.add_type("application/manifest+json", ".webmanifest")

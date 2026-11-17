@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from . import ground, lint, llm_chat, llm_config, redact
 from .net import is_loopback
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -125,12 +126,24 @@ class Chat:
 
     @property
     def enabled(self) -> bool:
+        if llm_config.route() == "http":
+            return llm_config.resolve() is not None        # a configured HTTP provider needs no agent process
         return self.cfg is not None
 
     async def ask(self, prompt, images=None) -> str:
-        if self.cfg is None:
+        """The reply text only (redacted). `ask_full` adds the soft flags."""
+        return (await self.ask_full(prompt, images))["reply"]
+
+    async def ask_full(self, prompt, images=None, digest=None) -> dict:
+        """{reply, lint, ungrounded}. The typed prompt is redacted before it is relayed and a prompt that is itself a key is refused
+        (`key_like`, 400); the reply is redacted too. `lint` (prescriptive wording) and `ungrounded` (numbers not in `digest`, when the
+        caller has the desk's digest text) are soft flags: they never block or rewrite a reply."""
+        http = llm_config.route() == "http"
+        if self.cfg is None and not http:
             raise ChatError("chat off", 503)
         pics = clean_images(images)
+        if http and pics:
+            raise ChatError("images need the desk agent", 400)   # the HTTP backend is text only
         if prompt is None and pics:
             prompt = ""
         if not isinstance(prompt, str) or not (prompt.strip() or pics):
@@ -139,8 +152,13 @@ class Chat:
             prompt = "Look at the attached screenshot."
         if len(prompt) > MAX_PROMPT:
             raise ChatError("prompt too long", 400)
+        if redact.key_like(prompt):
+            raise ChatError("key_like", 400)
+        prompt = redact.redact_secrets(prompt)
         if self.lock.locked():
             raise ChatError("busy", 429)           # the agent runs one question at a time
+        if http:
+            return await self._ask_http(prompt.strip(), digest)
         async with self.lock:
             url, token = self.cfg
             try:
@@ -159,4 +177,24 @@ class Chat:
                 reply = None
             if not isinstance(reply, str):
                 raise ChatError("bad agent reply", 502)
-            return reply[:MAX_REPLY]
+            reply = redact.redact_secrets(reply[:MAX_REPLY])
+            return {"reply": reply, "lint": lint.lint_reply(reply),
+                    "ungrounded": ground.ground_reply(reply, digest) if isinstance(digest, str) and digest else []}
+
+    async def _ask_http(self, prompt, digest):
+        """The text-only provider path (llm_chat): fixed desk rules plus the digest as the only context, no tools, one turn, same soft flags."""
+        cfg = llm_config.resolve()
+        if cfg is None:
+            raise ChatError("not_configured", 400)
+        if self.lock.locked():
+            raise ChatError("busy", 429)
+        async with self.lock:
+            try:
+                r = await llm_chat.ask(cfg, llm_chat.build_system(digest if isinstance(digest, str) else ""),
+                                       [{"role": "user", "content": prompt}], transport=self.transport)
+            except llm_chat.LlmError as e:
+                raise ChatError(e.code, 429 if e.code == "rate_limited" else 502)
+        reply = redact.redact_secrets(r.text[:MAX_REPLY])
+        return {"reply": reply, "lint": lint.lint_reply(reply),
+                "ungrounded": ground.ground_reply(reply, digest) if isinstance(digest, str) and digest else [],
+                "usage": r.usage()}

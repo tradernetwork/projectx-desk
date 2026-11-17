@@ -4,7 +4,8 @@
 No account, no orders, no desk write: it reads the desk's own loopback API (bars, callouts) and data/bias_log.jsonl, and appends to
 data/paper_trades.jsonl. Run it every few minutes on the machine the desk runs on (see the cron line below), or by hand:
 
-    python scripts/paper_journal.py                 # open fresh signals, grade open trades, print the summary
+    python scripts/paper_journal.py                 # open fresh signals, grade open trades; prints ONLY when something opened or closed
+    python scripts/paper_journal.py --report-always # the same, and always print the summary (the old behaviour)
     python scripts/paper_journal.py --report        # just print the summary
     python scripts/paper_journal.py --desk http://127.0.0.1:8600 --data data
 
@@ -44,12 +45,13 @@ def get(desk, path, timeout=15):
         return json.load(r)
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--desk", default="http://127.0.0.1:8600")
     ap.add_argument("--data", default=str(ROOT / "data"))
     ap.add_argument("--report", action="store_true", help="print the summary and exit")
-    a = ap.parse_args()
+    ap.add_argument("--report-always", action="store_true", help="print the run line and summary even when nothing opened or closed (default: stay quiet, so the cron log does not grow)")
+    a = ap.parse_args(argv)
     data = pathlib.Path(a.data)
     jpath = data / "paper_trades.jsonl"
     journal = read_jsonl(jpath)
@@ -67,7 +69,8 @@ def main():
         callouts = get(a.desk, "/api/callouts").get("items", [])
     except Exception as e:  # noqa: BLE001 - the callout feed is optional
         callouts = []
-        print("callouts unavailable:", type(e).__name__)
+        if a.report_always:
+            print("callouts unavailable:", type(e).__name__)      # an optional feed that is off would otherwise add a line to every cron run
 
     def tick_for(cid):
         try:
@@ -91,8 +94,9 @@ def main():
         with open(jpath, "a", encoding="utf-8") as f:
             for r in new + closes:
                 print(json.dumps(r), file=f)
-    print(f"opened {len(new)}, closed {len(closes)}")
-    print(paper.report(journal))
+    if new or closes or a.report_always:
+        print(f"opened {len(new)}, closed {len(closes)}")
+        print(paper.report(journal))
     return 0
 
 

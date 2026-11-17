@@ -143,3 +143,49 @@ def test_the_paper_journal_cannot_reach_an_order_path():
         assert not names & {"write", "place", "preview", "flatten", "stage", "PXClient", "Guard"}, (path, names & {"write", "place", "preview", "flatten", "stage"})
         assert not any(m.endswith(("guard", "client", "hub")) or m in ("projectx_desk.guard", "projectx_desk.client", "projectx_desk.hub") for m in mods), (path, mods)
         assert "/api/place" not in src and "/api/preview" not in src
+
+
+def test_null_r_rows_never_enter_a_sum_or_a_mean_or_the_report():
+    rows = [{"kind_row": "close", "id": f"a{i}", "result": "TARGET" if i % 2 else "STOP", "r": 1.5 if i % 2 else -1.0, "r_opp": -1.0,
+             "source": "bias", "contract": CID, "side": "LONG", "grade": "A"} for i in range(30)]
+    rows += [{"kind_row": "close", "id": "m1", "result": "MISSED", "r": None, "source": "callout", "contract": CID, "side": "LONG"},
+             {"kind_row": "close", "id": "m2", "result": "STOP", "r": None, "r_opp": None, "source": "bias", "contract": CID, "side": "SHORT", "grade": "B"},   # a null r under any label
+             {"kind_row": "close", "id": "m3", "result": "TIME", "r": float("nan"), "source": "bias", "contract": CID, "side": "SHORT", "grade": "B"}]
+    s = P.stats(rows)
+    assert s["n"] == 30 and s["missed"] == 1 and s["total_r"] == 7.5 and s["mean_r"] == 0.25
+    assert "n=30" in P.report(rows) and "missed" in P.report(rows)
+    assert P.stats([rows[-3]])["n"] == 0 and P.stats([rows[-3]])["total_r"] is None
+
+
+def _journal_script():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("paper_journal_script", pathlib.Path(__file__).resolve().parent.parent / "scripts" / "paper_journal.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_journal_script_prints_only_when_something_changed(tmp_path, monkeypatch, capsys):
+    mod = _journal_script()
+    monkeypatch.setattr(mod, "get", lambda desk, path, timeout=15: {"items": []} if "callouts" in path else [])
+    (tmp_path / "bias_log.jsonl").write_text("", encoding="utf-8")
+    assert mod.main(["--data", str(tmp_path)]) == 0
+    assert capsys.readouterr().out == ""                                     # nothing opened or closed: the cron log stays quiet
+    assert mod.main(["--data", str(tmp_path), "--report-always"]) == 0
+    out = capsys.readouterr().out
+    assert "opened 0, closed 0" in out and "PAPER JOURNAL" in out
+    assert mod.main(["--data", str(tmp_path), "--report"]) == 0              # the explicit summary still prints
+    assert "PAPER JOURNAL" in capsys.readouterr().out
+
+
+def test_the_journal_script_prints_when_a_trade_opens(tmp_path, monkeypatch, capsys):
+    import json
+    import time
+    mod = _journal_script()
+    monkeypatch.setattr(mod, "get", lambda desk, path, timeout=15: {"items": []} if "callouts" in path else [])
+    now = int(time.time() * 1000)
+    monkeypatch.setattr(mod.paper, "open_new", lambda *a, **k: [{"kind_row": "open", "id": "x", "source": "bias", "contract": CID, "side": "LONG", "entry": 1.0, "stop": 0.5, "target": 2.0}])
+    (tmp_path / "bias_log.jsonl").write_text(json.dumps({"contract": CID, "bar_ts": now}) + "\n", encoding="utf-8")
+    assert mod.main(["--data", str(tmp_path)]) == 0
+    assert "opened 1, closed 0" in capsys.readouterr().out
+    assert (tmp_path / "paper_trades.jsonl").exists()

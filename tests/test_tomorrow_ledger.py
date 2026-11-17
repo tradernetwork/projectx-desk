@@ -17,6 +17,11 @@ FXDIR = pathlib.Path(__file__).resolve().parent / "fixtures" / "tomorrow"
 MES = "CON.F.US.MES.Z26"
 
 
+@pytest.fixture(autouse=True)
+def _fresh_skip_memo():
+    L._skips.clear()
+
+
 def ct(y, mo, d, h, mi=0):
     return datetime(y, mo, d, h, mi, tzinfo=CT).timestamp()
 
@@ -75,14 +80,14 @@ def test_next_session_skips_weekends():
 def test_a_map_is_filed_only_after_the_cash_close_on_a_weekday_and_only_once(tmp_path, ok_result):
     p, app = tmp_path / "l.jsonl", fake_app()
     run(L.tick(app, p, ct(2026, 10, 26, 15, 9)))                      # Monday, before 15:10
-    assert L.load(p) == [] and ok_result == []
+    assert [r for r in L.load(p) if r["kind"] == "map"] == [] and ok_result == []
     run(L.tick(app, p, ct(2026, 10, 26, 15, 15)))
     run(L.tick(app, p, ct(2026, 10, 26, 16, 0)))                      # the same night again
-    rows = L.load(p)
+    rows = [r for r in L.load(p) if r["kind"] == "map"]
     assert len(rows) == 1 and rows[0]["kind"] == "map" and (rows[0]["root"], rows[0]["session"], rows[0]["made_after"]) == ("MES", "2026-10-27", "2026-10-26")
     assert rows[0]["map_version"] == T.VERSION and rows[0]["map"]["roads"][0]["key"] == "UP" and ok_result == [MES]
-    run(L.tick(app, tmp_path / "w.jsonl", ct(2026, 10, 24, 16, 0)))      # Saturday: nothing
-    assert L.load(tmp_path / "w.jsonl") == []
+    run(L.tick(app, tmp_path / "w.jsonl", ct(2026, 10, 24, 16, 0)))      # Saturday: no map is filed
+    assert [r for r in L.load(tmp_path / "w.jsonl") if r["kind"] == "map"] == []
     run(L.tick(app, tmp_path / "f.jsonl", ct(2026, 10, 23, 15, 30)))     # Friday night files Monday's session
     assert L.load(tmp_path / "f.jsonl")[0]["session"] == "2026-10-26"
 
@@ -163,3 +168,80 @@ def test_the_digest_says_loading_then_the_map_and_never_a_rate_under_ten_session
     second["record"]["record"].update(sessions=10, publishable=True)
     assert "10 sessions graded; levels held 2/4 vs round numbers 1/3" in "\n".join(F.tomorrow_lines(second))
     assert F.tomorrow_lines({"status": "UNAVAILABLE", "code": "NO_KEY"}) == ["MAP: NA (NO_KEY)"] and F.tomorrow_lines(None) == []
+
+
+def _failing(monkeypatch, res):
+    async def fake(app, cid, **kw):
+        return res
+    monkeypatch.setattr(F, "tomorrow_result", fake)
+
+
+def _errors(tmp_path):
+    p = tmp_path / "tomorrow_ledger_errors.jsonl"
+    return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines()] if p.exists() else []
+
+
+def test_a_skipped_filing_is_logged_with_root_status_and_age(tmp_path, monkeypatch, capsys):
+    _failing(monkeypatch, {"status": "UNAVAILABLE", "code": "NO_REF", "map": None, "age_s": None, "text": "free text must never be copied"})
+    p = tmp_path / "l.jsonl"
+    run(L.tick(fake_app(), p, ct(2026, 10, 26, 15, 20)))
+    run(L.tick(fake_app(), p, ct(2026, 10, 26, 15, 25)))                  # same reason again: not logged twice
+    err = _errors(tmp_path)
+    assert len(err) == 1 and err[0]["root"] == "MES" and err[0]["session"] == "2026-10-27" and err[0]["status"] == "UNAVAILABLE"
+    assert err[0]["reason"] == "NOT_OK" and err[0]["code"] == "NO_REF" and err[0]["age_s"] is None
+    assert set(err[0]) <= {"ts", "root", "session", "reason", "status", "code", "age_s"}
+    assert "free text" not in json.dumps(err) and "tomorrow ledger: skipped MES" in capsys.readouterr().out
+
+
+def test_a_stale_snapshot_is_logged_as_stale_with_its_age(tmp_path, monkeypatch):
+    _failing(monkeypatch, {"status": "OK", "root": "MES", "age_s": 7 * 3600, "map": a_map()})
+    run(L.tick(fake_app(), tmp_path / "l.jsonl", ct(2026, 10, 26, 15, 20)))
+    e = _errors(tmp_path)
+    assert len(e) == 1 and e[0]["reason"] == "STALE" and e[0]["age_s"] == 7 * 3600
+
+
+def test_the_errors_file_follows_the_env_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("PX_TOMORROW_ERRORS", str(tmp_path / "elsewhere.jsonl"))
+    _failing(monkeypatch, {"status": "UNAVAILABLE", "code": "LOADING", "map": None})
+    run(L.tick(fake_app(), tmp_path / "l.jsonl", ct(2026, 10, 26, 15, 20)))
+    assert (tmp_path / "elsewhere.jsonl").exists() and not (tmp_path / "tomorrow_ledger_errors.jsonl").exists()
+
+
+def test_after_the_hard_deadline_an_explicit_missed_row_is_written_once(tmp_path, monkeypatch):
+    _failing(monkeypatch, {"status": "UNAVAILABLE", "code": "NO_REF", "map": None})
+    p = tmp_path / "l.jsonl"
+    run(L.tick(fake_app(), p, ct(2026, 10, 26, 17, 59)))
+    assert [r for r in L.load(p) if r["kind"] == "missed"] == []
+    run(L.tick(fake_app(), p, ct(2026, 10, 26, 18, 0)))
+    run(L.tick(fake_app(), p, ct(2026, 10, 26, 18, 5)))
+    m = [r for r in L.load(p) if r["kind"] == "missed"]
+    assert len(m) == 1 and (m[0]["root"], m[0]["session"], m[0]["made_after"]) == ("MES", "2026-10-27", "2026-10-26")
+    assert m[0]["reason"] == "NOT_OK" and m[0]["map_version"] == T.VERSION
+
+
+def test_a_friday_miss_is_written_on_the_next_tick_even_after_the_weekend_quiet(tmp_path, monkeypatch):
+    _failing(monkeypatch, {"status": "UNAVAILABLE", "code": "NO_REF", "map": None})
+    p = tmp_path / "l.jsonl"
+    run(L.tick(fake_app(), p, ct(2026, 10, 25, 17, 0)))                     # Sunday evening, the desk was quiet on Friday
+    m = [r for r in L.load(p) if r["kind"] == "missed"]
+    assert len(m) == 1 and m[0]["made_after"] == "2026-10-23" and m[0]["session"] == "2026-10-26"
+
+
+def test_a_filed_map_is_not_missed_and_no_map_is_filed_after_the_deadline(tmp_path, ok_result):
+    p = tmp_path / "l.jsonl"
+    run(L.tick(fake_app(), p, ct(2026, 10, 26, 15, 15)))
+    run(L.tick(fake_app(), p, ct(2026, 10, 26, 18, 30)))
+    assert [r["kind"] for r in L.load(p)] == ["map"]
+    q = tmp_path / "late.jsonl"
+    run(L.tick(fake_app(), q, ct(2026, 10, 26, 18, 30)))                    # first look is after 18:00: a miss, not a late filing
+    assert [r["kind"] for r in L.load(q)] == ["missed"]
+
+
+def test_missed_rows_are_never_graded_and_the_summary_counts_them(tmp_path):
+    rows = [{"kind": "missed", "root": "MES", "session": "2026-10-27", "map_version": T.VERSION, "made_after": "2026-10-26"},
+            {"kind": "missed", "root": "MNQ", "session": "2026-10-27", "map_version": T.VERSION, "made_after": "2026-10-26"}]
+    assert L.due_grades(rows, datetime.fromtimestamp(ct(2026, 10, 28, 16), CT)) == []
+    assert L.summarize(rows, "MES")["record"]["missed"] == 1 and L.summarize([], "MES")["record"]["missed"] == 0
+    p = tmp_path / "l.jsonl"
+    L.append(p, rows[0])
+    assert [r["kind"] for r in L.load(p)] == ["missed"]

@@ -312,7 +312,7 @@ def tomorrow_lines(t):
         if r["publishable"]:
             out.append(f"MAP_RECORD: {r['sessions']} sessions graded; levels held {r['hits']}/{r['total']} vs round numbers {r['null_hits']}/{r['null_total']}")
         else:
-            out.append(f"MAP_RECORD: {r['sessions']} of {r['min_sessions']} sessions graded (no rate shown until then)")
+            out.append(f"MAP_RECORD: {r['sessions']} of {r['min_sessions']} sessions graded (no rate shown until then)" + (f"; missed={r['missed']}" if r.get("missed") else ""))
         lc = rec.get("last_call")
         if lc:
             out.append(f"MAP_LAST_CALL: {lc['session']} {lc['branch']} {lc['hits']}/{lc['total']} tested: {lc['summary']}")

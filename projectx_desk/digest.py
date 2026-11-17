@@ -21,6 +21,7 @@ from projectx_desk import regime as px_regime
 from projectx_desk import tomorrow_feed as px_tomorrow
 from projectx_desk import tomorrow_ledger as px_tledger
 from projectx_desk import flow as px_flow
+from projectx_desk import session as px_session
 from projectx_desk import sizing
 from projectx_desk.indicators import rsi_series
 from projectx_desk.levels import atr_series, bounce_stats, ema_stack, percentile_rank, placebo_rate, verdict
@@ -290,6 +291,20 @@ def flow_lines(f):
     parts = [f"{w}m buy={d['buy']} sell={d['sell']} delta={d['delta']}" + ("" if d["complete"] else " INCOMPLETE")
              for w, d in sorted(f["w"].items())]
     return [f"FLOW: since={since}CT " + " | ".join(parts), "FLOW_NOTE: aggressor side from the tape; delta = buy - sell; INCOMPLETE = coverage or a reconnect gap inside the window"]
+
+
+def session_lines(c):
+    """SESSION_CTX: opening range, gap class and first break, from `session.context`. Context only; NA when it cannot be known."""
+    if not c:
+        return ["SESSION_CTX: NA (no 5m bars cached yet)"]
+    o, b = c.get("or") or {}, c.get("break")
+    try:
+        brk = f"{b['side']}@{datetime.fromtimestamp(b['ts'] / 1000, CT).strftime('%H:%M')}CT" if b else "NA"
+    except (KeyError, OverflowError, OSError, ValueError, TypeError):
+        brk = "NA"
+    rng = "NA" if not o else "COMPLETE" if o.get("complete") else "FORMING"
+    return [f"SESSION_CTX: or_high={_f(o.get('high'))} or_low={_f(o.get('low'))} or={rng} gap={c.get('gap_class') or 'NA'} "
+            f"gap_pct={_f(c.get('gap_pct'))} first_break={brk}"]
 
 
 def respect_lines(r):
@@ -790,6 +805,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
         "respect": respect,
         "callouts": callouts,
         "flow": flow,
+        "session_ctx": _session_ctx(app, contract_id),
         "rh": rh_block(app, stream),
         "positions": [position_view(p) for p in live.positions.values()],
         "orders": [order_view(o) for o in live.orders.values()],
@@ -799,6 +815,15 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
     if not stream and isinstance(state.get("size"), dict):
         state["size"].pop("why_stream", None)
     return redact_stream(state) if stream else state
+
+
+def _session_ctx(app, contract_id):
+    """Opening range, gap and first break from the 5m bars the respect scan already cached. No request of its own; None when not cached."""
+    try:
+        hit = (getattr(app.state, "respect_bars", None) or {}).get((contract_id, "5m"))
+        return px_session.context(hit["bars"]) if hit else None
+    except Exception:  # noqa: BLE001 - advisory context never breaks the state
+        return None
 
 
 async def _tomorrow_state(app, contract_id):
@@ -965,6 +990,7 @@ def format_digest(s) -> str:
     else:
         L.append("VWAP: NA")
     L.append(f"SESSION: hi={_f(se['hi'])} lo={_f(se['lo'])} volume={_f(se['volume'])}")
+    L.extend(session_lines(s.get("session_ctx")))
     L.append(f"IND: atr_{_f(i['tf'])}={_f(i['atr'])}pt atr_pctile={_f(i.get('atr_pctile'))} adx_{_f(i['tf'])}={_f(i['adx'])}")
     rg = s.get("regime") or {}
     if rg.get("state") == "RANGING":

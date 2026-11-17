@@ -109,3 +109,23 @@ def test_digest_tape_line_and_stale_alert():
     t2 = format_digest(state(feed={"market": "UP", "user": "UP", "market_age_s": 0.4, "user_age_s": 1.0, "seeded": True, "tape": quiet}))
     assert "TAPE: MES=2" in t2 and "TAPE_STALE" not in t2
     assert "TAPE:" not in format_digest(state())            # no tracked roots: no line
+
+
+def test_session_ctx_line_prints_range_gap_and_break_or_na():
+    from projectx_desk.digest import session_lines
+    assert session_lines(None) == ["SESSION_CTX: NA (no 5m bars cached yet)"]
+    c = {"or": {"high": 5840.25, "low": 5831.5, "complete": True}, "prev_close": 5800.0, "gap_pct": 0.31, "gap_class": "UP",
+         "break": {"side": "UP", "ts": 1763381400000}}
+    line = session_lines(c)[0]
+    assert line.startswith("SESSION_CTX: or_high=5840.25 or_low=5831.5 or=COMPLETE gap=UP gap_pct=0.31 first_break=UP@")
+    assert line.endswith("CT")
+    f = session_lines({"or": {"high": 1.0, "low": 0.5, "complete": False}, "gap_pct": None, "gap_class": "NA", "break": None})[0]
+    assert "or=FORMING" in f and "gap=NA gap_pct=NA" in f and "first_break=NA" in f
+    assert session_lines({"or": None, "gap_pct": None, "gap_class": "NA", "break": None})[0].startswith("SESSION_CTX: or_high=NA or_low=NA or=NA")
+
+
+def test_session_ctx_is_in_the_digest_and_missing_key_is_na():
+    t = format_digest(state())
+    assert "SESSION_CTX: NA" in t and any(l.startswith("SESSION: hi=") for l in t.splitlines())
+    t2 = format_digest(state(session_ctx={"or": {"high": 2.0, "low": 1.0, "complete": True}, "gap_pct": 0.5, "gap_class": "UP", "break": None}))
+    assert "SESSION_CTX: or_high=2 or_low=1 or=COMPLETE gap=UP gap_pct=0.5 first_break=NA" in t2

@@ -24,7 +24,8 @@ MIN_STOP_TICKS, MAX_STOP_TICKS = 4, 200
 HORIZON_BARS = 24              # two hours of 5m bars
 FLAT_BY = (15, 8)              # CT: the desk flattens here, so nothing is graded past it
 COOLDOWN_S = 30 * 60           # the same (kind, level) is not proposed again inside this
-DAILY_CAP = 8                  # proposals per contract per CT day, so chop cannot become a tilt machine
+DAILY_CAP = 8                  # dealer-map proposals per contract per CT day, so chop cannot become a tilt machine
+EMA21_DAILY_CAP = 8            # the EMA21 extras (EMA21_HOLD / EMA21_REJECT) count apart: they were 80% of proposals and starved the dealer-map kinds
 LOOKBACK_RECLAIM = 12          # a reclaim needs a close on the wrong side of the level within this many bars
 BAR_MS = 300_000
 MIN_RESOLVED = 30
@@ -118,7 +119,9 @@ def detect(m, bars, atr, tick, root=None, contract=None, snapshot_epoch=None, ex
 def allowed(p, rows, now_ts, ct_date):
     """Cooldown per (kind, level) and a daily cap per contract, against the proposals already logged. `ct_date` is a function ms -> CT date string."""
     same_day = [r for r in rows if r.get("kind_row") == "proposal" and r.get("root") == p["root"] and ct_date(r["bar_ts"]) == ct_date(p["bar_ts"])]
-    if len(same_day) >= DAILY_CAP:
+    ema = lambda r: str(r.get("kind", "")).startswith("EMA21_")
+    pool = [r for r in same_day if ema(r) == ema(p)]                       # two buckets: the EMA21 kinds and the dealer-map kinds
+    if len(pool) >= (EMA21_DAILY_CAP if ema(p) else DAILY_CAP):
         return False
     for r in same_day:
         same_level = r["level"] == p["level"] or p.get("role") == "EMA21"        # the EMA moves every bar, so its cooldown is per kind

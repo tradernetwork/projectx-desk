@@ -104,6 +104,20 @@ def test_cooldown_daily_cap_and_duplicates():
     assert MP.allowed(p, cap, 0, lambda ms: "2026-10-27") is False                                         # a daily cap, so chop cannot become a tilt machine
 
 
+def test_ema21_events_have_their_own_daily_cap():
+    p = det(FLAT + [7692.0, 7688.0])[0]
+    cd = lambda ms: "2026-10-27"
+    assert MP.EMA21_DAILY_CAP == 8 and MP.DAILY_CAP == 8
+    ema_rows = [{**p, "kind_row": "proposal", "id": f"e{i}", "kind": "EMA21_REJECT", "role": "EMA21", "level": 7700.0 + i, "bar_ts": p["bar_ts"] - (i + 1) * 100 * MP.BAR_MS}
+                for i in range(MP.EMA21_DAILY_CAP)]
+    assert MP.allowed(p, ema_rows, 0, cd) is True                                                          # eight EMA21 rows do not starve a dealer-map kind
+    ema_new = {**p, "id": "e-new", "kind": "EMA21_HOLD", "role": "EMA21", "level": 7699.0}
+    assert MP.allowed(ema_new, ema_rows, 0, cd) is False                                                   # but they cap themselves
+    dealer_rows = [{**p, "kind_row": "proposal", "id": f"d{i}", "kind": f"K{i}", "bar_ts": p["bar_ts"] - (i + 1) * 100 * MP.BAR_MS} for i in range(MP.DAILY_CAP)]
+    assert MP.allowed(ema_new, dealer_rows, 0, cd) is True                                                 # and dealer-map rows do not starve the EMA21
+    assert MP.allowed(p, dealer_rows, 0, cd) is False
+
+
 def short_plan(**kw):
     return {"id": "t", "root": "MES", "kind": "TRAPDOOR_LOST", "side": "SHORT", "entry": 7688.0, "stop": 7694.0, "stop_dist": 6.0, "target": 7640.0, **kw}
 

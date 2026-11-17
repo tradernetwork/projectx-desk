@@ -63,6 +63,7 @@ class RhState:
 
     def reset(self):
         self.guard = getattr(self, "guard", None)
+        self.demo = getattr(self, "demo", False)       # PX_RH_DEMO: the UI says "mock Robinhood, no real account"
         self.polled = False
         self.as_of = None
         self.error = None
@@ -92,14 +93,14 @@ class RhState:
 
     def snapshot(self, stream=False) -> dict:
         if not self.polled:
-            return {"enabled": True, "connected": False, **self._guard_block(stream)}
+            return {"enabled": True, "connected": False, "demo": self.demo, **self._guard_block(stream)}
         d = self.data
         unknown = [k for k in SECTIONS if d[k] is None]
         pos, ords, appr = d["positions"], _public(d["orders"]), _public(d["approvals"])
         out = {"enabled": True, "connected": self.error != "unauthorized", "ok": not unknown and self.error is None,
                "as_of": self.as_of, "unknown": unknown, "stream": bool(stream), "account": d["account"],
                "positions": pos, "orders": ords, "approvals": appr, "approval_setting": d["approval_setting"],
-               "pnl": d["pnl"]}
+               "pnl": d["pnl"], "demo": self.demo}
         if self.error:
             out["error"] = self.error
         out.update(self._guard_block(stream))
@@ -122,9 +123,10 @@ class RhState:
 
 
 class Runtime:
-    def __init__(self, reader: Reader, *, token_present=None, market_quiet=None, poll_s=DEFAULT_POLL_S, closer=None):
+    def __init__(self, reader: Reader, *, token_present=None, market_quiet=None, poll_s=DEFAULT_POLL_S, closer=None, demo=False):
         self.reader = reader
         self.state = RhState()
+        self.state.demo = bool(demo)
         self.poll_s = max(float(poll_s), MIN_POLL_S)
         self._token_present = token_present or (lambda: True)
         self._market_quiet = market_quiet or px_tradeday.market_quiet
@@ -209,7 +211,7 @@ def from_env(environ=None, transport=None, closer=None):
     quiet_on = (env.get("PX_WEEKEND_QUIET") or "1").strip() != "0"
     return Runtime(Reader(client), token_present=lambda: store.load() is not None,
                    market_quiet=(px_tradeday.market_quiet if quiet_on else (lambda: False)),
-                   poll_s=poll_interval(env), closer=closer)
+                   poll_s=poll_interval(env), closer=closer, demo=_truthy(env.get("PX_RH_DEMO")))
 
 
 async def open_from_env(environ=None, transport=None):

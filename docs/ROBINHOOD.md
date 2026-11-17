@@ -105,11 +105,37 @@ provider text. `GET /api/rh/tickets` lists tickets and the halt word (`?stream=1
 | `POST /api/rh/preview` | `{symbol, side, qty, limit_price}` returns a hashed ticket |
 | `POST /api/rh/place` | `{ticket_id, confirm_hash}`; the hash is required |
 | `POST /api/rh/cancel` | `{ticket_id}` cancels an awaiting, approved or placed order; works while halted; one attempt |
+| `POST /api/rh/discard` | `{ticket_id}` drops a previewed (unplaced) ticket so its symbol frees up; nothing is sent to Robinhood |
+| `POST /api/rh/reconcile` | `{ticket_id}` looks an UNKNOWN ticket up at Robinhood by its ref id; never resends, never clears the halt |
 | `POST /api/rh/release` | `{ticket_id}` human only: frees a ticket whose order and approval both vanished at Robinhood (it checks first) |
 | `POST /api/rh/halt/resolve` | human only: clears the Robinhood halt |
 
 Neither the desk's MCP, the Ask box nor the desk agent can reach any of them. A cancel that gets no clear answer is UNKNOWN
 and halts (`cancel_unknown`); look at the Robinhood app, then `reconcile` or `release`. Nothing resends a write.
+
+## Phase 1: using the panel
+
+Click **Robinhood** in the switch at the bottom left of the desk (it only appears when `PX_RH=1`). The panel shows the account
+type and state (never the number), your trade-approvals setting, positions, option positions (read only), working orders, pending
+approvals and every ticket with a plain-words line for its state. In stream mode (`body.streaming`) dollar values are not drawn.
+
+1. Type a ticker, choose Buy to open or Sell to close, whole shares and a limit price, then **Preview**. A refusal is explained in
+   plain words (every guard code has a line). A good preview shows the ticket code (hash8), a countdown and the warning: no paper
+   trading, a fill is unprotected, approve in the Robinhood app.
+2. **Discard** frees the symbol. Otherwise press and hold **PLACE** for 600 ms (a click does nothing; the ticket must have been on
+   screen 1.5 s). The order goes to Robinhood and waits for your tap in the Robinhood app.
+3. The ticket moves to approved, declined, expired or filled on its own. Cancel, Reconcile, Release and Clear halt show only where the
+   state allows them and each asks once. An UNKNOWN ticket means the outcome is unclear and Robinhood is halted: look at the Robinhood
+   app, then Reconcile, or Release when the app shows nothing.
+4. `PX_RH_DEMO=1` (set by `run_dev.sh`) shows "DEMO: mock Robinhood, no real account". It is a label, not a safety: the mock cannot place.
+
+The Ask box agent cannot read `data/rh_*` or the Robinhood halt file, and cannot reach any Robinhood route.
+
+### Screenshots
+
+`python scripts/screenshots.py` (offline mock only) also writes `docs/img/ui-robinhood-panel.png` and `ui-robinhood-ticket.png` from the
+in-process mock broker with invented symbols. They are not committed until someone has looked at them: this repo's author could not
+render the panel on the machine it was built on.
 
 ## Tool drift
 

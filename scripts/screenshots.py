@@ -129,7 +129,10 @@ def make_gif():
 
 
 def main():
-    from playwright.sync_api import sync_playwright
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        sys.exit("playwright is not installed: pip install -r requirements-screenshots.txt && playwright install chromium")
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="pxshots-"))
     env = {k: v for k, v in os.environ.items() if not k.startswith(("PX_", "PROJECTX", "TD_"))}
     env.update({
@@ -142,6 +145,10 @@ def main():
         "PX_FEED_URL": f"http://127.0.0.1:{FEED}/analyst-callouts", "PX_FEED_KEY": "demo",
         "PX_FEED_STAGE": "1",            # the one-click STAGE on a callout is opt-in (Round 10); the screenshot shows it on
         "PX_GEX_URL": f"http://127.0.0.1:{GEXP}/api/v1", "PX_GEX_KEY": "demo", "DEV_GATEWAY_PORT": str(GW),
+        # the Robinhood scene: the in-process MOCK only (invented symbols and numbers, its own throwaway token file), never a real login
+        "PX_RH": "1", "PX_RH_MOCK": "1", "PX_RH_DEMO": "1", "PX_RH_TRADING": "1", "PX_RH_MAX_QTY": "10", "PX_RH_MAX_NOTIONAL": "5000",
+        "PX_RH_TOKEN_FILE": str(tmp / "rh_tokens.mock.json"), "PX_RH_HALT_FILE": str(tmp / "RH_HALT"),
+        "PX_RH_AUDIT": str(tmp / "rh_audit.jsonl"), "PX_RH_STATE_FILE": str(tmp / "rh_state.json"),
     })
     py = ROOT / ".venv" / "bin" / "python"
     py = str(py if py.exists() else sys.executable)
@@ -215,6 +222,19 @@ def main():
             page.evaluate("document.getElementById('ai-panel').style.cssText = 'flex:none;height:560px'")   # it is a flex child that collapses to its title bar
             page.locator("#ai-panel").scroll_into_view_if_needed(); time.sleep(1)
             shot("ui-ai-digest.png", "#ai-panel")
+            try:                                             # Robinhood scene: the mock broker, the DEMO banner, a previewed ticket
+                page.click(".rh-switch button:has-text('Robinhood')", timeout=10000)
+                page.wait_for_selector(".rh-panel:not([hidden]) .rh-acct", timeout=20000)
+                time.sleep(1)
+                shot("ui-robinhood-panel.png", ".rh-panel")
+                f = page.locator(".rh-form input")
+                f.nth(0).fill("DDD"); f.nth(1).fill("1"); f.nth(2).fill("101.25")
+                page.click(".rh-form button[type=submit]")
+                time.sleep(2)
+                shot("ui-robinhood-ticket.png", ".rh-panel")   # a previewed ticket, or the refusal in plain words when the mock market is closed
+                page.click(".rh-x")
+            except Exception as e:
+                print("robinhood scene not drawn:", str(e)[:80])
             page.set_viewport_size({"width": 430, "height": 900}); time.sleep(2)
             shot("ui-narrow.png", full_page=False)
             b.close()

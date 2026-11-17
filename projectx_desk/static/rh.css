@@ -1,0 +1,43 @@
+/* Robinhood panel (rh.js). A fixed overlay and a small broker switch. Display and a gated order ticket only. */
+.rh-switch{position:fixed;left:10px;bottom:10px;z-index:60;display:flex;border:1px solid var(--border-strong);border-radius:var(--r-sm);overflow:hidden;background:var(--bg-card)}
+.rh-switch button{background:transparent;color:var(--text-2);border:0;padding:5px 10px;font:inherit;font-size:var(--fs-xs);cursor:pointer}
+.rh-switch button.on{background:var(--cyan-bg);color:var(--cyan-ink)}
+.rh-panel{position:fixed;inset:0;z-index:55;overflow:auto;background:var(--bg-app);color:var(--text);padding:var(--pad) var(--pad) 56px;font-size:var(--fs-sm)}
+.rh-panel[hidden]{display:none}
+.rh-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.rh-head h2{margin:0;font-size:var(--fs-lg)}
+.rh-x,.rh-panel button{background:var(--bg-raise);color:var(--text);border:1px solid var(--border-strong);border-radius:var(--r-sm);padding:5px 10px;font:inherit;cursor:pointer}
+.rh-panel button:disabled{opacity:.45;cursor:default}
+.rh-demo{background:var(--amber-bg);border:1px solid var(--amber-line);color:var(--amber-ink);padding:6px 10px;border-radius:var(--r-sm);margin-bottom:8px;font-weight:600}
+.rh-demo[hidden]{display:none}
+.rh-body{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
+.rh-sec{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:var(--pad);margin-bottom:8px}
+.rh-sec h3{margin:0 0 6px;font-size:var(--fs-sm);color:var(--text-2);text-transform:uppercase;letter-spacing:.04em}
+.rh-table{width:100%;border-collapse:collapse;font-family:var(--mono)}
+.rh-table th,.rh-table td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--border-sub)}
+.rh-table th{color:var(--text-muted);font-weight:500}
+.rh-none,.rh-note{color:var(--text-2);margin:2px 0}
+.rh-acct{margin:0;color:var(--text-2)}
+.rh-bad{color:var(--amber-ink);margin:4px 0}
+.rh-ok{color:var(--green-ink);margin:4px 0}
+.rh-halt{border:1px solid var(--mag-line);background:var(--mag-bg);color:var(--mag-ink);padding:8px 10px;border-radius:var(--r-sm)}
+.rh-halt p{margin:0 0 4px}
+.rh-warn{border:1px solid var(--mag-line);background:var(--mag-bg);color:var(--mag-ink);padding:7px 10px;border-radius:var(--r-sm);margin-bottom:8px;line-height:1.45}
+.rh-form{display:flex;flex-wrap:wrap;gap:6px}
+.rh-form input,.rh-form select{background:var(--bg-app);color:inherit;border:1px solid var(--border-strong);border-radius:var(--r-sm);padding:6px 8px;font:inherit;min-width:0;flex:1 1 110px}
+.rh-ticket{border:1px solid var(--cyan-line);border-radius:var(--r-sm);padding:10px;display:flex;flex-direction:column;gap:6px}
+.rh-tk-top{font-family:var(--mono);font-size:var(--fs-lg)}
+.rh-hash{font-family:var(--mono);color:var(--cyan-ink)}
+.rh-cd{color:var(--text-2)}
+.rh-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}
+.rh-place{position:relative;overflow:hidden;min-height:40px;min-width:180px;touch-action:none;user-select:none;-webkit-user-select:none;
+  background:linear-gradient(90deg,var(--mag-line) calc(var(--hold,0)*100%),var(--bg-raise) calc(var(--hold,0)*100%))!important}
+.rh-place.holding{border-color:var(--mag-line)!important}
+.rh-tk{border-top:1px solid var(--border-sub);padding:8px 0}
+.rh-tk-state{font-size:var(--fs-xs);color:var(--cyan-ink);letter-spacing:.05em}
+.rh-tk.st-unknown .rh-tk-state,.rh-tk.st-rejected .rh-tk-state{color:var(--mag-ink)}
+.rh-tk.st-awaiting_approval .rh-tk-state{color:var(--amber-ink)}
+.rh-confirm{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
+.rh-ask{color:var(--amber-ink)}
+.rh-danger{border-color:var(--mag-line)!important;color:var(--mag-ink)!important}
+@media (max-width:640px){.rh-table{font-size:var(--fs-xs)}.rh-table th,.rh-table td{padding:3px 4px}.rh-place{min-width:100%}}

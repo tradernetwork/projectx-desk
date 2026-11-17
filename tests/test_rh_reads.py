@@ -196,7 +196,7 @@ async def test_disabled_and_no_token_make_no_request():
     c = Client("http://127.0.0.1/mcp", Provider(dev_robinhood.make_app().state.mock), transport=t)
     rt = rh_state.Runtime(reads.Reader(c), token_present=lambda: False, market_quiet=lambda: False)
     assert await rt.poll_once() is False
-    assert rt.state.snapshot() == {"enabled": True, "connected": False}
+    assert rt.state.snapshot() == {"enabled": True, "connected": False, "demo": False}
     assert t.n == 0
 
 
@@ -267,7 +267,7 @@ def test_env_gate_and_defaults(tmp_path):
     assert rh_state.from_env({}) is None and rh_state.from_env({"PX_RH": "0"}) is None
     rt = rh_state.from_env({"PX_RH": "1", "PX_RH_TOKEN_FILE": str(tmp_path / "t.json")})
     assert rt is not None and rt.reader.client.base_url == "https://agent.robinhood.com/mcp/trading"
-    assert rt.state.snapshot() == {"enabled": True, "connected": False}
+    assert rt.state.snapshot() == {"enabled": True, "connected": False, "demo": False}
     with pytest.raises(Exception):
         rh_state.from_env({"PX_RH": "1", "PX_RH_URL": "http://evil.example/mcp"})
 

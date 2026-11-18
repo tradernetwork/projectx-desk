@@ -879,7 +879,7 @@ function renderManual(){
   $('mq-val').textContent = String(MQ.qty);
   const st = $('mq-stop');
   if(!MQ.stopTouched && ok && typeof z.stop_ticks === 'number') st.value = String(typeof z.stop_max === 'number' ? Math.min(z.stop_ticks, z.stop_max) : z.stop_ticks);   // mirrors the ATR stop (never past the cap) until you type your own
-  $('mq-max').textContent = ok && typeof z.stop_max === 'number' ? 'max ' + z.stop_max + 't' + (z.stop_ticks > z.stop_max ? ' (ATR wants ' + z.stop_ticks + 't)' : '') : '';
+  $('mq-max').textContent = ok && typeof z.stop_max === 'number' ? (z.one_lot ? '1-LOT TRAIL · ' : '') + 'max ' + z.stop_max + 't' + (z.stop_ticks > z.stop_max ? ' (ATR wants ' + z.stop_ticks + 't)' : '') : '';
   mqReadySoon();
   const can = !!(a && S.contractId) && !staging && parseInt(st.value, 10) >= 1;
   for(const id of ['buy-btn', 'sell-btn']) $(id).disabled = !can;

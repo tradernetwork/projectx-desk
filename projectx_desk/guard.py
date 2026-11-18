@@ -26,7 +26,7 @@ from typing import Callable, Optional
 from projectx_desk import sizing
 from projectx_desk.client import PXError, PXRateLimited, PXWriteUnknown
 from projectx_desk.state import STOP_TYPES, WORKING_STATUSES, is_protective_stop, is_trail
-from projectx_desk.limits import BRACKET_MODES, DayState, Limits, atomic_write_json
+from projectx_desk.limits import BRACKET_MODES, DayState, Limits, atomic_write_json, ONE_LOT_ROOTS
 from projectx_desk.tradeday import CT
 
 # ---- the only place these strings may appear -------------------------------------------------
@@ -38,7 +38,7 @@ POSITION_PARTIAL_CLOSE = "/api/Position/partialCloseContract"
 
 CONTRACT_RE = re.compile(r"^CON\.[A-Za-z0-9._]{1,40}$")
 SAFE_AUDIT = re.compile(r"^[A-Za-z0-9_.:\-]{0,64}$")
-AUDIT_KEYS = ("event", "ticket", "origin", "root", "side", "size", "risk_usd", "check", "code", "sha8", "state")
+AUDIT_KEYS = ("event", "ticket", "origin", "root", "side", "size", "risk_usd", "check", "code", "sha8", "state", "one_lot")
 SESSION_OPEN = dtime(17, 0)
 
 STAGED, PLACING, PLACED = "STAGED", "PLACING", "PLACED"
@@ -51,6 +51,10 @@ PENDING_INTENT = ("SENDING", "UNKNOWN", "NOT_FOUND")
 
 class GuardError(Exception):
     pass
+
+
+class _SkipSizing(Exception):
+    """Internal: the 1-lot room check already refused, so describe_trade is not run."""
 
 
 @dataclass
@@ -90,6 +94,7 @@ class Ticket:
     ttl_last: float = 0.0           # clock() of the last attempt
     ttl_cancelled: bool = False     # the TTL cancel was acknowledged: the entry expired unfilled
     abandoned: bool = False         # the naked-position path flattened this ticket; a late stop ACK must be cancelled
+    one_lot: bool = False           # Round 28: staged through the 1-lot branch; its post-fill protective stop goes in as a TRAIL
     account_suffix: str = ""        # sensitive: confirm screen only, never in the AI surface or audit
 
     @property
@@ -155,6 +160,7 @@ class Eval:
     spec: object
     entry_px: Optional[float]
     simulated: Optional[bool]
+    one_lot: bool = False            # Round 28: this evaluation took the 1-lot branch (PX_ONE_LOT, manual qty 1, MES/MNQ, sim)
 
     @property
     def ok(self):
@@ -649,6 +655,9 @@ class Guard:
                 chk("contract_spec", False, str(e))
         if spec is not None:
             chk("allowed_root", spec.root in lim.allowed_roots, f"{spec.root} is not in PX_ALLOWED_ROOTS")
+        # Round 28: the 1-lot branch is ONE manual contract of MES or MNQ on a sim account, nothing else. Any other shape runs every old gate.
+        one_lot = bool(lim.one_lot and manual and qty == 1 and spec is not None and spec.root in ONE_LOT_ROOTS
+                       and lim.account_kind == "sim")
 
         # price reference: market orders are sized off the side that would fill
         q = self.live.quotes.get(contract_id)
@@ -674,8 +683,11 @@ class Guard:
             chk("stop_aligned", aligned, "stop is not on a tick")
             chk("stop_side", (side == "long" and stop_price < entry_px) or (side == "short" and stop_price > entry_px),
                 "stop is on the wrong side of entry")
-            chk("stop_distance", lim.min_stop_ticks <= ticks_dec <= lim.max_stop_ticks,
-                f"stop must be {lim.min_stop_ticks} to {lim.max_stop_ticks} ticks away")
+            if one_lot:         # no tick cap: the loss room below is the ceiling
+                chk("stop_distance", ticks_dec >= lim.min_stop_ticks, f"stop must be at least {lim.min_stop_ticks} ticks away")
+            else:
+                chk("stop_distance", lim.min_stop_ticks <= ticks_dec <= lim.max_stop_ticks,
+                    f"stop must be {lim.min_stop_ticks} to {lim.max_stop_ticks} ticks away")
             if manual:        # the risk IS the trader's choice: exactly qty contracts at this stop (exact decimal, so the floor lands on qty)
                 ticks_int = max(1, int(ticks_dec.to_integral_value(rounding=ROUND_CEILING)))
                 risk_dollars = float(Decimal(qty) * ticks_int * Decimal(str(spec.tick_value)))
@@ -705,7 +717,7 @@ class Guard:
                 chk("budget_remaining", remaining > 0, "no loss room left today")
         chk("orders_today", self.day.orders_today(now) < lim.max_orders_day, "daily order count reached")
         b = self.behavior(now)
-        chk("cooldown_after_loss", b["cooldown_left_s"] == 0,
+        chk("cooldown_after_loss", b["cooldown_left_s"] == 0 or one_lot,       # the loss cooldown is off in 1-lot mode; the lockout is not
             f"cooldown after a loss: {b['cooldown_left_s'] // 60}m{b['cooldown_left_s'] % 60:02d}s left. Walk away.")
         chk("loss_lockout", not b["locked"], f"locked for the session: {b['consecutive_losses']} losses in a row")
         chk("contract_flat", not self._contract_busy(contract_id),
@@ -718,27 +730,38 @@ class Guard:
         if spec and entry_px and remaining and remaining > 0 and all(ok for _, ok, _ in v):
             by_root, total = self._open_contracts(spec.root)
             headroom = min(lim.max_qty_order, lim.max_qty_symbol - by_root, lim.max_qty_total - total)
+            room_ok = True
             if chk("exposure_headroom", headroom >= 1, "open-contract caps leave no room"):
-                eff_risk = min(float(risk_dollars), lim.max_loss_frac * remaining)
-                if b["risk_cap"]:                       # after a loss: never risk more than the losing trade did
-                    eff_risk = min(eff_risk, b["risk_cap"])
+                if one_lot:     # the stop risk plus a slippage allowance must fit in the whole remaining room; no 25% / after-loss / 2x gates
+                    eff_risk = float(risk_dollars)
+                    slip = float(Decimal(lim.one_lot_slip_ticks) * Decimal(str(spec.tick_value)))
+                    room_ok = chk("one_lot_room", eff_risk + slip <= remaining,
+                                  f"1-lot: ${eff_risk:.2f} stop + ${slip:.2f} slippage is more than the ${remaining:.2f} loss room left")
+                else:
+                    eff_risk = min(float(risk_dollars), lim.max_loss_frac * remaining)
+                    if b["risk_cap"]:                   # after a loss: never risk more than the losing trade did
+                        eff_risk = min(eff_risk, b["risk_cap"])
                 try:
+                    if not room_ok:
+                        raise _SkipSizing
                     d = sizing.describe_trade(contract_id, side, entry_px, stop_price, eff_risk,
                                               risk_budget_dollars=remaining, max_contracts=headroom,
                                               live_tick_size=rec["tickSize"], live_tick_value=rec["tickValue"])
+                except _SkipSizing:
+                    pass
                 except sizing.SizingError as e:
                     chk("sizing", False, str(e))
                 if d is not None:
                     chk("sizing", not d["refused"], str(d["reason"]))
-                    if not d["refused"]:
+                    if not d["refused"] and not one_lot:
                         chk("budget_multiple", remaining >= lim.min_budget_multiple * d["total_risk_dollars"],
                             "remaining budget is under the safety multiple of this trade's max loss")
-                        if manual:
-                            chk("manual_qty", int(d["contracts"]) == qty,
-                                f"asked {qty}: the loss room, the after-loss cap or the contract caps allow {int(d['contracts'])}")
+                    if not d["refused"] and manual:
+                        chk("manual_qty", int(d["contracts"]) == qty,
+                            f"asked {qty}: the loss room, the after-loss cap or the contract caps allow {int(d['contracts'])}")
         elif manual and spec and entry_px and remaining is not None and remaining > 0:
             chk("manual_qty", False, "asked for a manual size but an earlier check refused")
-        return Eval(v, d, rec, spec, entry_px, simulated)
+        return Eval(v, d, rec, spec, entry_px, simulated, one_lot)
 
     # ---- preview ----------------------------------------------------------------------------
 
@@ -811,10 +834,10 @@ class Guard:
                    created=now_m, expires=now_m + lim.ticket_ttl_s, risk_requested=float(risk_requested), qty=qty,
                    stop_price=float(stop_price), order_type=order_type,
                    entry_limit=float(entry) if order_type == "limit" else None,
-                   account_suffix=str(self.live.account_id)[-3:])
+                   account_suffix=str(self.live.account_id)[-3:], one_lot=ev.one_lot)
         self.tickets[tid] = t
         self._audit("preview", ticket=t.hash8, origin=origin, root=spec.root, side=side, size=size,
-                    risk_usd=d["total_risk_dollars"], sha8=t.hash8)
+                    risk_usd=d["total_risk_dollars"], sha8=t.hash8, one_lot=1 if ev.one_lot else None)
         placeable = lim.trading and (origin != "mcp" or lim.mcp_place)
         return Preview(True, t, ev.verdict, dict(d), placeable)
 
@@ -1203,7 +1226,7 @@ class Guard:
                 "side": t.stop_plan["side"], "size": size, "limitPrice": None,
                 "stopPrice": t.stop_plan["stop_price"], "trailPrice": None, "customTag": tag}
         trailing, tick = False, None
-        if self.limits.trail_entry and self.limits.account_kind == "sim":
+        if (self.limits.trail_entry or t.one_lot) and self.limits.account_kind == "sim":
             trail_body = await self._entry_trail_body(t, size, tag)
             if trail_body is not None:
                 (body, tick), trailing = trail_body, True

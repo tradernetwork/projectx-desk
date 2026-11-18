@@ -23,6 +23,7 @@ from projectx_desk import tomorrow_ledger as px_tledger
 from projectx_desk import flow as px_flow
 from projectx_desk import session as px_session
 from projectx_desk import sizing
+from projectx_desk.limits import ONE_LOT_ROOTS
 from projectx_desk.indicators import rsi_series
 from projectx_desk.levels import atr_series, bounce_stats, ema_stack, percentile_rank, placebo_rate, verdict
 from projectx_desk.client import live_data, PXAuthError, PXError, PXNotConfigured, PXRateLimited
@@ -416,10 +417,15 @@ def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pc
         else:
             why.append(f"Stop: {stop_k:g} x ATR {atr_value:.2f}pt = {stop_t}t = ${rpc:,.2f} per {root}")
             why_s.append(f"Stop: {stop_k:g} x ATR {atr_value:.2f}pt = {stop_t}t")
-        too_wide = stop_t > limits.max_stop_ticks
+        # Round 28: in 1-lot mode (MES/MNQ, sim) the stop ceiling is the loss room, not PX_MAX_STOP_TICKS: (stop + slippage) must fit in it
+        one_lot = bool(limits.one_lot and limits.account_kind == "sim" and root in ONE_LOT_ROOTS)
+        stop_cap = int(limits.max_stop_ticks)
+        if one_lot:
+            stop_cap = max(0, int(remaining // float(rec["tickValue"])) - int(limits.one_lot_slip_ticks))
+        too_wide = stop_t > stop_cap
         if too_wide:
-            why.append(f"REFUSED: a {stop_t}t stop is wider than PX_MAX_STOP_TICKS={limits.max_stop_ticks}: STAGE will refuse")
-            why_s.append(f"REFUSED: stop wider than the {limits.max_stop_ticks}t cap")
+            why.append(f"REFUSED: a {stop_t}t stop is wider than the {stop_cap}t " + ("loss room (1-lot, slippage included)" if one_lot else f"PX_MAX_STOP_TICKS={limits.max_stop_ticks}") + ": STAGE will refuse")
+            why_s.append(f"REFUSED: stop wider than the {stop_cap}t " + ("room" if one_lot else "cap"))
         elif d["refused"]:
             why.append(f"REFUSED: one {root} risks ${rpc:,.2f}, more than ${budget:,.2f}. Never rounded up.")
             why_s.append(f"REFUSED: one {root} risks more than the budget. Never rounded up.")
@@ -454,7 +460,7 @@ def size_idea(limits, contract_id, rec, side, ref, atr_value, adx_value, risk_pc
                  "drawdown_left": _n(proj["drawdown_left"]), "daily_left": _n(proj["daily_left"]),
                  "heat_usd": _n(heat["total_usd"]), "heat_pct": _n(heat["pct"], 1)} | tgt | cost
         return extra | {"status": "OK", "root": root, "allowed": allowed, "side": side, "entry": _n(ref), "stop": _n(stop_px),
-                "stop_ticks": stop_t, "stop_max": int(limits.max_stop_ticks), "stop_points": _n(stop_pts), "budget_usd": _n(budget),
+                "stop_ticks": stop_t, "stop_max": stop_cap, "one_lot": one_lot, "stop_points": _n(stop_pts), "budget_usd": _n(budget),
                 "budget_chosen_usd": _n(chosen), "risk_pct": risk_pct, "stop_atr_k": stop_k,
                 "contracts": 0 if too_wide else d["contracts"], "contracts_by_risk": by_risk, "cap": cap, "capped": by_risk > cap and not d["refused"],
                 "risk_usd": _n(d["total_risk_dollars"]), "rpc": _n(rpc), "pct_budget": _n(d["pct_of_risk_budget_used"], 1),
@@ -768,7 +774,8 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
         "mode": {"max_entry_dev_ticks": int(lim.max_entry_dev_ticks), "trading": bool(lim.trading), "mcp_place": bool(lim.mcp_place), "halt": guard.halted(),
                  "unknown_order": guard.unreconciled(), "halt_cause": guard.halt_cause(), "auto": guard.auto_action(),
                  "windows": guard.windows(now),
-                 "account_kind": lim.account_kind.upper(), "bracket_mode": lim.bracket_mode.upper()},
+                 "account_kind": lim.account_kind.upper(), "bracket_mode": lim.bracket_mode.upper(),
+                 "one_lot": bool(lim.one_lot and lim.account_kind == "sim")},
         "feed": {"market": "UP" if st.market.up else "DOWN", "user": "UP" if st.user.up else "DOWN",
                  "market_age_s": st.market.feed_age_s(), "user_age_s": st.user.feed_age_s(),
                  "seeded": bool(live.positions_seeded and live.trades_seeded),
@@ -979,7 +986,7 @@ def format_digest(s) -> str:
     m, f, c, q, se, i, z, r = s["mode"], s["feed"], s["contract"], s["quote"], s["session"], s["ind"], s["size"], s["risk"]
     L = [f"PXDESK v{s['v']} asof={s['asof']}" + (" STREAM=ON" if s.get("stream") else ""),
          f"MODE: engine={'UNKNOWN_ORDER' if m.get('unknown_order') else 'HALTED' if m['halt'] else 'READY'} trading={'ON' if m['trading'] else 'OFF'} "
-         f"mcp_place={'ON' if m['mcp_place'] else 'OFF'} account={m['account_kind']} bracket={m['bracket_mode']}",
+         f"mcp_place={'ON' if m['mcp_place'] else 'OFF'} account={m['account_kind']} bracket={m['bracket_mode']}" + (" 1LOT" if m.get("one_lot") else ""),
          f"FEED: market={f['market']} user={f['user']} seeded={_f(f['seeded'])} market_age_s={_f(f['market_age_s'])}",
          *_tape_lines(f.get("tape")),
          f"CONTRACT: root={_f(c['root'])} tick={_f(c['tick'])} tickval={_f(c['tick_value'])} active={_f(c['active'])}",

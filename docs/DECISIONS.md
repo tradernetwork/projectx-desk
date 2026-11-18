@@ -558,3 +558,18 @@ Two outside reviews (GPT-6 and DeepSeek V4.1 Flash) and the in-house risk lens c
 **Update 2026-11-17 (owner's call):** `PX_RH` now defaults ON. Reads only: with no token file the desk makes no outbound call and the Robinhood state reads `connected=false`; `PX_RH=0` (or false/no/off) turns the feature off. The placement kill switch `PX_RH_TRADING` is unchanged and defaults to 0, so a default install can still send no Robinhood order.
 
 **Update 2026-11-17 (live check):** signed in to the real Trading MCP with this desk's code. OAuth port works, 96 tools captured and pinned, all read tools and shapes confirmed; the guard's quote-age field was wrong (`updated_at` does not exist, the live quote has `venue_*_time`) and is fixed. The agent account had approvals OFF, so every order is refused `approvals_off` until the owner turns them on in the Robinhood app. Order, review and cancel reply shapes and `ref_id` echo remain unverified.
+
+## Round 28: 1-lot combine mode (2026-11-18)
+
+**Problem.** Trading one manual MES or MNQ in a Topstep combine was refused by gates built for risk-%-sized trades: one contract's stop risk had to fit in 25% of the remaining loss room (`max_loss_frac`), be no bigger than the last losing trade's risk (`risk_cap`), and leave 2x room (`budget_multiple`); a 1.5 x 5m ATR stop on MNQ also blew past `PX_MAX_STOP_TICKS` (200), and the manual stop box silently clamped to it. At qty 1 those gates mostly ask "can the desk afford a contract", which the loss room already answers.
+
+**Decision.** `PX_ONE_LOT=1` (default OFF). A ticket is a 1-lot ticket only when ALL hold: manual `qty == 1`, root MES or MNQ, simulated account kind. Any other shape runs every old gate unchanged.
+- Dropped for a 1-lot ticket: `max_loss_frac`, `risk_cap`, `budget_multiple`, the `PX_MAX_STOP_TICKS` ceiling (the 4-tick floor stays) and the 5-minute loss cooldown.
+- Added: `one_lot_room`, `(stop ticks + PX_ONE_LOT_SLIP_TICKS) x tick value <= remaining`, where `remaining` is the unchanged `min(DLL + pnl - draw, drawdown room - draw)`. A stop-out, slippage included, cannot breach the daily loss limit or the MLL. `PX_ONE_LOT_SLIP_TICKS` defaults to 8 (2 points on both roots), `0` allowed, garbled falls back to 8.
+- Kept: the 3-in-a-row `loss_lockout`, halt, account binding, hub and quote freshness, `session_window` and flat-by, `contract_flat`, `open_pnl_known`, `orders_today`, `exposure_headroom`, `PX_MAX_QTY_ORDER`.
+- Protection: a 1-lot ticket's post-fill stop goes in as a TRAIL (type 5) at the entry stop distance (1.5 x 5m ATR when the box carries the ATR stop), on the closing side. This reuses the `PX_TRAIL_ENTRY` path, its read-back and its fall back to a fixed stop (`TRAIL_FALLBACK_FIXED`); it does not need `PX_TRAIL_ENTRY=1`. Sim only.
+- Not built: stop-and-reverse. "Opposite direction" was the side of the trail, not an automatic flip.
+
+**Why this and not the alternatives.** A flat "raise the caps" would have widened every ticket, including multi-contract and callout ones. Keeping the branch to one shape means the relaxation cannot leak. The room check is the one ceiling that actually ends a combine.
+
+**Where.** `limits.py` (`one_lot`, `one_lot_slip_ticks`, `ONE_LOT_ROOTS`), `guard.py` (`_evaluate`, `Ticket.one_lot`, `_arm_stop`, audit key `one_lot`), `digest.py` (`size.stop_max` becomes the room-derived ceiling, `mode.one_lot`, `MODE: ... 1LOT`), `desk.js` label. Tests: `tests/test_px_one_lot.py`.

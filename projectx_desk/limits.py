@@ -17,6 +17,9 @@ from projectx_desk import ROOT as HERE      # data/ lives at the checkout root, 
 BRACKET_MODES = ("position", "oco")  # anything else (incl. unset) refuses opens
 
 
+ONE_LOT_ROOTS = ("MES", "MNQ")   # Round 28: the only roots the 1-lot branch may relax anything for
+
+
 def _f(name, default):
     try:
         return float(os.getenv(name, default))
@@ -99,6 +102,9 @@ class Limits:
     flatten_fallback: bool = False        # PX_FLATTEN_FALLBACK=1: after a failed closeContract, send a capped opposite market order. OFF: halt and tell a human
     trail_stop: bool = False              # PX_TRAIL_STOP=1: the desk may swap a position's fixed stop for a trailing stop (Guard.arm_trail). Sim only
     trail_entry: bool = False             # PX_TRAIL_ENTRY=1: the entry's post-fill protective stop goes in as a TRAIL (type 5), distance = the entry stop distance. Sim only
+    one_lot: bool = False                 # PX_ONE_LOT=1 (Round 28): ONE manual MES/MNQ contract on a sim account skips the 25%-of-room, after-loss cap, 2x room and
+                                          # max-stop-ticks gates and the loss cooldown; the ceiling becomes (stop + slippage) in dollars <= remaining room. Its entry stop is a TRAIL
+    one_lot_slip_ticks: int = 8           # PX_ONE_LOT_SLIP_TICKS: slippage allowance added to the stop before the room check; 0 allowed, garbled = 8
     mcp_trail: bool = False             # PX_MCP_TRAIL=1: the MCP origin (the desk agent, Hermes) may call arm_trail. Needs trail_stop too
     halt_path: pathlib.Path = field(default_factory=lambda: HERE / "data" / "HALT")
     state_path: pathlib.Path = field(default_factory=lambda: HERE / "data" / "day_state.json")
@@ -143,6 +149,8 @@ class Limits:
             trail_stop=os.getenv("PX_TRAIL_STOP", "0") == "1",
             trail_entry=os.getenv("PX_TRAIL_ENTRY", "0") == "1",
             mcp_trail=os.getenv("PX_MCP_TRAIL", "0") == "1",
+            one_lot=os.getenv("PX_ONE_LOT", "0") == "1",
+            one_lot_slip_ticks=_rail("PX_ONE_LOT_SLIP_TICKS", 8),
             daily_loss_limit=_f("PX_DAILY_LOSS_LIMIT", 0),
             dd_buffer=_f("PX_DRAWDOWN_BUFFER", 0),
             no_new_after=os.getenv("PX_NO_NEW_AFTER") or None,

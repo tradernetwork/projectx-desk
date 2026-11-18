@@ -2,6 +2,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 .env.projectx
+.env.projectx.bak*
 data/
 *.sqlite
 audit.jsonl

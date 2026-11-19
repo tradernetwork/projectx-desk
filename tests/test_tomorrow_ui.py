@@ -40,14 +40,15 @@ def test_the_right_now_box_says_watch_and_never_tells_you_to_trade():
 
 
 def test_gex_wall_labels_use_words_for_size_and_say_what_the_wall_does():
-    block = JS.split("function deskLines()")[1].split("const cl = CALL.live")[0]
-    assert "'BIG'" in block and "'MED'" in block and "'SMALL'" in block and "speeds moves" in block and "stalls moves" in block
-    assert "Math.round(lv.rel * 100)" not in block                # the bare percentage nobody could read
+    block = JS.split("function gexLines()")[1].split("function gexBands()")[0]
+    dc = (STATIC / "declutter.js").read_text(encoding="utf-8")      # the chip is short ("wall 7704 BIG"); what the wall does rides in the tooltip
+    assert "'BIG'" in dc and "'MED'" in dc and "'SMALL'" in dc and "moves speed up" in dc and "moves stall" in dc
+    assert "PXDeclutter.gexLabel" in block and "Math.round(lv.rel * 100)" not in block + dc                # the bare percentage nobody could read
 
 
 def test_analyst_callout_lines_start_when_posted_and_run_right_only():
     assert "name: 'deskRay'" in JS and "points: [{timestamp: l.from, value: l.price}, {timestamp: last.timestamp, value: l.price}]" in JS
-    block = JS.split("function deskLines()")[1].split("const t = S.ticket")[0]
+    block = JS.split("function deskLinesRaw()")[1].split("const pos = ")[0]
     assert "from})" in block.replace(" ", "") or ", from}" in block                         # E, SL and T1 carry their post time
 
 

@@ -18,8 +18,8 @@ def test_flashers_restore_the_price_title_not_a_hardcoded_name():
 
 
 def test_1m_trendlines_are_off_by_default_and_migrated_once():
-    assert "LS.get('px.trendTfs', ['5m', '15m'])" in JS
-    assert "LS.get('px.trendTfs.v2', false) || t !== '1m'" in JS and "LS.set('px.trendTfs.v2', true)" in JS
+    assert "LS.get('px.trendTfs.v3', false) ? LS.get('px.trendTfs', []) : []" in JS      # other timeframes default to none, reset once
+    assert "LS.set('px.trendTfs.v3', true)" in JS
     html = (pathlib.Path(__file__).resolve().parent.parent / "projectx_desk" / "static" / "index.html").read_text()
     assert 'data-tf="1m" aria-pressed="false"' in html and 'data-tf="5m" aria-pressed="true"' in html
 

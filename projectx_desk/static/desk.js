@@ -194,6 +194,12 @@ function renderRibbon(){
   if(st && st.quote && st.quote.lastPrice != null && Date.now() - S.lastTickAt > 4000) setPrice(st.quote.lastPrice, true);
 }
 
+/* The rule math (WHY list, stop/target/cost plan) folds under one "Size math" details; the REFUSED and lock banners stay outside it. */
+function syncSizeMore(){
+  const d = $('size-more'); if(!d) return;
+  d.hidden = $('size-why').hidden && $('size-plan').hidden;
+}
+{const d = $('size-more'); if(d){d.open = LS.get('px.sizeMath', false) === true; d.addEventListener('toggle', () => {LS.set('px.sizeMath', d.open); try{renderSize()}catch(e){err(e)}})}}
 function renderSize(){
   const a = S.ai, z = a && a.size;
   fill($('size'), a);
@@ -206,7 +212,7 @@ function renderSize(){
   const notAllowed = !!(ok && z.allowed === false), refused = !!(ok && z.refused);
   // ONE banner. NOT ALLOWED outranks REFUSED; both lines only when both are true. The WHY list holds the reasons,
   // so the headline stays short whenever WHY is on screen (stream mode can hide WHY: then the longer text stays).
-  const whyOn = !$('size-why').hidden;
+  const whyOn = !$('size-why').hidden && $('size-more').open;      // the long GRANULARITY sentence stays on the headline while the math is folded away
   na.hidden = !notAllowed;
   if(refused){
     rf.hidden = false;
@@ -218,7 +224,7 @@ function renderSize(){
   al.hidden = na.hidden && rf.hidden;
   const stop = $('stop-val'); stop.textContent = ok ? z.stop_ticks + 't' : 'NA';
   const plan = $('size-plan'), money = v => typeof v === 'number' ? '$' + v.toLocaleString('en-US', {maximumFractionDigits: 0}) : 'NA';
-  plan.hidden = !(ok && z.stop_mode); plan.replaceChildren();
+  plan.hidden = !(ok && z.stop_mode); plan.replaceChildren(); syncSizeMore();
   if(!plan.hidden){
     const ln = (...parts) => {const d = mk('div'); for(const p of parts) d.append(p); plan.append(d)};
     ln(mk('b', '', 'STOP '), document.createTextNode(z.stop_mode === 'ANCHORED' ? 'beyond ' + String(z.stop_anchor || '').slice(0, 24) + ', ' + z.stop_k_eff + 'x ATR' : z.stop_mode === 'MANUAL' ? 'manual ' + z.stop_k_eff + 'x ATR' : '1.5x ATR (no respected level in reach)'));
@@ -552,7 +558,7 @@ function renderWhy(){
     else if(cuts.has(t)) li.className = 'cut';
     ul.append(li);
   }
-  ul.hidden = !ul.children.length;
+  ul.hidden = !ul.children.length; syncSizeMore();
   $('size-math').hidden = !ul.hidden;   // the prose math line repeats WHY; it only shows when WHY is off
   // scaler chip: ADX 15 chop x0.67
   const sc = ok && z.scale && z.scale.reduced ? z.scale : null;
@@ -879,7 +885,13 @@ function renderManual(){
   $('mq-val').textContent = String(MQ.qty);
   const st = $('mq-stop');
   if(!MQ.stopTouched && ok && typeof z.stop_ticks === 'number') st.value = String(typeof z.stop_max === 'number' ? Math.min(z.stop_ticks, z.stop_max) : z.stop_ticks);   // mirrors the ATR stop (never past the cap) until you type your own
-  $('mq-max').textContent = ok && typeof z.stop_max === 'number' ? (z.one_lot ? '1-LOT TRAIL · ' : '') + 'max ' + z.stop_max + 't' + (z.stop_ticks > z.stop_max ? ' (ATR wants ' + z.stop_ticks + 't)' : '') : '';
+  {const mx = $('mq-max'), short = ok && typeof z.stop_max === 'number' ? (z.one_lot ? '1-LOT ' : '') + 'max ' + z.stop_max + 't' : '';
+   const full = short ? (z.one_lot ? '1-LOT TRAIL \u00b7 ' : '') + 'max ' + z.stop_max + 't' + (z.stop_ticks > z.stop_max ? ' (ATR wants ' + z.stop_ticks + 't)' : '') : '';
+   const was = mx.dataset.k, k = short + '|' + full;
+   if(was !== k){      // compact line; the full rule math sits behind it (details), rebuilt only when it changes
+     mx.dataset.k = k; mx.replaceChildren();
+     if(short){const d = mk('details', 'mqd'); d.append(mk('summary', '', short), document.createTextNode(' ' + full)); mx.append(d)}
+   }}
   mqReadySoon();
   const can = !!(a && S.contractId) && !staging && parseInt(st.value, 10) >= 1;
   for(const id of ['buy-btn', 'sell-btn']) $(id).disabled = !can;
@@ -1037,9 +1049,9 @@ const STYLES = {
 };
 /* ember's level label: a solid chip in the level's colour with dark ink, not coloured text on a dark box. Also the hover tag on the
    y axis (klinecharts only draws that tag while the line is hovered), so pass it as the overlay's text style too. */
-const CHIP_A = 0.6;   // overlays always paint above the candles, so the label boxes are see-through: a candle behind a label stays readable
+const CHIP_A = 0.55;   // overlays always paint above the candles, so the label boxes are see-through: a candle behind a label stays readable
 const chipBg = c => /^#[0-9a-f]{6}$/i.test(c) ? `rgba(${parseInt(c.slice(1, 3), 16)},${parseInt(c.slice(3, 5), 16)},${parseInt(c.slice(5, 7), 16)},${CHIP_A})` : c;
-const chip = (color, bold) => ({color: E.dark, backgroundColor: chipBg(color), borderSize: 0, borderRadius: 2, size: document.documentElement.dataset.layout === 'portrait' ? 14 : 12, family: MONO, weight: bold ? '700' : '600',
+const chip = (color, bold) => ({color: E.dark, backgroundColor: chipBg(color), borderSize: 0, borderRadius: 2, size: document.documentElement.dataset.layout === 'portrait' ? 11 : 10, family: MONO, weight: bold ? '700' : '600',
                                 paddingLeft: 5, paddingRight: 5, paddingTop: 2, paddingBottom: 2, style: 'fill'});
 const LEGEND_W = 420;   // and about this wide
 const LEGEND_H = 80;   // the OHLC and indicator legends own the top-left corner: a chip that high goes to the right edge instead
@@ -1048,8 +1060,8 @@ function levelFigs(cs, bounding, ed, line){
   const y = cs[0].y, right = y < LEGEND_H;
   return [
     {type: 'line', attrs: {coordinates: [{x: 0, y}, {x: bounding.width, y}]}, styles: line},
-    {type: 'text', ignoreEvent: true, attrs: {x: right ? bounding.width - 6 : 6, y: y - 2 + (ed.dy || 0), text: String(ed.label || ''), align: right ? 'right' : 'left', baseline: 'bottom'},
-     styles: chip(ed.color || C.purple, ed.stable !== false)},   // a level that is not stable gets the lighter weight, nothing else
+    ...(ed.label ? [{type: 'text', ignoreEvent: true, attrs: {x: right ? bounding.width - 6 : 6, y: y - 2 + (ed.dy || 0), text: PXDeclutter.shortLabel(ed.label), align: right ? 'right' : 'left', baseline: 'bottom'},
+     styles: chip(ed.color || C.purple, ed.stable !== false)}] : []),   // a level that is not stable gets the lighter weight, nothing else; no label (past the chip cap) draws the line alone
   ];
 }
 const dimText = {color: C.ink, backgroundColor: 'rgba(10,14,23,.92)', borderColor: '#2a3550', borderSize: 1, size: 12, family: MONO, paddingLeft: 6, paddingRight: 6, paddingTop: 3, paddingBottom: 3, style: 'stroke_fill', borderRadius: 3};
@@ -1091,8 +1103,8 @@ klinecharts.registerOverlay({
   createPointFigures: ({coordinates: cs, bounding, overlay}) => {
     if(cs.length < 2 || !isFinite(cs[0].y) || !isFinite(cs[0].x)) return [];
     const ed = overlay.extendData || {}, y = cs[0].y, x0 = Math.max(0, cs[0].x);
-    return [{type: 'line', attrs: {coordinates: [{x: x0, y}, {x: bounding.width, y}]}, styles: {style: ed.dash ? 'dashed' : 'solid', color: ed.color || C.purple, size: ed.size || 1, dashedValue: [6, 4]}},
-            {type: 'text', ignoreEvent: true, attrs: {x: bounding.width - 6, y: y - 2, text: String(ed.label || ''), align: 'right', baseline: 'bottom'}, styles: chip(ed.color || C.purple, true)}];
+    return [{type: 'line', attrs: {coordinates: [{x: x0, y}, {x: bounding.width, y}]}, styles: {style: ed.dash ? 'dashed' : 'solid', color: ed.color || C.purple, size: ed.size || 1, dashedValue: [10, 3]}},      // one dash family per source: GEX 6/4, callouts 10/3, auto levels 2/4
+            {type: 'text', ignoreEvent: true, attrs: {x: bounding.width - 6, y: y - 2, text: PXDeclutter.shortLabel(ed.label), align: 'right', baseline: 'bottom'}, styles: chip(ed.color || C.purple, true)}];
   }});
 /* the shaded trade zone (ember's put-sell band): a full-width translucent band between two prices, the colour rides in extendData */
 klinecharts.registerOverlay({
@@ -1284,59 +1296,79 @@ let deskSig = '';
 const GEX_COL = {flip: '#b45bff', pin: '#a63cff'}, GEX_HOT = '255,128,0', GEX_SUP = '0,224,112', GEX_PIN = '166,60,255';
 const gexLast = () => S.ai && S.ai.quote && num(S.ai.quote.last) ? S.ai.quote.last : lastPx;
 const gexRel = lv => typeof lv.rel === 'number' && isFinite(lv.rel) ? Math.max(0, Math.min(1, lv.rel)) : null;
-function gexBands(){      // translucent bands behind the lines: half-height 0.10 to 0.40 ATR by size; small walls get none
-  const g = S.ai && S.ai.gex, atr = S.ai && S.ai.ind && num(S.ai.ind.atr) ? S.ai.ind.atr : null;
-  if(!g || !Array.isArray(g.levels) || !atr) return [];
-  const lp = gexLast(), out = [];
-  for(const lv of g.levels){
-    if(typeof lv.price !== 'number' || !isFinite(lv.price)) continue;
-    const nm = String(lv.name || '');
-    if(/^flip/.test(nm)) continue;
-    const rel = nm === 'pin' ? 1 : gexRel(lv) ?? 0.3;
-    if(rel < 0.25) continue;
-    const h = atr * (0.10 + 0.30 * rel), rgb = nm === 'pin' ? GEX_PIN : lp != null && lv.price > lp ? GEX_HOT : GEX_SUP;
-    out.push({band: true, price: lv.price - h, price2: lv.price + h, color: `rgba(${rgb},${(0.10 + 0.20 * rel).toFixed(3)})`});
+/* Declutter switches (display only): GEX on/off, and one "More" for the far and secondary stuff (far GEX walls, other-timeframe trendlines,
+   auto levels, prior-day opening ranges, reaction markers). Saved per browser; storage can be blocked, LS wraps it. */
+const CH = {gex: LS.get('px.gex', true) !== false, more: LS.get('px.chartMore', false) === true};
+const chAtr = () => S.ai && S.ai.ind && num(S.ai.ind.atr) ? S.ai.ind.atr : null;
+function gexLines(){      // the GEX lines worth drawing: flip, pin, the 2 nearest walls each side (every wall under More). Short chips; the gloss goes to the legend tooltip.
+  const g = S.ai && S.ai.gex;
+  if(!CH.gex || !g || !Array.isArray(g.levels)) return [];
+  const lastP = gexLast();
+  return PXDeclutter.gexPick(g.levels, lastP, CH.more).map(({lv, role}) => {
+    const rel = gexRel(lv), gl = PXDeclutter.gexLabel(lv, role);
+    const color = role === 'flip' ? GEX_COL.flip : role === 'pin' ? GEX_COL.pin : lastP == null ? C.purple : lv.price > lastP ? E.hot : E.sup;
+    return {src: 'gex', key: 'gex:' + lv.price, price: lv.price, label: gl.label, title: gl.title, color, dash: role !== 'pin', size: role === 'pin' ? 3 : rel == null ? 2 : rel >= 0.66 ? 4 : rel >= 0.33 ? 3 : 2};
+  });
+}
+function gexBands(){      // translucent bands behind the lines, only for the 2 biggest; half-height 0.10 to 0.40 ATR by size, faint
+  const g = S.ai && S.ai.gex, atr = chAtr();
+  if(!CH.gex || !g || !Array.isArray(g.levels) || !atr) return [];
+  const lp = gexLast(), picked = PXDeclutter.gexPick(g.levels, lp, CH.more), top = PXDeclutter.gexBandPrices(picked, 2), out = [];
+  for(const {lv, role} of picked){
+    if(!top.has(lv.price) || role === 'flip') continue;
+    const rel = role === 'pin' ? 1 : gexRel(lv) ?? 0.3;
+    const h = atr * (0.10 + 0.30 * rel), rgb = role === 'pin' ? GEX_PIN : lp != null && lv.price > lp ? GEX_HOT : GEX_SUP;
+    out.push({band: true, price: lv.price - h, price2: lv.price + h, color: `rgba(${rgb},${(0.05 + 0.10 * rel).toFixed(3)})`});
   }
   return out;
 }
-function deskLines(){
-  const out = [];
-  const g = S.ai && S.ai.gex;
-  const lastP = gexLast();
-  if(g && Array.isArray(g.levels)) for(const lv of g.levels){
-    if(typeof lv.price !== 'number') continue;
-    const nm = String(lv.name || 'gex').slice(0, 24);
-    const kd = lv.kind === 'PUT' || lv.kind === 'CALL' ? lv.kind + ' ' : '';       // put-dominated (dealers short gamma) or call-dominated (long gamma) strike
-    const rl = gexRel(lv), sz = rl == null ? '' : ' \u00b7 ' + (rl >= 0.66 ? 'BIG' : rl >= 0.33 ? 'MED' : 'SMALL');   // size against the biggest wall in today's data, in words
-    const does = lv.kind === 'PUT' ? ' \u00b7 speeds moves' : lv.kind === 'CALL' ? ' \u00b7 stalls moves' : '';   // what dealer hedging does at it
-    const ref = /^flip/.test(nm), pin = nm === 'pin', rel = gexRel(lv);
-    const color = ref ? GEX_COL.flip : pin ? GEX_COL.pin : lastP == null ? C.purple : lv.price > lastP ? E.hot : E.sup;
-    const word = /^flip/.test(nm) ? 'flip' : nm === 'pin' ? 'pin' : 'wall';
-    out.push({price: lv.price, label: 'GEX ' + (word === 'wall' ? kd : '') + word + ' ' + lv.price + (word === 'flip' ? '' : sz + (word === 'wall' ? does : '')), color, dash: !pin, size: pin ? 3 : rel == null ? 2 : rel >= 0.66 ? 4 : rel >= 0.33 ? 3 : 2});
-  }
+function deskLinesRaw(){      // every desk-owned line with its source, before the cross-source merge
+  const out = gexLines();
   const cl = CALL.live;       // the analyst's own entry, stop and first target, while it is recent and this is its chart
   if(cl && cl.root === curRoot() && cl.age0 + (performance.now() - cl.at) / 1000 < 5400){
     const from = Math.floor((Date.now() - (cl.age0 + (performance.now() - cl.at) / 1000) * 1000) / 60000) * 60000;     // when it was posted, to the minute (keeps the draw signature steady)
     for(const [nm, p, col] of [['E', cl.entry, '#fbbf24'], ['SL', cl.stop, '#fb7185'], ['T1', cl.tp1, '#4ade80']])
-      if(typeof p === 'number') out.push({price: p, label: 'CALLOUT ' + nm + ' ' + p, color: col, dash: true, size: 2, from});
+      if(typeof p === 'number') out.push({src: 'callout', key: 'callout:' + nm, price: p, label: 'CALLOUT ' + nm + ' ' + p, color: col, dash: true, size: 2, from});
   }
+  const pos = (nm, o) => out.push({src: 'pos', key: 'pos:' + nm, ...o});
   const t = S.ticket;
   if(t && t.ticket_id && !t.consumed && !t.gone && t.contract === S.contractId && t.readback){
     const e = Number(t.readback.entry_ref), s = Number(t.readback.stop_price);
-    if(isFinite(e)) out.push({price: e, label: 'ENTRY ' + e, color: C.cyan, dash: false, size: 2});
-    if(isFinite(s)) out.push({price: s, label: 'STOP ' + s, color: C.mag, dash: false, size: 2});
+    if(isFinite(e)) pos('entry', {price: e, label: 'ENTRY ' + e, color: C.cyan, dash: false, size: 2});
+    if(isFinite(s)) pos('stop', {price: s, label: 'STOP ' + s, color: C.mag, dash: false, size: 2});
   }else{
     const tr = S.ai && S.ai.trade;   // live bracket on the contract we placed it on
     if(tr && S.placed && S.placed.contract === S.contractId){
-      if(num(tr.entry_ref)) out.push({price: tr.entry_ref, label: 'ENTRY ' + tr.entry_ref + ' ' + (tr.state === 'PLACED' ? ((tr.filled || 0) > 0 ? 'FILLED' : tr.acked ? 'ACCEPTED' : 'PLACED') : tr.state), color: C.cyan, dash: false, size: 2});
+      if(num(tr.entry_ref)) pos('entry', {price: tr.entry_ref, label: 'ENTRY ' + tr.entry_ref + ' ' + (tr.state === 'PLACED' ? ((tr.filled || 0) > 0 ? 'FILLED' : tr.acked ? 'ACCEPTED' : 'PLACED') : tr.state), color: C.cyan, dash: false, size: 2});
       const sp = S.ai.manage && num(S.ai.manage.stop) ? S.ai.manage.stop : tr.stop_price;   // manage.stop follows a moved stop
-      if(num(sp)) out.push({price: sp, label: 'STOP ' + sp + ' ' + (tr.stop_state || 'PENDING'), color: C.mag, dash: tr.stop_state !== 'ACKED' && tr.stop_state !== 'ATOMIC', size: 2});
+      if(num(sp)) pos('stop', {price: sp, label: 'STOP ' + sp + ' ' + (tr.stop_state || 'PENDING'), color: C.mag, dash: tr.stop_state !== 'ACKED' && tr.stop_state !== 'ATOMIC', size: 2});
     }else if(S.ai && S.ai.manage && num(S.ai.manage.stop)){   // position not placed from this page: still show where its stop is
-      out.push({price: S.ai.manage.stop, label: 'STOP ' + S.ai.manage.stop, color: C.mag, dash: false, size: 2});
+      pos('stop', {price: S.ai.manage.stop, label: 'STOP ' + S.ai.manage.stop, color: C.mag, dash: false, size: 2});
     }
   }
   return out;
 }
+/* ONE declutter pass over every level source (GEX, map, respected, auto, analyst callout, position and stop). Within 0.25 ATR the highest
+   priority keeps the spot (position/stop > callout > respected > map > GEX > auto) and a merged GEX or map level leaves "+GEX" / "+MAP" on its
+   chip. A respected level is never dropped by a lower priority. Respected and auto lines draw only within 2 ATR of the last price, and at most
+   4 chips carry a label (a respected line past the cap keeps its line, not its label). Auto levels need the Respect toggle AND More. */
+function declutterPlan(){
+  const lp = gexLast(), atr = chAtr();
+  const raw = deskLinesRaw(), dsk = raw.filter(l => l.src !== 'gex');
+  const rsp = PXDeclutter.nearFilter(respectLines().map((l, i) => ({...l, src: 'respect', key: 'respect:' + i + ':' + l.price, prio: PXDeclutter.PRIO.respect})), lp, atr, 2);
+  const auto = R.on && CH.more && I.sel ? PXDeclutter.nearFilter(autoLines(indWanted().hz).map((l, i) => ({...l, src: 'auto', key: 'auto:' + i + ':' + l.price, prio: PXDeclutter.PRIO.auto})), lp, atr, 2) : [];
+  const m = TM.on && TM.res && TM.res.status === 'OK' ? TM.res.map : null;
+  const mapItems = m ? tmapLevels(m).map(it => ({key: 'map:' + it.price, src: 'map', price: it.price})) : [];
+  const gex = raw.filter(l => l.src === 'gex');
+  const items = [...dsk, ...rsp, ...mapItems, ...gex, ...auto].map(l => ({key: l.key, src: l.src, price: l.price, prio: PXDeclutter.PRIO[l.src]}));
+  const mg = PXDeclutter.mergeLines(items, atr, 0.25);
+  const lab = l => ({...l, label: PXDeclutter.withPlus(l.label, mg.plus.get(l.key))});
+  const kept = l => !mg.drop.has(l.key);
+  const capped = PXDeclutter.capChips([...rsp.filter(kept).map(lab), ...auto.filter(kept).map(lab)], lp, 4);
+  const mapPlus = {}; for(const it of mapItems){const pl = mg.plus.get(it.key); if(pl) mapPlus[it.price] = pl.join(' ')}
+  return {desk: [...gex.filter(kept).map(lab), ...dsk.filter(kept).map(lab)], respect: capped.filter(l => l.src === 'respect'), auto: capped.filter(l => l.src === 'auto'), mapPlus};
+}
+function deskLines(){return declutterPlan().desk}
 /* The shaded zone, ported from the WheelForge chart (there: spot down to the put strike, tinted by score). On a futures desk the
    zone is the trade: the RISK band from entry to stop (magenta: that is the money) and the TARGET band from entry to the anchored
    target (green), when the size box has one on the far side of the entry. Source, in order: the staged ticket, the live bracket,
@@ -1366,6 +1398,7 @@ function nudgeLevels(lines){      // chips of nearby levels stack: push them apa
 function drawDesk(force){
   const lines = deskLines(), zones = [...gexBands(), ...tradeZones()], sig = JSON.stringify([zones, lines]);
   if(sig === deskSig && !force) return;
+  try{const lg = document.querySelector('.legend .lg.gex'); if(lg){if(lg.dataset.base === undefined) lg.dataset.base = lg.title; lg.title = lg.dataset.base + (lines.some(l => l.title) ? '\n' + lines.filter(l => l.title).map(l => l.title).join('\n') : '')}}catch(e){}
   const last = chart.getDataList().slice(-1)[0];
   if(!last && (lines.length || zones.length)) return;    // retry once bars exist
   deskSig = sig;
@@ -1384,7 +1417,7 @@ function drawDesk(force){
    /api/tomorrow is the server's map already in futures space (SPY gamma that survives tonight, ratio-converted, every printed number
    regenerated from the converted prices). Up road hot, down road green, the ELSE band neutral blue, the flip purple. A waypoint past a
    typical day is dashed (a tail, not a plan), a thin one is hollow, one price has already gone through is dimmed. Positioning, not targets. */
-const TM = {emoji: LS.get('px.tmapEmoji', true) !== false, on: LS.get('px.tmap', true) !== false, panel: LS.get('px.tmapPanel', true) !== false, cid: null, res: null, at: 0, busy: false, sig: '', off: 40};
+const TM = {emoji: LS.get('px.tmapEmoji', true) !== false, on: LS.get('px.tmap', false) === true, panel: LS.get('px.tmapPanel', true) !== false, cid: null, res: null, at: 0, busy: false, sig: '', off: 40};
 const TM_COL = {UP: E.hot, DOWN: E.sup, RANGE: '#4f86ff', FLIP: '#b45bff'};
 const TM_WHY = {NO_KEY: 'No TraderDaddy key on this desk.', UNSUPPORTED: 'No map for this contract.', CONTRACT: 'No map for this contract.',
   NO_REF: 'No futures price at the snapshot time to scale with.', CONVERT: 'Source and futures prices do not line up, so nothing is drawn.',
@@ -1440,7 +1473,7 @@ function tmapOffset(spanBars){ROOM.map = spanBars ? Math.round(spanBars * barPx(
 function drawTmap(force){
   const r = TM.res, m = r && r.status === 'OK' && r.map ? r.map : null, data = chart.getDataList(), lastBar = data[data.length - 1];
   const lp = num(gexLast()) ? gexLast() : lastBar && num(lastBar.close) ? lastBar.close : null;
-  const sig = JSON.stringify([TM.on, m && [m.spot, m.flip, m.roads.map(x => x.waypoints.map(w => w.price))], lp != null ? Math.round(lp * 4) / 4 : null, data.length]);
+  const mp = TM.on && m ? declutterPlan().mapPlus : {}, sig = JSON.stringify([TM.on, mp, m && [m.spot, m.flip, m.roads.map(x => x.waypoints.map(w => w.price))], lp != null ? Math.round(lp * 4) / 4 : null, data.length]);
   if(sig === TM.sig && !force) return;
   TM.sig = sig;
   try{
@@ -1459,7 +1492,7 @@ function drawTmap(force){
         const at = {dataIndex: i0 + X0 + STEP * k, value: w.price}, flipW = /FLIP$/.test(w.tag);
         const passed = key === 'UP' ? w.price < lp : w.price > lp, col = flipW ? TM_COL.FLIP : tmRoleColor(tmRole(w.tag), TM_COL[key]);
         ov('tmapSeg', [prev, at], {color: passed ? hexA(col, .4) : col, dash: !!w.tail || passed, size: flipW ? 3 : 2});
-        ov('tmapDot', [at], {color: col, label: (tmEmoji(w.tag, pinAt.has(w.price)) ? tmEmoji(w.tag, pinAt.has(w.price)) + ' ' : '') + w.tag + (pinAt.has(w.price) ? ' + PIN' : '') + (tmGloss(w.tag, pinAt.has(w.price)) ? ' \u00b7 ' + tmGloss(w.tag, pinAt.has(w.price)) : '') + (passed ? ' (through)' : ''), hollow: !!w.open, bold: flipW, dim: passed || !!w.tail, dist: Math.round(Math.abs(w.price - lp))});
+        ov('tmapDot', [at], {color: col, label: (tmEmoji(w.tag, pinAt.has(w.price)) ? tmEmoji(w.tag, pinAt.has(w.price)) + ' ' : '') + w.tag + (pinAt.has(w.price) ? ' + PIN' : '') + (tmGloss(w.tag, pinAt.has(w.price)) ? ' \u00b7 ' + tmGloss(w.tag, pinAt.has(w.price)) : '') + (passed ? ' (through)' : '') + (mp[w.price] ? ' ' + mp[w.price] : ''), hollow: !!w.open, bold: flipW, dim: passed || !!w.tail, dist: Math.round(Math.abs(w.price - lp))});
         prev = at;
       });
     }
@@ -1481,27 +1514,33 @@ function renderTmap(){
   const age = r.age_s < 5400 ? Math.round(r.age_s / 60) + ' min old' : (r.age_s / 3600).toFixed(1) + ' h old';
   sub.textContent = `${r.source} to ${r.root} · ${ctClock.format(new Date(r.snapshot_epoch * 1000))} CT · ${age}`;
   const now = mk('div', 'tm-now'); now.id = 'tm-now'; now.append(mk('i', null, 'RIGHT NOW'), mk('span', null, tmapNowText(m))); head.append(now);
+  const kl = tmapLevels(m).map(it => it.price + ' ' + [...new Set(it.tags.map(tmRole))].join('+')).join(' \u00b7 ');      // the key levels line: always visible
+  if(kl) head.append(mk('div', 'tm-keyline', kl));
+  const narr = mk('details', 'tm-narr moredet'); narr.open = LS.get('px.tmapNarr', false) === true;       // the dealer and IF / ELSE story folds away; the right-now line and key levels stay
+  narr.addEventListener('toggle', () => LS.set('px.tmapNarr', narr.open));
+  narr.append(mk('summary', null, 'Dealer story and IF / ELSE'));
   const neg = m.regime === 'negative', d = mk('div', 'tm-dealers ' + (neg ? 'neg' : 'pos'));
   d.append(mk('b', null, (TM.emoji ? (neg ? '\u{1F525} ' : '\u{1F9CA} ') : '') + (neg ? 'SHORT GAMMA' : 'LONG GAMMA')), document.createTextNode(neg ? ': dealers chase price, so moves extend.' : ': dealers lean against price, so moves get damped.'));
-  head.append(d);
+  narr.append(d);
   if(m.flip != null){
     const f = mk('div', 'tm-flip'), b = mk('b', null, String(m.flip));
     if(m.flip_on_price) f.append(document.createTextNode('The flip ('), b, document.createTextNode(') sits on top of price, so it says nothing.'));
     else if(m.flip > m.spot) f.append(document.createTextNode('Under the flip ('), b, document.createTextNode('): chasing. Through it dealers stop chasing and start braking.'));
     else f.append(document.createTextNode('Above the flip ('), b, document.createTextNode('): dealers are braking, not chasing.'));
-    head.append(f);
+    narr.append(f);
   }
+  head.append(narr);
   const byKey = k => m.roads.find(x => x.key === k) || {cond: '', rule: ''};
   for(const [cls, kind, k, verb] of [['up', (TM.emoji ? '\u2B06\uFE0F ' : '') + 'IF', 'UP', 'it goes '], ['dn', (TM.emoji ? '\u2B07\uFE0F ' : '') + 'IF', 'DOWN', 'it goes '], ['el', (TM.emoji ? '\u2194\uFE0F ' : '') + 'ELSE', 'RANGE', 'it holds ']]){
     const rd = byKey(k), row = mk('div', 'tm-row ' + cls), c = mk('div', 'tm-cond');
     c.append(mk('i', null, kind), document.createTextNode(verb + rd.cond));
     row.append(c, mk('div', 'tm-rule', rd.plain || rd.rule));
-    host.append(row);
+    narr.append(row);
   }
   if(m.roads.some(r => r.plain)){      // the original one-line rules, for anyone who wants them: one fold-out, not three
     const pro = mk('details', 'tm-pro'); pro.append(mk('summary', null, 'technical wording'));
     for(const k of ['UP', 'DOWN', 'RANGE']) pro.append(mk('div', null, byKey(k).rule));
-    host.append(pro);
+    narr.append(pro);
   }
   tmapKey(host, m);
   let foot = 'Positioning, not targets. Past ' + m.typical_move + ' pts is a tail.';
@@ -1548,6 +1587,16 @@ $('tm-toggle').onclick = () => {TM.on = !TM.on; LS.set('px.tmap', TM.on); render
 $('tm-emo').onclick = () => {TM.emoji = !TM.emoji; LS.set('px.tmapEmoji', TM.emoji); renderTmap(); drawTmap(true)};
 $('tm-hide').onclick = () => {TM.panel = !TM.panel; LS.set('px.tmapPanel', TM.panel); renderTmap()};
 renderTmap();
+/* GEX and More toggles (chart declutter). More gates far GEX walls, other-timeframe trendlines, auto levels, prior-day opening ranges and reaction markers. */
+function chRefresh(){
+  $('gex-toggle').setAttribute('aria-pressed', String(CH.gex)); $('more-toggle').setAttribute('aria-pressed', String(CH.more));
+  const tf = $('tr-tfs'); if(tf) tf.hidden = !CH.more;
+  TR.sig = ''; deskSig = ''; R.sig = ''; I.hsig = ''; orbSig = '';
+  try{drawDesk(true); drawTrend(true); drawRespect(true); drawReact(true); drawOrb(); drawTmap(true); drawAutoLevels(indWanted().hz)}catch(e){err(e)}
+}
+$('gex-toggle').onclick = () => {CH.gex = !CH.gex; LS.set('px.gex', CH.gex); chRefresh()};
+$('more-toggle').onclick = () => {CH.more = !CH.more; LS.set('px.chartMore', CH.more); chRefresh()};
+setTimeout(() => {try{$('gex-toggle').setAttribute('aria-pressed', String(CH.gex)); $('more-toggle').setAttribute('aria-pressed', String(CH.more)); $('tr-tfs').hidden = !CH.more}catch(e){}}, 0);
 
 /* ================= Automatic trendlines and channels (static/trend.js): drawn from the candles on screen, display only =================
    A line needs three pivot touches and no close through it; the label says how many. Support cyan, resistance pink, a channel is shaded,
@@ -1579,8 +1628,9 @@ klinecharts.registerOverlay({
    /bars (cached; the chart's own timeframe uses its own data), each is fitted separately and drawn from its first touch to just past the last
    candle, dashed and tagged with its timeframe (1m dotted). Toggled per timeframe; the current timeframe's own lines are the solid ones above. */
 // 1m is off by default (it crowds the chart); a browser that saved the old default loses 1m once, then keeps whatever it picks
-const trxSaved = LS.get('px.trendTfs', ['5m', '15m']).filter(t => LS.get('px.trendTfs.v2', false) || t !== '1m');
-LS.set('px.trendTfs.v2', true);
+// other timeframes default to NONE (the chart's own lines stay); v3 resets an older saved pick once, then keeps whatever is chosen. They draw only under More.
+const trxSaved = LS.get('px.trendTfs.v3', false) ? LS.get('px.trendTfs', []) : [];
+LS.set('px.trendTfs.v3', true);
 const TRX = {tfs: new Set(trxSaved), bars: {}, at: {}, busy: {}, cid: null}, TRX_MIN = {'1m': 1, '5m': 5, '15m': 15}, TRX_TTL = {'1m': 30000, '5m': 60000, '15m': 120000};
 async function trxFetch(tf){
   const cid = S.contractId; if(!cid || TRX.busy[tf] || Date.now() - (TRX.at[tf] || 0) < TRX_TTL[tf]) return;
@@ -1596,7 +1646,7 @@ async function trxFetch(tf){
 function drawTrend(force){
   const data = chart.getDataList(), last = data[data.length - 1], lp = last ? last.close : null;
   if(S.contractId !== TRX.cid){TRX.cid = S.contractId; TRX.bars = {}; TRX.at = {}}
-  const sig = JSON.stringify([TR.on, data.length, last && last.timestamp, lp != null ? Math.round(lp * 4) / 4 : null, TM.on, [...TRX.tfs], Object.keys(TRX.bars).map(k => TRX.bars[k].length)]);
+  const sig = JSON.stringify([TR.on, CH.more, data.length, last && last.timestamp, lp != null ? Math.round(lp * 4) / 4 : null, TM.on, [...TRX.tfs], Object.keys(TRX.bars).map(k => TRX.bars[k].length)]);
   if(sig === TR.sig && !force) return;
   TR.sig = sig;
   try{
@@ -1607,13 +1657,14 @@ function drawTrend(force){
     const r = PXTrend.fit(data), here = !!(r && (r.support || r.resistance || r.channel || r.regression));
     const ov = (name, points, ed) => chart.createOverlay({name, groupId: 'trend', lock: true, points, extendData: ed});
     let drew = here;
+    const tagOk = PXDeclutter.tagGate(lp, r && r.atr, 4, 1.5);      // at most 4 tags, and only for a line within 1.5 ATR of price; the lines themselves still draw
     if(here){
       const iEnd = n - 1 + TR_EXT, abs = i => r.offset + i;
       const arrow = ln => Math.abs(ln.slope) < 0.03 * r.atr ? '▬' : ln.slope > 0 ? '▲' : '▼';
       const pt = (ln, i, off) => ({dataIndex: abs(i), value: ln.p1 + ln.slope * (i - ln.i1) + (off || 0)});
       const seg = (ln, col, off, dash) => ov('trendSeg', [pt(ln, ln.i1, off), pt(ln, r.last + TR_EXT, off)], {color: col, size: dash ? 1 : 2, dash: !!dash});
       const own = B >= 60000 && B % 60000 === 0 ? (B >= 3600000 && B % 3600000 === 0 ? B / 3600000 + 'h' : B / 60000 + 'm') + ' ' : '';      // the chart's own lines say which timeframe they came from
-      const tag = (ln, col, text, off) => ov('trendTag', [pt(ln, Math.max(ln.i1, r.last - 40), off)], {color: col, label: own + text});      // at the start of the line: the right edge belongs to the map
+      const tag = (ln, col, text, off) => {if(tagOk(ln.p1 + ln.slope * (r.last - ln.i1) + (off || 0))) ov('trendTag', [pt(ln, Math.max(ln.i1, r.last - 40), off)], {color: col, label: own + text})};      // at the start of the line: the right edge belongs to the map
       const fill = (a, b, col) => ov('trendFill', [{dataIndex: abs(a.i1), value: a.p1}, {dataIndex: iEnd, value: a.p1 + a.slope * (r.last + TR_EXT - a.i1)},
                                                     {dataIndex: abs(b.i1), value: b.p1 + (b.off || 0)}, {dataIndex: iEnd, value: b.p1 + b.slope * (r.last + TR_EXT - b.i1) + (b.off || 0)}], {color: col});
       if(r.support && r.resistance && r.parallel){            // two independent lines that run together: a confirmed channel
@@ -1634,7 +1685,7 @@ function drawTrend(force){
         tag(a, TR_COL.reg, 'REG ' + (g.slope >= 0 ? '▲' : '▼') + ' r² ' + g.r2.toFixed(2) + ' · ±2σ', 0);
       }
     }
-    if(B > 0){                                                 // the other timeframes' lines, in time, on this chart
+    if(B > 0 && CH.more){                                      // the other timeframes' lines, in time, on this chart (More only)
       const stamps = data.map(d => d.timestamp), tEnd = last.timestamp + TR_EXT * B;
       for(const tf of ['1m', '5m', '15m']){
         if(!TRX.tfs.has(tf) || TRX_MIN[tf] * 60000 === B) continue;
@@ -1644,7 +1695,7 @@ function drawTrend(force){
         for(const ln of [tl.support, tl.resistance]) if(ln){
           const t0 = Math.max(ln.t1, stamps[0]), col = TR_COL[ln.kind], up = ln.slopeMs * 60000 > 0.03 * (tl.atr || 1) / TRX_MIN[tf];
           ov('trendSeg', [{dataIndex: PXTrend.indexAt(stamps, t0, B), value: PXTrend.valueAt(ln, t0)}, {dataIndex: PXTrend.indexAt(stamps, tEnd, B), value: PXTrend.valueAt(ln, tEnd)}], {color: col, size: 1, dash: true, dots: tf === '1m'});
-          ov('trendTag', [{dataIndex: PXTrend.indexAt(stamps, Math.max(t0, last.timestamp - 40 * B), B), value: PXTrend.valueAt(ln, Math.max(t0, last.timestamp - 40 * B))}], {color: col, label: tf + ' ' + (Math.abs(ln.slopeMs * 60000) < 0.03 * (tl.atr || 1) / TRX_MIN[tf] ? '▬' : up ? '▲' : '▼') + ' ' + ln.kind + ' · ' + ln.touches});
+          if(tagOk(PXTrend.valueAt(ln, last.timestamp), tl.atr)) ov('trendTag', [{dataIndex: PXTrend.indexAt(stamps, Math.max(t0, last.timestamp - 40 * B), B), value: PXTrend.valueAt(ln, Math.max(t0, last.timestamp - 40 * B))}], {color: col, label: tf + ' ' + (Math.abs(ln.slopeMs * 60000) < 0.03 * (tl.atr || 1) / TRX_MIN[tf] ? '▬' : up ? '▲' : '▼') + ' ' + ln.kind + ' · ' + ln.touches});
           drew = true;
         }
       }
@@ -1705,14 +1756,15 @@ $('lv-toggle').onclick = () => {LV.on = !LV.on; LS.set('px.levelAlerts', LV.on);
 $('lv-toggle').setAttribute('aria-pressed', String(LV.on));
 function syncDesk(){document.documentElement.dataset.pos = S.ai && Array.isArray(S.ai.positions) && S.ai.positions.length ? '1' : '';      // in a trade the blotter moves to the top of the portrait band
   try{drawTrend(false)}catch(e){err(e)} try{tmapSync()}catch(e){err(e)}      // try/catch, not typeof: both read consts defined further down, so a call before they exist throws
+  try{drawRespect(false)}catch(e){err(e)}      // the respected set is filtered by distance to price, so it follows price too
   drawDesk(false); if(typeof drawAutoLevels === 'function' && I.sel) drawAutoLevels(indWanted().hz)}   // auto levels are side-coded against the last price: a cross recolours them within a poll
 
 /* ---- level reaction markers (group 'react': never saved with the user's drawings) ---- */
 let reactSig = '';
 function drawReact(force){
   const lv = (S.ai && Array.isArray(S.ai.levels) ? S.ai.levels : []).find(x => x && x.name === S.lvl);
-  const evs = lv && Array.isArray(lv.events) ? lv.events.filter(e => e && num(e.ms) && num(e.price) && RESULTS.has(e.result)) : [];
-  const sig = S.lvl + '|' + cur.ticker + '|' + JSON.stringify(evs);
+  const evs = CH.more && lv && Array.isArray(lv.events) ? lv.events.filter(e => e && num(e.ms) && num(e.price) && RESULTS.has(e.result)) : [];
+  const sig = S.lvl + '|' + CH.more + '|' + cur.ticker + '|' + JSON.stringify(evs);
   if(sig === reactSig && !force) return;
   if(evs.length && !chart.getDataList().length) return;   // retry once bars exist
   reactSig = sig;
@@ -1761,7 +1813,7 @@ function respectLines(){
   return out;
 }
 function drawRespect(force){
-  const lines = respectLines(), sig = JSON.stringify(lines);
+  const lines = declutterPlan().respect, sig = JSON.stringify(lines);
   if(sig === R.sig && !force) return;
   const last = chart.getDataList().slice(-1)[0];
   if(!last && lines.length) return;   // retry once bars exist
@@ -1921,12 +1973,15 @@ async function feedFetch(){
     if(f.status === 'OFF'){st.textContent = 'off'; box.append(mk('p', 'none', 'feed not configured (PX_FEED_URL)')); return}
     if(f.status !== 'OK'){st.textContent = 'error'; box.append(mk('p', 'none', 'feed unavailable' + (typeof f.code === 'string' ? ' (' + f.code.slice(0, 20) + ')' : ''))); return}
     CALL.stage = f.stage === true;
-    st.textContent = f.items.length ? 'newest ' + FD_AGE(f.items[0].age_s) + ' ago' : 'none';
+    const one = PXDeclutter.sharedHandle(f.items);      // every row from one analyst: say the name once, up here
+    st.textContent = f.items.length ? (one ? one.slice(0, 24) + ' \u00b7 ' : '') + 'newest ' + PXDeclutter.fmtAge(f.items[0].age_s) : 'none';
     if(!f.items.length){box.append(mk('p', 'none', 'no structured callouts in the window')); return}
     calloutWatch(f.items);
     for(const i of f.items){
       const row = mk('div', 'fdrow');
-      row.append(mk('span', 'age', FD_AGE(i.age_s)), mk('span', '', (i.analyst || i.channel || '?').slice(0, 24)), mk('span', 'ev', String(i.event).replace('_', ' ')));
+      row.append(mk('span', 'age', PXDeclutter.fmtAge(i.age_s)));
+      if(!one) row.append(mk('span', '', (i.analyst || i.channel || '?').slice(0, 24)));
+      row.append(mk('span', 'ev', String(i.event).replace('_', ' ')));
       if(i.symbol) row.append(mk('span', '', i.symbol));
       if(i.side) row.append(mk('span', i.side === 'LONG' ? 'long' : 'short', i.side));
       for(const [k, lab] of [['entry', 'E'], ['stop', 'SL'], ['tp1', 'T1'], ['tp2', 'T2'], ['tp3', 'T3']]) if(typeof i[k] === 'number') row.append(mk('span', '', lab + ' ' + i[k]));
@@ -2259,10 +2314,13 @@ function indSync(){   // diff the wanted set against what is drawn; only touch w
   }catch(e){err(e)}
   indChips();
 }
-function drawAutoLevels(hz){   // horizontal auto levels (fib, prior, keltner) on the respectLevel overlay; a line the Respect toggle already draws is skipped
-  const tk = cur && cur.tick ? cur.tick : 0, rl = respectLines(), lastBar = chart.getDataList().slice(-1)[0], px = lastBar ? lastBar.close : null;
-  const lines = hz.filter(l => !rl.some(r => Math.abs(r.price - l.price) <= Math.max(tk * 2, 1e-9))).map(l => ({price: l.price, color: px == null ? AUTO_COL : l.price >= px ? E.hot : E.sup, dv: [6, 4], stable: false,
+function autoLines(hz){   // raw auto levels (fib, prior, keltner): side-coded against the last price, dotted (its own dash family)
+  const lastBar = chart.getDataList().slice(-1)[0], px = lastBar ? lastBar.close : null;
+  return hz.map(l => ({price: l.price, color: px == null ? AUTO_COL : l.price >= px ? E.hot : E.sup, dv: [2, 4], stable: false,
     label: `${rspName(l.label)}${indNum(l.held) && indNum(l.tests) ? ` ${l.held}/${l.tests}` : ''}`}));
+}
+function drawAutoLevels(hz){   // auto levels on the respectLevel overlay: only under the Respect toggle plus More, within 2 ATR, merged against every other source in declutterPlan
+  const lines = declutterPlan().auto;
   const sig = JSON.stringify(lines) + '|' + (S.contractId || '');
   if(sig === I.hsig) return;
   const last = chart.getDataList().slice(-1)[0];
@@ -2279,12 +2337,15 @@ function indChips(){   // locked "always" chips, auto chips with the reason as t
   box.replaceChildren();
   for(const [, l, t] of ALWAYS){const c = mk('span', 'ichip always', l); c.title = t; box.append(c)}
   const sel = indSel();
+  const pinned = l => l.draw === 'series' && indNum(l.period) && ((l.family === 'ema' && PIN['EMA' + l.period]) || (l.family === 'sma' && PIN['SMA' + l.period]) || (l.family === 'boll' && PIN.BOLL));
   for(const l of sel.levels){
+    if(pinned(l)) continue;      // already a pinned indicator: one chip, not two
     const c = mk('span', 'ichip auto', rspName(l.label));
     c.title = (l.reason === 'RESPECTED' || !l.reason ? 'respected' : String(l.reason).toLowerCase()) + (indNum(l.held) && indNum(l.tests) ? ` ${l.held}/${l.tests}` : '') + (l.stable === true ? ', stable' : l.stable === false ? ', not stable' : '');
     box.append(c);
   }
   for(const o of sel.oscillators){
+    if(PIN[String(o.id).toUpperCase()]) continue;      // MACD or RSI pinned in "Pin more": it must not show a second time as an auto chip
     const c = mk('span', 'ichip auto', rspName(o.label));
     c.title = 'active' + (indNum(o.pctile) ? ', top ' + Math.max(1, Math.round((1 - o.pctile) * 100)) + '% of recent swing' : '');
     box.append(c);
@@ -2345,18 +2406,10 @@ async function search(){
     load();
   }catch(e){err('contracts unavailable'); S.contractId = null; schedule(0)}
 }
-function restoreSelect(){   // put the dropdown back on the contract the chart is really showing
-  const sel = $('c'); if(!S.contractId) return;
-  if(![...sel.options].some(o => o.value === S.contractId)){
-    const o = mk('option', '', cur.name || S.contractId); o.value = S.contractId; o.dataset.tick = String(cur.tick); o.dataset.tv = cur.tickValue ?? ''; o.dataset.name = cur.name || ''; sel.prepend(o);
-  }
-  sel.value = S.contractId;
-}
 function load(){
   const o = $('c').selectedOptions[0]; if(!o) return;
-  if(S.contractId && o.value !== S.contractId && stagedOrOpen()){   // ONE guard for the dropdown, search and the grade chips
-    restoreSelect(); $('msg').textContent = 'Finish or clear the staged ticket, working order and open position before switching contracts.'; return;
-  }
+  if(S.contractId && o.value !== S.contractId && stagedOrOpen())   // looking is never blocked; a staged ticket keeps its own contract in its readback and the server stays the authority
+    $('msg').textContent = 'Viewing another contract. The staged ticket, working orders and open position stay on their own contract.';
   const [type, span] = S.tf.split(',');
   const tick = +o.dataset.tick, dec = (o.dataset.tick.split('.')[1] || '').length;
   LS.set('px.contract', o.value);
@@ -2410,7 +2463,6 @@ boardFetch(); setInterval(() => {if(document.visibilityState === 'visible') boar
 
 $('board-rows').addEventListener('click', async e => {   // switch the chart to that contract, same as picking it in the dropdown
   const b = e.target.closest('button.bd-row'); if(!b || !b.dataset.root) return;
-  if(stagedOrOpen()){$('msg').textContent = 'Finish or clear the staged ticket, working order and open position before switching contracts.'; return}
   $('q').value = b.dataset.root; await search();
   const sel = $('c'); if(b.dataset.cid && [...sel.options].some(o => o.value === b.dataset.cid)){sel.value = b.dataset.cid; load()}
   boardFetch();
@@ -2507,12 +2559,13 @@ function orbDays(){
   return [...days.values()].slice(-3).map(d => {
     const need = full ? ORB_MIN / span : 0, today = d.day === lastP.d, forming = full && today && d.n < need && lastP.m < OPEN_M + ORB_MIN;
     const complete = full && d.n === need, box = complete || forming;   // a hole inside the range means no box, never a wrong one
-    return {t0: d.t0, t1: Math.min(d.t0 + ORB_MIN * 60000, lastB.timestamp), hi: d.hi, lo: d.lo, tEnd: d.tEnd, px: d.px, box, forming, toEdge: today && lastP.m <= CLOSE_M};
+    return {t0: d.t0, t1: Math.min(d.t0 + ORB_MIN * 60000, lastB.timestamp), hi: d.hi, lo: d.lo, tEnd: d.tEnd, px: d.px, box, forming, today, toEdge: today && lastP.m <= CLOSE_M};
   });
 }
 function drawOrb(){
   try{
-    const days = orbDays(), sig = (cur.ticker || '') + '|' + JSON.stringify(chart.getPeriod()) + '|' + JSON.stringify(days);
+    const days = orbDays().filter(d => CH.more || d.today), sig = (cur.ticker || '')       // prior days only under More: today's range stays
+      + '|' + CH.more + '|' + JSON.stringify(chart.getPeriod()) + '|' + JSON.stringify(days);
     if(sig === orbSig) return;
     orbSig = sig;
     chart.removeOverlay({groupId: 'orb'});

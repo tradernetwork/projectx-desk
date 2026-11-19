@@ -912,3 +912,13 @@ html[data-layout="portrait"][data-pos="1"] .col-right>#blotter{order:0}
 .chat-th button{position:absolute;top:0;right:0;min-width:18px;min-height:18px;padding:0 4px;line-height:16px;background:var(--bg-app);border:0;color:var(--text-2);cursor:pointer}
 .chat-dock.drop{outline:2px dashed var(--cyan-line)}
 body.streaming .chat-fab,body.streaming .chat-dock{display:none}   /* the agent reads the live page, balances included: never on stream */
+
+/* declutter: footer groups (layout controls apart from help and links), collapsible math, chart toggles */
+.fgrp{display:inline-flex;align-items:center;gap:10px}
+.strip .vsep{align-self:stretch;width:1px;background:var(--border);opacity:.6}
+.moredet>summary{cursor:pointer;color:var(--text-2);font:600 var(--fs-xs)/1.4 var(--sans);padding:2px 0}
+.moredet[open]>summary{margin-bottom:4px}
+.mqd{display:inline}
+.mqd>summary{display:inline;cursor:pointer}
+.tm-keyline{font:600 var(--fs-xs)/1.5 var(--mono,monospace);color:var(--text-2);overflow-wrap:anywhere}
+.tm-narr{display:block}

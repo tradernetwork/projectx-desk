@@ -8,7 +8,7 @@ CSS = (STATIC / "desk.css").read_text(encoding="utf-8")
 
 
 def test_walls_are_coloured_by_side_and_pin_and_flip_stay_purple():
-    block = JS.split("function deskLines()")[1].split("const cl = CALL.live")[0]
+    block = JS.split("function gexLines()")[1].split("function gexBands()")[0]
     assert "E.hot" in block and "E.sup" in block and "lv.price > lastP" in block
     assert re.search(r"GEX_COL = \{flip: '#b45bff', pin: '#a63cff'\}", JS)      # only the reference levels are purple
     assert "wall_above: '#" not in JS and "wall_below: '#" not in JS

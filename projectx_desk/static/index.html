@@ -20,6 +20,7 @@
 <script src="/static/trend.js"></script>
 <script src="/static/watch.js"></script>
 <script src="/static/tmap.js"></script>
+<script src="/static/declutter.js"></script>
 <script src="/static/callouts.js"></script>
 <script src="/static/klinecharts.min.js"></script>
 </head><body>
@@ -65,25 +66,25 @@
     <div class="kpi" id="kpi-pnl">
       <div class="k-h"><span class="k-t" title="Trading day, net">Live P&amp;L</span></div>
       <div class="k-v"><span data-slot="sens" data-tpl="t-kpi-pnl"></span><span data-slot="stream" data-tpl="t-kpi-hidden"></span></div>
-      <div class="k-s">n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b> closed trades</div>
+      <div class="k-s">n=<b data-ai="kpi.n" data-fmt="int" class="na">NA</b> closed</div>
     </div>
     <div class="kpi wide" id="kpi-wr">
       <div class="k-h"><span class="k-t">Win rate vs break-even</span></div>
       <div class="k-v"><span class="k-num"><b data-ai="kpi.win_rate" data-fmt="num1" class="na">NA</b><small>%</small></span>
         <span class="k-vs">need <b data-ai="kpi.breakeven_win_rate" data-fmt="num1" class="na">NA</b>%</span>
         <span id="wr-verdict" class="verdict">NA</span></div>
-      <div class="k-s" id="wr-pay">n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b>, payoff <b data-ai="kpi.payoff" data-fmt="num2" class="na">NA</b><span class="ss" hidden>small sample</span><span class="sr"><span id="wr-need">needs <b data-ai="kpi.breakeven_win_rate" data-fmt="num1" class="na">NA</b>% wins to break even</span><span id="wr-need-na" hidden>break-even NA</span>, <b data-ai="kpi.wins" data-fmt="int" class="na">NA</b> wins, <b data-ai="kpi.losses" data-fmt="int" class="na">NA</b> losses</span></div>
+      <div class="k-s" id="wr-pay">n=<b data-ai="kpi.n" data-fmt="int" class="na">NA</b>, payoff <b data-ai="kpi.payoff" data-fmt="num2" class="na">NA</b><span class="ss" hidden>small sample</span><span class="sr"><span id="wr-need">needs <b data-ai="kpi.breakeven_win_rate" data-fmt="num1" class="na">NA</b>% wins to break even</span><span id="wr-need-na" hidden>break-even NA</span>, <b data-ai="kpi.wins" data-fmt="int" class="na">NA</b> wins, <b data-ai="kpi.losses" data-fmt="int" class="na">NA</b> losses</span></div>
       <div class="wr" id="wr-gauge" aria-hidden="true" hidden><i class="wr-fill" id="wr-fill"></i><i class="wr-be" id="wr-be"></i></div>
     </div>
     <div class="kpi" id="kpi-exp">
       <div class="k-h"><span class="k-t" title="Average per trade">Expectancy</span></div>
       <div class="k-v"><span data-slot="sens" data-tpl="t-kpi-exp"></span><span data-slot="stream" data-tpl="t-kpi-hidden"></span></div>
-      <div class="k-s">n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b><span class="ss" hidden>small sample</span></div>
+      <div class="k-s">n=<b data-ai="kpi.n" data-fmt="int" class="na">NA</b><span class="ss" hidden>small sample</span></div>
     </div>
     <div class="kpi" id="kpi-pf">
       <div class="k-h"><span class="k-t" title="Gross wins / gross losses">Profit factor</span></div>
       <div class="k-v"><span class="k-num"><b data-ai="kpi.profit_factor" data-fmt="num2" class="na">NA</b></span></div>
-      <div class="k-s">n <b data-ai="kpi.n" data-fmt="int" class="na">NA</b><span class="ss" hidden>small sample</span> <span class="k-gross"><span data-slot="sens" data-tpl="t-kpi-gross"></span><span data-slot="stream" data-tpl="t-kpi-gross-hidden"></span></span></div>
+      <div class="k-s">n=<b data-ai="kpi.n" data-fmt="int" class="na">NA</b><span class="ss" hidden>small sample</span> <span class="k-gross"><span data-slot="sens" data-tpl="t-kpi-gross"></span><span data-slot="stream" data-tpl="t-kpi-gross-hidden"></span></span></div>
     </div>
     <div class="kpi" id="kpi-trades">
       <div class="k-h"><span class="k-t" title="Closed today">Trades</span></div>
@@ -119,8 +120,10 @@
           <span id="chip-scale" class="chip warn" title="risk scaler: the budget was cut before sizing" hidden><span id="cs-adx" hidden>ADX <b data-ai="size.adx" data-fmt="int" class="na">NA</b> <span id="cs-adx-note"></span></span><span id="cs-atr" hidden>ATR p<b data-ai="size.atr_pctile" data-fmt="int" class="na">NA</b> <span id="cs-atr-note"></span></span><span class="x">x<b data-ai="size.scale.multiplier" data-fmt="num2" class="na">NA</b></span></span>
           <span id="chip-cap" class="chip info" title="risk alone would allow more contracts than the per-order cap" hidden><span class="t">Risk allows <b data-ai="size.contracts_by_risk" data-fmt="int" class="na">NA</b>, cap <b data-ai="size.cap" data-fmt="int" class="na">NA</b></span></span>
         </div>
-        <ul id="size-why" class="why" aria-label="Why this size" hidden></ul>
-        <div id="size-plan" class="plan" aria-label="Stop, target and what is left if the stop fills" hidden></div>
+        <details id="size-more" class="moredet" hidden><summary title="The rule math behind this size: why it is this many contracts, the stop, the target, what is left if the stop fills">Size math</summary>
+          <ul id="size-why" class="why" aria-label="Why this size" hidden></ul>
+          <div id="size-plan" class="plan" aria-label="Stop, target and what is left if the stop fills" hidden></div>
+        </details>
         <div class="sec">
           <span data-slot="sens" data-tpl="t-size-risk"></span>
           <span class="kv"><b data-ai="size.pct_budget" data-fmt="num1" class="na">NA</b>% of budget</span>
@@ -230,10 +233,12 @@
     <div class="chartbar">
       <span class="ind" id="ind" role="group" aria-label="Indicators"></span>
       <button id="tr-toggle" type="button" class="rsp-tg" aria-pressed="true" title="Automatic trendlines and channels from the swing highs and lows on screen. A line needs 3 touches and no close through it; the label says how many. Where price turned, not a forecast.">Trend</button>
-      <span class="seg" id="tr-tfs" role="group" aria-label="Trendline timeframes" title="Show trendlines found on these timeframes on whichever chart is on screen"><button type="button" data-tf="1m" aria-pressed="false">1m</button><button type="button" data-tf="5m" aria-pressed="true">5m</button><button type="button" data-tf="15m" aria-pressed="true">15m</button></span>
+      <span class="seg" id="tr-tfs" hidden role="group" aria-label="Trendline timeframes" title="Show trendlines found on these timeframes on whichever chart is on screen"><button type="button" data-tf="1m" aria-pressed="false">1m</button><button type="button" data-tf="5m" aria-pressed="true">5m</button><button type="button" data-tf="15m" aria-pressed="true">15m</button></span>
       <button id="lv-toggle" type="button" class="rsp-tg" aria-pressed="true" title="Level alerts: a flash, a chime and the tab title when price crosses a dealer-map level (trapdoor, flip, accelerant...). It says what happened; it is not a signal.">Alert</button>
       <button id="tm-toggle" type="button" class="rsp-tg" aria-pressed="true" title="Dealer map: draw the roads out of price (up, down, else) from dealer gamma, into the bars to come. Positioning, not targets.">Map</button>
       <button id="rsp-toggle" type="button" class="rsp-tg" aria-pressed="true" title="Draw the level each timeframe has actually been respecting (history, not a forecast)">Respect</button>
+      <button id="gex-toggle" type="button" class="rsp-tg" aria-pressed="true" title="GEX lines: the flip, the pin and the 2 nearest walls each side of price. Positioning, not targets.">GEX</button>
+      <button id="more-toggle" type="button" class="rsp-tg" aria-pressed="false" title="More on the chart: far GEX walls, trendlines from other timeframes, auto levels (needs Respect), prior-day opening ranges and level reaction markers.">More</button>
       <span id="ema-badge" class="badge stack" title="EMA 8 / 21 / 34 stack order" hidden><span class="bl"><span class="bl-l">EMA stack</span><span class="bl-s">EMA</span></span><b data-ai="ind.ema.state" class="na">NA</b><span id="ema-slope" class="ema-slope" aria-label="21 EMA slope"></span></span>
       <span id="bias-chip" class="chip" role="status" hidden></span>
       <label class="sr" for="tz">Timezone</label>
@@ -357,10 +362,15 @@
   <footer class="strip" role="region" aria-label="Status">
     <span id="live-polite" class="live" aria-live="polite"></span>
     <span id="live-assertive" class="live bad" aria-live="assertive"></span>
-    <span class="seg layoutseg" id="layout-seg" role="group" aria-label="Screen layout" title="Layout: Auto follows the monitor, Landscape or Portrait forces it"><button type="button" data-v="auto" aria-pressed="true">Auto</button><button type="button" data-v="landscape" aria-pressed="false">Landscape</button><button type="button" data-v="portrait" aria-pressed="false">Portrait</button></span>
-    <span class="push dim" id="asof">asof NA</span>
-    <span class="dim">GEX marks positioning, not targets.</span>
+    <span class="fgrp fg-layout" role="group" aria-label="Layout and time">
+      <span class="seg layoutseg" id="layout-seg" role="group" aria-label="Screen layout" title="Layout: Auto follows the monitor, Landscape or Portrait forces it"><button type="button" data-v="auto" aria-pressed="true">Auto</button><button type="button" data-v="landscape" aria-pressed="false">Landscape</button><button type="button" data-v="portrait" aria-pressed="false">Portrait</button></span>
+      <span class="dim" id="asof">asof NA</span>
+    </span>
+    <span class="vsep" aria-hidden="true"></span>
+    <span class="fgrp fg-help push" role="group" aria-label="Help and links">
+      <span class="dim">GEX marks positioning, not targets.</span>
     <a class="byline" href="https://www.tradermatrix.pro/?ref=MPHINANCE" target="_blank" rel="noopener noreferrer" title="Built by TraderMatrix. We track the moves. TraderMatrix helps you trade them."><img src="/static/brand-mark.png" alt="" width="14" height="14"><span>Built by TraderMatrix</span></a>
+    </span>
   </footer>
 </div>
 

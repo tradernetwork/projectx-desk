@@ -12,11 +12,15 @@
 .llm-cards{display:flex;flex-direction:column;gap:6px}
 .llm-card{text-align:left;display:block;padding:7px 9px;background:var(--bg-app);border:1px solid var(--border);border-radius:var(--r-sm);color:inherit;cursor:pointer}
 .llm-card.on{border-color:var(--cyan-line)}
+.llm-card.found{border-left:3px solid var(--green)}
+.llm-card.found.on{border-color:var(--green)}
 .llm-card-t{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .llm-name{font-weight:600}
 .llm-blurb,.llm-price{color:var(--text-2);margin-top:2px}
 .llm-price{opacity:.7}
 .llm-pill{padding:0 7px;border-radius:9px;border:1px solid var(--cyan-line);color:var(--cyan-ink);font-size:.85em}
+.llm-pill.found{border-color:var(--green);color:var(--green)}
+.llm-pill.found::before{content:'';display:inline-block;width:6px;height:6px;margin-right:5px;border-radius:50%;background:var(--green)}
 .llm-pill.cur{border-color:var(--border);color:var(--text-2)}
 .llm-pill.warn{border-color:var(--amber-ink);color:var(--amber-ink)}
 .llm-form{display:flex;flex-direction:column;gap:8px;padding-top:4px;border-top:1px solid var(--border)}

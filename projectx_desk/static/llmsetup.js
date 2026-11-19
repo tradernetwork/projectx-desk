@@ -201,10 +201,10 @@
 
     const list = el('div', 'llm-cards');
     S.cards.forEach((c) => {
-      const b = el('button', 'llm-card' + (c.id === S.sel ? ' on' : '')); b.type = 'button';
+      const b = el('button', 'llm-card' + (c.id === S.sel ? ' on' : '') + (c.found ? ' found' : '')); b.type = 'button';
       b.setAttribute('aria-pressed', String(c.id === S.sel));
       const t = el('div', 'llm-card-t'); t.append(el('span', 'llm-name', c.label));
-      if(c.found) t.append(el('span', 'llm-pill', 'Found on this computer'));
+      if(c.found) t.append(el('span', 'llm-pill found', 'Detected where the desk runs'));
       if(S.view && S.view.configured && S.view.provider === c.id) t.append(el('span', 'llm-pill cur', 'In use'));
       b.append(t, el('div', 'llm-blurb', c.blurb));
       if(c.price_hint) b.append(el('div', 'llm-price', c.price_hint));

@@ -38,7 +38,8 @@ POSITION_PARTIAL_CLOSE = "/api/Position/partialCloseContract"
 
 CONTRACT_RE = re.compile(r"^CON\.[A-Za-z0-9._]{1,40}$")
 SAFE_AUDIT = re.compile(r"^[A-Za-z0-9_.:\-]{0,64}$")
-AUDIT_KEYS = ("event", "ticket", "origin", "root", "side", "size", "risk_usd", "check", "code", "sha8", "state", "one_lot")
+AUDIT_KEYS = ("event", "ticket", "origin", "root", "side", "size", "risk_usd", "check", "code", "sha8", "state", "one_lot",
+              "via", "lag_ms", "lookup_ms", "ms")
 SESSION_OPEN = dtime(17, 0)
 
 STAGED, PLACING, PLACED = "STAGED", "PLACING", "PLACED"
@@ -200,6 +201,9 @@ class Guard:
         self._intents, self._intents_ok = self._load_intents()
         self.sleep, self.verify_tries, self.verify_interval = sleep, verify_tries, verify_interval
         self._watchdogs: dict[str, asyncio.Task] = {}
+        self._fill_at: dict[str, float] = {}     # ticket_id -> clock() when its entry fill reached us (for the stop-SENDING lag audit)
+        self._probed: set[str] = set()           # tickets that already had their one fill probe
+        self._bg: set = set()                    # strong refs to fire-and-forget read-only tasks (probe, contract pre-warm)
         self.protection: dict = {}
         if hasattr(live, "listen"):
             live.listen(self._on_live_event)
@@ -209,14 +213,54 @@ class Guard:
     async def _default_lookup(self, contract_id):
         return await self.client.contract_by_id(contract_id)
 
-    async def _contract(self, contract_id):
+    async def _contract(self, contract_id, stale_ok: bool = False):
+        """Contract record, cached 30 s. stale_ok (tick size only, which never changes): an older cached record is served at once and
+        a background refresh is started, so a slow lookup cannot delay a caller that only needs the tick."""
         hit = self._contracts.get(contract_id)
         if hit and self.clock() - hit[0] < 30:
+            return hit[1]
+        if hit and stale_ok:
+            self._prewarm(contract_id)
             return hit[1]
         rec = await self._lookup(contract_id)
         if isinstance(rec, dict):
             self._contracts[contract_id] = (self.clock(), rec)
         return rec
+
+    def _spawn(self, coro) -> None:
+        try:
+            task = asyncio.get_running_loop().create_task(coro)
+        except RuntimeError:
+            coro.close()
+            return
+        self._bg.add(task)
+        task.add_done_callback(self._bg.discard)
+
+    def _prewarm(self, contract_id) -> None:
+        """Refresh the cached contract record in the background (read only, never raises, one in flight per contract)."""
+        if not isinstance(contract_id, str) or not CONTRACT_RE.match(contract_id):
+            return
+        hit = self._contracts.get(contract_id)
+        if hit and self.clock() - hit[0] < 30:
+            return
+        key = f"warm:{contract_id}"
+        if any(getattr(tk, "_px_key", None) == key and not tk.done() for tk in self._bg):
+            return
+
+        async def warm():
+            try:
+                rec = await self._lookup(contract_id)
+                if isinstance(rec, dict):
+                    self._contracts[contract_id] = (self.clock(), rec)
+            except Exception:  # noqa: BLE001 - a warm-up must never matter
+                pass
+        try:
+            task = asyncio.get_running_loop().create_task(warm())
+        except RuntimeError:
+            return
+        task._px_key = key
+        self._bg.add(task)
+        task.add_done_callback(self._bg.discard)
 
     last_auto = None       # the desk's own last protective close: {"kind", "at", "clock"} (see _note_auto)
 
@@ -775,6 +819,7 @@ class Guard:
         if origin == "mcp" and any(t.state == STAGED and t.origin == "ui" and self.clock() < t.expires
                                    for t in self.tickets.values()):
             return self._refuse([("ui_ticket_pending", False, "a ticket staged at the desk is waiting; the desk owns it")], origin)
+        self._prewarm(contract_id)
         if isinstance(contract_id, str) and CONTRACT_RE.match(contract_id) and hasattr(self.live, "ensure_quote"):
             await self.live.ensure_quote(contract_id, max_age=self.limits.max_quote_age_s)
         ev = await self._evaluate(contract_id=contract_id, side=side, stop_price=stop_price, risk_dollars=risk_dollars,
@@ -908,6 +953,7 @@ class Guard:
                 return self._deny(None, ["ticket: unknown"], origin)
             if t.state != STAGED:
                 return self._deny(t, [f"ticket: already {t.state}"], origin)
+            self._prewarm(t.contract_id)       # so the post-fill trail never waits on a contract lookup
             if self.clock() >= t.expires:
                 t.state = EXPIRED
                 return self._deny(t, ["ticket: expired"], origin, EXPIRED)
@@ -1055,6 +1101,38 @@ class Guard:
                 asyncio.get_running_loop().create_task(self.handle_position(d))
             except RuntimeError:
                 pass
+        elif kind == "fill" and isinstance(d, dict):
+            self._on_fill(d)
+
+    FILL_PROBE_S = 2.0
+
+    def _on_fill(self, d: dict) -> None:
+        """A fill on a known ticket's entry order. Normally a position event follows within a moment and arms the stop. If it does not (a
+        late or missed event), one READ-ONLY REST positions read after FILL_PROBE_S hands the position to handle_position. Never writes."""
+        oid, cid = d.get("orderId"), d.get("contractId")
+        if not isinstance(oid, int) or isinstance(oid, bool):
+            return
+        t = next((x for x in self.tickets.values() if x.broker_order_id == oid and x.contract_id == cid
+                  and x.state in (PLACING, PLACED, UNKNOWN)), None)
+        if t is None or t.ticket_id in self._probed or t.stop_state is not None:
+            return
+        self._probed.add(t.ticket_id)
+        self._fill_at.setdefault(t.ticket_id, self.clock())
+        self._spawn(self._probe_fill(t))
+
+    async def _probe_fill(self, t: Ticket) -> None:
+        try:
+            await self.sleep(self.FILL_PROBE_S)
+            if t.stop_state is not None or t.state not in (PLACING, PLACED, UNKNOWN):
+                return                      # the position event (or a reseed) got there first
+            for p in await self._positions_rest(t.contract_id):
+                if abs(p.get("size") or 0):
+                    await self.handle_position(p, via="probe")
+                    return
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - a failed read changes nothing: the reseed loop is the backstop
+            pass
 
     @staticmethod
     def _pos_side(p):
@@ -1070,8 +1148,8 @@ class Guard:
                 except OSError:
                     pass
 
-    async def handle_position(self, p: dict) -> None:
-        """React to a position event: protect a fresh fill, resize the stop, or close out the ticket."""
+    async def handle_position(self, p: dict, via: str = "hub") -> None:
+        """React to a position event: protect a fresh fill, resize the stop, or close out the ticket. `via` (hub, reseed, probe) is audit only."""
         cid, size = p.get("contractId"), abs(p.get("size") or 0)
         active = [t for t in self.tickets.values() if t.contract_id == cid and t.state in (PLACING, PLACED, UNKNOWN)]
         recent_rej = [t for t in self.tickets.values() if t.contract_id == cid and t.state == REJECTED
@@ -1109,7 +1187,7 @@ class Guard:
                 t.position_id = p["id"]
             if t.stop_plan["mode"] == "separate_after_fill":
                 if t.stop_state is None:
-                    await self._arm_stop(t, size)
+                    await self._arm_stop(t, size, via)
                 elif t.stop_state == "ACKED" and size != t.stop_size:
                     await self._resize_stop(t, size)
 
@@ -1175,7 +1253,7 @@ class Guard:
                 self._close_intents(owner)
                 owner = None
             if owner is not None:
-                await self.handle_position(p)
+                await self.handle_position(p, via="reseed")
                 if owner.abandoned:                                       # handle_position already flattened and halted
                     out[cid] = "FLATTENED"
                     continue
@@ -1218,16 +1296,18 @@ class Guard:
         if w and not w.done() and w is not asyncio.current_task():
             w.cancel()
 
-    async def _arm_stop(self, t: Ticket, size: int) -> None:
+    async def _arm_stop(self, t: Ticket, size: int, via: str = "hub") -> None:
         t.stop_state = "SENDING"
+        t0 = self.clock()
         self._watchdogs[t.ticket_id] = asyncio.create_task(self._watchdog(t))
         tag = f"px-{t.hash8}-2"
         body = {"accountId": self.live.account_id, "contractId": t.contract_id, "type": 4,
                 "side": t.stop_plan["side"], "size": size, "limitPrice": None,
                 "stopPrice": t.stop_plan["stop_price"], "trailPrice": None, "customTag": tag}
-        trailing, tick = False, None
+        trailing, tick, lookup_ms = False, None, None
         if (self.limits.trail_entry or t.one_lot) and self.limits.account_kind == "sim":
             trail_body = await self._entry_trail_body(t, size, tag)
+            lookup_ms = int((self.clock() - t0) * 1000)
             if trail_body is not None:
                 (body, tick), trailing = trail_body, True
             else:       # PX_TRAIL_ENTRY is on but the inputs are unreadable: the fixed stop goes in, and the trader can see it did
@@ -1236,7 +1316,9 @@ class Guard:
         try:   # no global lock: a hung stop write must not be able to block the watchdog's flatten
             self._set_intent(tag, state="SENDING", hash8=t.hash8, root=t.root, size=size,
                              ts=self.wall().isoformat(timespec="seconds"))
-            self._audit("stop", ticket=t.hash8, root=t.root, size=size, state="SENDING")
+            fa = self._fill_at.get(t.ticket_id)
+            self._audit("stop", ticket=t.hash8, root=t.root, size=size, state="SENDING", via=via, lookup_ms=lookup_ms,
+                        lag_ms=int((self.clock() - fa) * 1000) if fa is not None else None, ms=int(self.wall().timestamp() * 1000))
             oid = None
             try:
                 resp = await self.client.write(ORDER_PLACE, body)
@@ -1310,7 +1392,8 @@ class Guard:
         record or distance unreadable). Distance = the entry stop distance, so 1R does not move. `trailPrice` is an ABSOLUTE level (official docs):
         last -/+ distance from a FRESH quote, else the planned stop level, so an aged-out quote never leaves the position unprotected."""
         try:
-            tick = Decimal(str((await self._contract(t.contract_id))["tickSize"]))
+            rec = await asyncio.wait_for(self._contract(t.contract_id, stale_ok=True), 2)    # tick size never changes: a slow lookup must not delay the stop
+            tick = Decimal(str(rec["tickSize"]))
             planned = Decimal(str(t.stop_plan["stop_price"]))
             d = abs(Decimal(str(t.readback["entry_ref"])) - planned)
             if tick <= 0 or d <= 0 or (planned / tick) % 1 != 0:

@@ -246,6 +246,7 @@ class LiveState:
                 return                      # a replayed fill must not count twice (wins, losses, streaks, P&L)
             self.trades.append(d)
             del self.trades[:-500]
+            self._emit("fill", d)           # guard fill probe (read only); a replayed fill returned above
 
     def begin_seed(self):
         """Start tracking ids that live events touch while a REST snapshot is being fetched."""

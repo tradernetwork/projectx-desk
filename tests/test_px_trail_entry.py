@@ -100,3 +100,126 @@ async def test_trail_size_mismatch_flattens_not_just_halts(tmp_path):
     g, t, gw, stops = await run_entry(tmp_path, trail_entry=True)
     await g._resize_stop(t, 2)
     assert g.halted() and t.abandoned
+
+
+# ---- 2026-11-19: slow lookup, pre-warm, audit of how and how late the stop went out ----------------------------------------------------
+
+import asyncio  # noqa: E402
+import json  # noqa: E402
+
+
+def audit_rows(g):
+    return [json.loads(x) for x in g.limits.audit_path.read_text().splitlines() if x.strip()]
+
+
+async def test_slow_lookup_falls_back_fixed_no_halt(tmp_path):
+    g, live, clock, _ = build2(tmp_path, trail_entry=True)
+    gw = TB()
+    g.client, g.verify_interval = gw, 0
+    g.sleep = asyncio.sleep                      # a real watchdog (5 s): the 2 s lookup bound must beat it
+    t = await staged(g)
+    await go(g, t)
+
+    async def hung(cid):
+        await asyncio.sleep(60)
+
+    g._lookup = hung
+    g._contracts.clear()
+    await g.handle_position(fill(live))
+    stops = [b for p, b in gw.writes if p == ORDER_PLACE and b.get("type") in (4, 5)]
+    assert len(stops) == 1 and stops[0]["type"] == 4 and stops[0]["stopPrice"] == t.stop_plan["stop_price"]
+    assert t.stop_state == "ACKED" and not g.halted()
+    assert any(r.get("state") == "TRAIL_FALLBACK_FIXED" for r in audit_rows(g))
+
+
+async def test_contract_prewarmed_at_preview(tmp_path):
+    g, live, clock, _ = build2(tmp_path, trail_entry=True)
+    calls = []
+    orig = g._lookup
+
+    async def counting(cid):
+        calls.append(cid)
+        return await orig(cid)
+
+    g._lookup = counting
+    g._contracts.clear()
+    t = await staged(g)
+    await asyncio.gather(*list(g._bg))
+    assert calls and CID in g._contracts            # warm before place()
+    clock.t += 31                                   # the cached record aged out between preview and place
+    n = len(calls)
+    await go(g, t)
+    await asyncio.gather(*list(g._bg))
+    assert len(calls) > n and g.clock() - g._contracts[CID][0] < 30
+    # an aged record is served at once for the tick (stale_ok) while a refresh runs
+    clock.t += 31
+
+    async def hung(cid):
+        await asyncio.sleep(60)
+
+    g._lookup = hung
+    rec = await asyncio.wait_for(g._contract(CID, stale_ok=True), 0.5)
+    assert rec["tickSize"] == 0.25
+    for tk in list(g._bg):
+        tk.cancel()
+
+
+async def test_stop_sending_row_has_via_lag_lookup(tmp_path):
+    g, t, gw, stops = await run_entry(tmp_path, trail_entry=True)
+    row = next(r for r in audit_rows(g) if r.get("event") == "stop" and r.get("state") == "SENDING")
+    assert row["via"] == "hub" and isinstance(row["lookup_ms"], int) and row["lookup_ms"] >= 0
+    assert isinstance(row["ms"], int) and row["ts"]          # ts kept for the tests and tools that parse it
+    assert "lag_ms" not in row                               # no fill event was seen on this path
+
+
+async def test_fill_without_position_event_arms_stop_via_probe(tmp_path):
+    g, live, clock, gw = build2(tmp_path, trail_entry=True)
+    tb = TB()
+    g.client = tb
+    t = await staged(g)
+    await go(g, t)
+    tb.pos = [{"id": 1, "contractId": CID, "type": 1, "size": 1}]       # REST knows the position; the hub never sent the event
+    live._on_trade_fill({"id": 77, "accountId": 7, "contractId": CID, "orderId": t.broker_order_id, "size": 1, "price": 5000.25})
+    await asyncio.gather(*list(g._bg))
+    stops = [b for p, b in tb.writes if p == ORDER_PLACE and b.get("type") in (4, 5)]
+    assert len(stops) == 1 and t.stop_state == "ACKED" and not g.halted()
+    row = next(r for r in audit_rows(g) if r.get("state") == "SENDING")
+    assert row["via"] == "probe" and isinstance(row["lag_ms"], int)
+    live._emit("fill", {"orderId": t.broker_order_id, "contractId": CID})    # one probe per ticket: a second fill does nothing
+    await asyncio.gather(*list(g._bg))
+    assert len([1 for p, b in tb.writes if p == ORDER_PLACE and b.get("type") in (4, 5)]) == 1
+
+
+async def test_probe_never_writes_entry(tmp_path):
+    g, live, clock, gw = build2(tmp_path, trail_entry=True)
+    tb = TB()
+    g.client = tb
+    t = await staged(g)
+    await go(g, t)
+    tb.writes.clear()
+    reads = []
+    orig = tb.open_positions
+
+    async def counting(a):
+        reads.append(1)
+        return await orig(a)
+
+    tb.open_positions = counting
+    # no position anywhere: the probe reads once and writes nothing
+    live._on_trade_fill({"id": 78, "accountId": 7, "contractId": CID, "orderId": t.broker_order_id})
+    await asyncio.gather(*list(g._bg))
+    assert len(reads) == 1 and tb.writes == [] and t.stop_state is None
+    # a position event that arrives first means no read at all
+    g2, live2, clock2, _ = build2(tmp_path / "b", trail_entry=True)
+    tb2 = TB()
+    g2.client = tb2
+    t2 = await staged(g2)
+    await go(g2, t2)
+    await g2.handle_position(fill(live2))
+    n = len(tb2.writes)
+    live2._on_trade_fill({"id": 79, "accountId": 7, "contractId": CID, "orderId": t2.broker_order_id})
+    await asyncio.gather(*list(g2._bg))
+    assert len(tb2.writes) == n
+    # an unknown order id or another contract never starts a probe
+    live._on_trade_fill({"id": 80, "accountId": 7, "contractId": CID, "orderId": 123456})
+    assert not g._bg

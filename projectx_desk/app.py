@@ -46,7 +46,7 @@ from projectx_desk import journal as px_journal
 from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
 from projectx_desk import ticks as px_ticks
-from projectx_desk.rh import state as px_rh
+from projectx_desk.rh import letf as px_letf, state as px_rh
 from projectx_desk.rh.guard import Guard as RhGuard, Refused as RhRefused
 from projectx_desk.guard import Guard, GuardError
 from projectx_desk.limits import Limits
@@ -717,6 +717,51 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         async def rh_tickets(request: Request, stream: int = 0):
             r = getattr(request.app.state, "rh", None)
             return {"enabled": False} if r is None else {"enabled": True, **r.state.guard_view(bool(stream))}
+
+    # ---- Robinhood LETF desk (display only): the vendored fund list, bars and quotes. GET only, market data with no account, and
+    # only symbols the vendored universe names. Same presence rule as the order routes (PX_RH on, never a recorder). Every refusal
+    # is {ok: false, code}: a fixed word, never provider text. No MCP tool, chat or digest path reaches these. ----
+    if not rec and (rh is not None or (connect and px_rh.enabled(os.environ))):
+        def _letf_universe(request: Request):
+            st = request.app.state
+            if getattr(st, "rh_letf", None) is None:
+                st.rh_letf = px_letf.load() or False          # False: loaded and unusable, do not re-read the file every request
+            return st.rh_letf or None
+
+        def _letf_cache(request: Request):
+            st = request.app.state
+            if getattr(st, "rh_market", None) is None:
+                st.rh_market = px_letf.MarketCache()
+            return st.rh_market
+
+        @app.get("/api/rh/letf")
+        async def rh_letf(request: Request):
+            if getattr(request.app.state, "rh", None) is None:
+                return {"enabled": False}
+            uni = _letf_universe(request)
+            if uni is None:
+                return {"enabled": True, **px_letf.fail("letf_unavailable")}
+            return {"enabled": True, **uni.public_view()}
+
+        @app.get("/api/rh/bars")
+        async def rh_bars(request: Request, symbols: str = "", tf: str = ""):
+            r = getattr(request.app.state, "rh", None)
+            if r is None:
+                return {"enabled": False}
+            uni = _letf_universe(request)
+            if uni is None:
+                return px_letf.fail("letf_unavailable")
+            return await px_letf.bars_response(r.reader, uni, _letf_cache(request), symbols, tf, r.can_read())
+
+        @app.get("/api/rh/quotes")
+        async def rh_quotes(request: Request, symbols: str = ""):
+            r = getattr(request.app.state, "rh", None)
+            if r is None:
+                return {"enabled": False}
+            uni = _letf_universe(request)
+            if uni is None:
+                return px_letf.fail("letf_unavailable")
+            return await px_letf.quotes_response(r.reader, uni, _letf_cache(request), symbols, r.can_read())
 
     # ---- phone alerts (Web Push): full desk only. The service worker, the key, and a handful of CSRF-gated POSTs ----
 

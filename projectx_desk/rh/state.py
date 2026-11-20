@@ -147,6 +147,11 @@ class Runtime:
     def quiet(self) -> bool:
         return bool(self._market_quiet()) and self.state.flat()
 
+    def can_read(self) -> bool:
+        """True when a token file exists, so a market-data read (the LETF desk's charts) is worth trying. Says nothing about the
+        broker being up, and none of those reads resolves an account."""
+        return bool(self._token_present())
+
     async def poll_once(self) -> bool:
         """One refresh. False (and no outbound call) when there is no token or the market is quiet and flat."""
         if not self._token_present():

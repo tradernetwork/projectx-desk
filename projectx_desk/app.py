@@ -12,6 +12,7 @@ import os
 import pathlib
 import re
 import secrets
+import sys
 import time
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -33,6 +34,7 @@ from projectx_desk import tapewatch as px_tapewatch
 from projectx_desk import flow as px_flow
 from projectx_desk import tradeday as px_tradeday
 from projectx_desk import lock as px_lock
+from projectx_desk import datacheck as px_datacheck
 from projectx_desk import mcp as px_mcp
 from projectx_desk import net as px_net
 from projectx_desk import notify as px_notify
@@ -462,6 +464,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             "asof": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "boot_error": st.boot_error,
             "quiet": _quiet(request.app),
+            "loops": {"deadline_age_s": _deadline_age(request.app)},
             "feed": {"market_up": st.market.up, "user_up": st.user.up,
                      "market_age_s": st.market.feed_age_s(), "user_age_s": st.user.feed_age_s(),
                      "recorder": st.recorder.status if st.recorder is not None else "off",
@@ -1125,9 +1128,16 @@ async def _boot_retry(app):
             app.state.boot_error = _boot_code(e)
 
 
+def _deadline_age(app):
+    """Seconds since the deadline loop last started an iteration; None before the first tick and where the task does not exist."""
+    t = getattr(app.state, "loop_tick", None)
+    return None if t is None else round(max(0.0, time.monotonic() - t), 1)
+
+
 async def _deadline_loop(app):
     """Once a second: at PX_FLAT_BY, flatten. A failed flatten halts and is retried every 5 seconds while exposure remains."""
     while True:
+        app.state.loop_tick = time.monotonic()      # heartbeat for /state.json loops.deadline_age_s; a slow broker call below can legitimately make it 5 s+ stale
         try:
             await asyncio.sleep(1.0)
             g = getattr(app.state, "guard", None)
@@ -1473,6 +1483,12 @@ def main():
     elif not px_net.is_loopback(host):
         print(f"WARNING: bound to {host}. The operator login is HTTP Basic; without TLS in front it sends the token in the clear. "
               "Use Tailscale or a TLS reverse proxy (docs/DEPLOY.md).", flush=True)
+    if "--init-data" in sys.argv[1:]:
+        print(f"wrote {px_datacheck.init_data(ROOT)}", flush=True)
+        raise SystemExit(0)
+    refusal = px_datacheck.problem(os.environ, ROOT)      # before the lock: the lock would mkdir an unmounted data dir
+    if refusal:
+        raise SystemExit(refusal)
     _lock = px_lock.acquire()           # noqa: F841 - held for the life of the process
     uvicorn.run(create_app(), host=host, port=_port(), log_level="info", timeout_graceful_shutdown=5)   # open SSE tabs must not make a restart wait out the stop timeout and get SIGKILLed before the tape is saved
 

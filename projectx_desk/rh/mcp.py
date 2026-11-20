@@ -27,6 +27,7 @@ READ_TOOLS = frozenset({
     "get_accounts", "get_portfolio", "get_equity_positions", "get_equity_orders", "get_equity_quotes",
     "get_option_positions", "get_option_orders", "get_option_chains", "get_realized_pnl",
     "get_trade_approvals", "get_trade_approval_setting",
+    "get_equity_historicals",                                  # market data for the LETF desk charts; no account argument
 })
 
 

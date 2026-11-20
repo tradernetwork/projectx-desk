@@ -20,6 +20,7 @@ import base64
 import copy
 import hashlib
 import json
+import math
 import secrets
 import time
 import urllib.parse
@@ -46,6 +47,7 @@ READ_TOOL_DEFS = [
     ("get_equity_positions", "Equity positions.", ["account_number"]),
     ("get_equity_orders", "Equity orders.", ["account_number"]),
     ("get_equity_quotes", "Equity quotes.", ["symbols"]),
+    ("get_equity_historicals", "Equity OHLCV bars.", ["symbols", "start_time"]),
     ("get_option_positions", "Option positions.", ["account_number"]),
     ("get_option_orders", "Option orders.", ["account_number"]),
     ("get_option_chains", "Option chains.", ["symbol"]),
@@ -111,12 +113,16 @@ def _tool_payload(name, args, accounts, st=None):
         for sym in (args.get("symbols") or []):
             q = {"symbol": sym, "last_trade_price": "101.25", "bid_price": "101.20", "ask_price": "101.30",
                  "previous_close": "100.00", "has_traded": True, "state": "active"}
+            if _known_symbol(sym):             # a LETF-desk symbol: a walking quote that agrees with the mock's bars
+                q.update(_walk_quote(sym, st.quote_clock() if st else time.time()))
             if st is None or st.quote_ts:       # the live shape (2026-11-17 capture) has venue_*_time fields and no updated_at
                 stamp = datetime.fromtimestamp((st.quote_clock() if st else time.time())
                                                - (st.quote_age_s if st else 0), timezone.utc).isoformat()
                 q["venue_bid_time"] = q["venue_ask_time"] = q["venue_last_trade_time"] = stamp
             rows.append({"quote": q})
         return {"results": rows}
+    if name == "get_equity_historicals":
+        return _historicals(args, st)
     if name == "get_option_chains":
         return {"chains": [{"id": "chain-1", "symbol": args.get("symbol", "AAA"),
                             "expiration_dates": ["2026-12-18", "2027-01-15"], "trade_value_multiplier": "100.0000"}]}
@@ -132,6 +138,225 @@ def _tool_payload(name, args, accounts, st=None):
             return {"setting": {}}
         return {"setting": {"human_must_approve_trades": True if st is None else st.setting_on}}
     return None
+
+
+# ---- LETF desk market data (invented): deterministic bars and quotes, a daily-reset leveraged fund tracks its underlying -------------
+# The fund list is read BY PATH (this mock must not import the desk package). Underlying prices are a pure function of time and
+# symbol; a fund's price is E_close(prev day) * (1 + L * (u / u_close(prev day) - 1)), so a 3x fund moves about 3x its underlying
+# inside each day and the analytics strip has something real to measure. Nothing here resembles a real price.
+_ET = None
+_LETF = None
+_ANCHOR = (2025, 1, 2)
+_STEP = {"15second": 15, "30second": 30, "minute": 60, "5minute": 300, "10minute": 600, "30minute": 1800, "hour": 3600,
+         "4hour": 14400, "day": 86400, "week": 86400}
+
+
+def _et():
+    global _ET
+    if _ET is None:
+        from zoneinfo import ZoneInfo
+        _ET = ZoneInfo("America/New_York")
+    return _ET
+
+
+def _letf():
+    """{"funds": {sym: (lev, underlying chart symbol or label)}} from letf_data.json, or empty when the file is absent."""
+    global _LETF
+    if _LETF is None:
+        funds = {}
+        try:
+            from pathlib import Path
+            d = json.loads((Path(__file__).parent / "rh" / "letf_data.json").read_text(encoding="utf-8"))
+            chart = {u["key"]: (u.get("chart") or u["key"]) for u in d.get("underlyings", [])}
+            for sym, f in d.get("funds", {}).items():
+                funds[sym] = (float(f["lev"]), chart.get(f["u"], f["u"]))
+        except (OSError, ValueError, KeyError, TypeError):
+            funds = {}
+        _LETF = {"funds": funds}
+    return _LETF
+
+
+def _known_symbol(sym) -> bool:
+    return isinstance(sym, str) and (sym in _letf()["funds"] or sym in _chart_symbols()) and sym not in ("AAA", "BBB", "CCC", "DDD")
+
+
+_CHARTS = None
+
+
+def _chart_symbols():
+    global _CHARTS
+    if _CHARTS is None:
+        _CHARTS = {c for _, c in _letf()["funds"].values() if isinstance(c, str) and c.isalpha() and c.isupper() and len(c) <= 5}
+    return _CHARTS
+
+
+def _h(*parts) -> int:
+    x = 2166136261
+    for ch in "|".join(str(p) for p in parts):
+        x = ((x ^ ord(ch)) * 16777619) & 0xFFFFFFFF
+    return x
+
+
+def _u_price(sym, ts) -> float:
+    h = _h(sym)
+    base = 20 + h % 480
+    z = (0.03 * math.sin(ts / (86400 * 7) + h % 7) + 0.008 * math.sin(ts / 3600 + h % 11)
+         + 0.0015 * math.sin(ts / 137 + h % 13) + 0.0004 * (((_h(sym, int(ts // 60)) % 2001) / 1000) - 1))
+    return base * math.exp(z)
+
+
+def _prev_weekday(d):
+    from datetime import timedelta
+    d = d - timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
+
+
+def _close_ts(d) -> float:
+    return datetime(d.year, d.month, d.day, 16, 0, tzinfo=_et()).timestamp()
+
+
+def _open_ts(d) -> float:
+    return datetime(d.year, d.month, d.day, 9, 30, tzinfo=_et()).timestamp()
+
+
+_E_CLOSE = {}
+
+
+def _e_close(sym, lev, under, d) -> float:
+    """The fund's close on trading date d: iterate from the anchor day, compounding L x the underlying's daily move."""
+    key = (sym, d)
+    if key in _E_CLOSE:
+        return _E_CLOSE[key]
+    from datetime import date, timedelta
+    day = date(*_ANCHOR)
+    while day.weekday() >= 5:
+        day += timedelta(days=1)
+    val = 10 + _h(sym) % 90
+    nxt = day
+    while nxt < d:
+        nxt = nxt + timedelta(days=1)
+        while nxt.weekday() >= 5:
+            nxt += timedelta(days=1)
+        pu0, pu1 = _u_price(under, _close_ts(_prev_weekday(nxt))), _u_price(under, _close_ts(nxt))
+        val = max(0.01, val * (1 + lev * (pu1 / pu0 - 1) + 0.0002 * (((_h(sym, nxt.toordinal()) % 2001) / 1000) - 1)))
+        _E_CLOSE[(sym, nxt)] = val
+    _E_CLOSE[key] = val
+    return val
+
+
+def _trading_date(ts):
+    from datetime import timedelta
+    d = datetime.fromtimestamp(ts, _et()).date()
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
+
+
+def _price(sym, ts) -> float:
+    fund = _letf()["funds"].get(sym)
+    if fund is None:
+        return _u_price(sym, ts)
+    lev, under = fund
+    d = _trading_date(ts)
+    prev = _prev_weekday(d)
+    pc = _e_close(sym, lev, under, prev)
+    return max(0.01, pc * (1 + lev * (_u_price(under, ts) / _u_price(under, _close_ts(prev)) - 1)))
+
+
+def _prev_close(sym, ts) -> float:
+    fund = _letf()["funds"].get(sym)
+    prev = _prev_weekday(_trading_date(ts))
+    if fund is None:
+        return _u_price(sym, _close_ts(prev))
+    return _e_close(sym, fund[0], fund[1], prev)
+
+
+def _walk_quote(sym, now) -> dict:
+    last = _price(sym, now)
+    half = last * (0.0001 if sym in _letf()["funds"] else 0.00005)
+    return {"last_trade_price": "%.4f" % last, "bid_price": "%.4f" % (last - half), "ask_price": "%.4f" % (last + half),
+            "previous_close": "%.4f" % _prev_close(sym, now)}
+
+
+def _parse_when(v, default):
+    if not v:
+        return default
+    s = str(v).strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return default
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def _bar(sym, t0, step, i, vol_scale) -> dict:
+    t1 = t0 + step
+    o, c = _price(sym, t0), _price(sym, t1)
+    pts = [_price(sym, t0 + step * k / 4) for k in range(5)]
+    wick = max(o, c) * 0.0003 * (1 + _h(sym, int(t0)) % 3)
+    hi, lo = max(pts + [o, c]) + wick, min(pts + [o, c]) - wick
+    b = {"begins_at": datetime.fromtimestamp(t0, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+         "open_price": "%.6f" % o, "close_price": "%.6f" % c, "high_price": "%.6f" % hi, "low_price": "%.6f" % lo,
+         "volume": int(vol_scale * (50 + _h(sym, int(t0)) % 950)), "session": "reg"}
+    if _h(sym, "gap", int(t0)) % 300 == 0:
+        b["interpolated"] = True
+    return b
+
+
+def _historicals(args, st):
+    if st is not None:
+        st.hist_calls.append(dict(args))
+        if st.hist_reply == "empty":
+            return {"results": []}
+        if st.hist_reply == "huge":
+            pad = {"begins_at": "2026-01-02T14:30:00Z", "open_price": "1.000000", "close_price": "1.000000",
+                   "high_price": "1.000000", "low_price": "1.000000", "volume": 1, "session": "reg"}
+            return {"results": [{"symbol": s, "interval": "minute", "bounds": "regular", "bars": [pad] * 9000}
+                                for s in (args.get("symbols") or [])[:1]]}
+    now = st.quote_clock() if st is not None else time.time()
+    syms = [s for s in (args.get("symbols") or []) if isinstance(s, str)][:10]
+    interval = args.get("interval") if args.get("interval") in _STEP else None
+    start = _parse_when(args.get("start_time"), now - 86400)
+    end = _parse_when(args.get("end_time"), now)
+    if interval is None:
+        interval = "day" if end - start > 40 * 86400 else "5minute"
+    step = _STEP[interval]
+    from datetime import date, timedelta
+    d = datetime.fromtimestamp(start, _et()).date() - timedelta(days=1)
+    last = datetime.fromtimestamp(end, _et()).date()
+    spans = []
+    while d <= last:
+        if d.weekday() < 5:
+            o, c = _open_ts(d), _close_ts(d)
+            if interval == "day":
+                day0 = datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp()
+                if day0 >= start and day0 + 86400 <= end:
+                    spans.append((day0, 86400, o, c))
+            else:
+                t = o
+                while t < c:
+                    run = min(step, c - t)
+                    if t >= start and t + run <= end:
+                        spans.append((t, run, t, t + run))
+                    t += step
+        d += timedelta(days=1)
+    out = []
+    for sym in syms:
+        scale = 40000 if sym in _letf()["funds"] else 8000
+        bars = []
+        for i, (t0, run, a, b) in enumerate(spans):
+            if interval == "day":
+                bar = _bar(sym, a, b - a, i, scale * 40)
+                bar["begins_at"] = datetime.fromtimestamp(t0, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            else:
+                bar = _bar(sym, t0, run, i, scale)
+            bars.append(bar)
+        out.append({"symbol": sym, "interval": interval, "bounds": "regular", "bars": bars})
+    return {"results": out}
 
 
 class MockState:
@@ -154,6 +379,8 @@ class MockState:
         self.quote_ts = True
         self.quote_reply = None
         self.quote_clock = time.time
+        self.hist_reply = None        # None | "empty" | "huge" (a reply over the client's 1 MB cap)
+        self.hist_calls = []          # arguments of every get_equity_historicals call
         self.orders_extra = []        # dicts in get_equity_orders shape; newest first
         self.approvals_extra = []
         self.place_calls = []         # arguments of every recorded place (account number included: it is the mock's)

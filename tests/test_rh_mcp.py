@@ -239,3 +239,14 @@ async def test_mock_write_without_an_agentic_account_is_refused_even_if_called_r
     res = r.json()["result"]
     assert res["isError"] is True and "account_not_allowed" in res["content"][0]["text"]
     assert not st.place_calls
+
+
+async def test_historicals_is_a_read_tool_and_round_trips():
+    assert "get_equity_historicals" in READ_TOOLS
+    _, st, _, c = make()
+    data = await c.call("get_equity_historicals", {"symbols": ["QQQ"], "interval": "5minute",
+                                                   "start_time": "2026-11-19T14:30:00Z", "end_time": "2026-11-19T15:00:00Z"})
+    bars = data["results"][0]["bars"]
+    assert data["results"][0]["symbol"] == "QQQ" and len(bars) == 6
+    assert {"begins_at", "open_price", "close_price", "high_price", "low_price", "volume"} <= set(bars[0])
+    assert st.calls == ["get_equity_historicals"]

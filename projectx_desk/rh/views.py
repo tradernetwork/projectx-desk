@@ -9,6 +9,8 @@ from __future__ import annotations
 import math
 import re
 
+from .. import tradeday as _tradeday
+
 SYMBOL = re.compile(r"[A-Z][A-Z0-9.\-]{0,9}")
 IDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9\-_]{0,63}")
 DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -44,6 +46,26 @@ def num(v):
 
 def symbol(v):
     return v if isinstance(v, str) and SYMBOL.fullmatch(v) else None
+
+
+def bar_view(raw):
+    """One historical bar as [t_ms, open, high, low, close, volume|None], or None when it must not be drawn.
+
+    Dropped: a gap-fill bar (`interpolated` true), a missing or non-finite OHLC, a price of 0 or less, high below low or a bar
+    whose open or close sits outside its own range, and an unreadable `begins_at`. Volume is None when missing or bad, never 0.
+    Nothing else from the provider (session, strings) passes through. Number strings are the provider's shape.
+    """
+    if not isinstance(raw, dict) or raw.get("interpolated") is True:
+        return None
+    o, h, l, c = (num(raw.get(k)) for k in ("open_price", "high_price", "low_price", "close_price"))
+    if None in (o, h, l, c) or min(o, h, l, c) <= 0 or h < l or not (l <= o <= h) or not (l <= c <= h):
+        return None
+    try:
+        t = int(_tradeday.parse_ts(raw.get("begins_at")).timestamp() * 1000)
+    except (ValueError, TypeError, OverflowError, OSError):
+        return None
+    v = num(raw.get("volume"))
+    return [t, o, h, l, c, v if v is not None and v >= 0 else None]
 
 
 def ident(v):

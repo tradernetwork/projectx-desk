@@ -315,3 +315,143 @@ async def test_quote_freshness_uses_the_newest_venue_timestamp_and_none_when_abs
     assert (await rh_reads.Reader(FakeClient(base)).quote("SPY"))["updated_at"] is None
     bad = {**base, "venue_bid_time": "garbage", "venue_ask_time": None}
     assert (await rh_reads.Reader(FakeClient(bad)).quote("SPY"))["updated_at"] is None
+
+
+# ---- LETF desk market data: bars and multi-symbol quotes (no account is ever resolved) -----------------------------------------
+def _hist_bar(t="2026-11-19T14:30:00Z", o="10", h="11", l="9", c="10.5", v=100, **kw):
+    return {"begins_at": t, "open_price": o, "high_price": h, "low_price": l, "close_price": c, "volume": v, "session": "reg", **kw}
+
+
+def test_bar_view_keeps_clean_bars_and_drops_everything_else():
+    ok = views.bar_view(_hist_bar())
+    assert ok == [1795098600000, 10.0, 11.0, 9.0, 10.5, 100.0]
+    assert views.bar_view(_hist_bar(interpolated=True)) is None                     # gap fill carries no information
+    assert views.bar_view(_hist_bar(interpolated=False)) is not None
+    for bad in (_hist_bar(o="nan"), _hist_bar(c=None), _hist_bar(l="0"), _hist_bar(h="8", l="9"), _hist_bar(o="12"),
+                _hist_bar(c="8"), _hist_bar(t="garbage"), _hist_bar(t=None), "x", None, []):
+        assert views.bar_view(bad) is None
+    assert views.bar_view(_hist_bar(v=None))[5] is None and views.bar_view(_hist_bar(v="x"))[5] is None   # unknown, never 0
+    assert views.bar_view(_hist_bar(v=-5))[5] is None
+    assert len(views.bar_view(_hist_bar(session="SECRET"))) == 6                      # nothing else from the provider passes
+
+
+async def test_bars_reader_shape_and_no_get_accounts():
+    _, st, spy = make()
+    r = reads.Reader(spy)
+    out = await r.bars(["QQQ", "TQQQ", "bad sym"], "5minute", "2026-11-19T14:30:00Z")
+    assert set(out) == {"QQQ", "TQQQ"}
+    assert [t for t, _ in spy.seen] == ["get_equity_historicals"]                    # no account resolution, no other tool
+    args = spy.seen[0][1]
+    assert args["symbols"] == ["QQQ", "TQQQ"] and args["bounds"] == "regular" and args["adjustment_type"] == "split"
+    assert "account_number" not in args
+    bars = out["QQQ"]["bars"]
+    assert bars and all(len(b) == 6 and b[0] < c[0] for b, c in zip(bars, bars[1:]))
+    assert out["QQQ"]["bars"][0] != out["TQQQ"]["bars"][0]                            # the two charts must differ
+    assert st.hist_calls and "MOCK" not in json.dumps(out)
+
+
+async def test_bars_reader_empty_reply_and_unrequested_symbols():
+    _, st, spy = make()
+    st.hist_reply = "empty"
+    assert await reads.Reader(spy).bars(["QQQ"], "5minute", "2026-11-19T14:30:00Z") == {}
+    assert await reads.Reader(spy).bars([], "5minute", "2026-11-19T14:30:00Z") == {}
+
+
+async def test_bars_reader_sorts_dedups_and_counts_dropped():
+    class Fake:
+        async def call(self, tool, args):
+            return {"results": [
+                {"symbol": "QQQ", "bars": [_hist_bar("2026-11-19T14:35:00Z"), _hist_bar("2026-11-19T14:30:00Z"),
+                                           _hist_bar("2026-11-19T14:30:00Z", c="10.4"), _hist_bar(interpolated=True, t="2026-11-19T14:40:00Z")]},
+                {"symbol": "EVIL", "bars": [_hist_bar()]}]}
+    out = await reads.Reader(Fake()).bars(["QQQ"], "5minute", "2026-11-19T14:30:00Z")
+    assert set(out) == {"QQQ"}                                                          # EVIL was not requested
+    assert [b[0] for b in out["QQQ"]["bars"]] == [1795098600000, 1795098900000]
+    assert out["QQQ"]["dropped"] == 1
+
+
+async def test_bars_too_big_halves_the_range_once():
+    from projectx_desk.rh.mcp import McpError
+    calls = []
+
+    class Fake:
+        async def call(self, tool, args):
+            calls.append(args["start_time"])
+            raise McpError("too_big")
+    with pytest.raises(McpError) as e:
+        await reads.Reader(Fake()).bars(["QQQ"], "minute", "2020-01-01T00:00:00Z")
+    assert e.value.code == "too_big" and len(calls) == 2                                # one retry, then it propagates
+    assert calls[1] > calls[0]                                                          # the retry starts later (half the range)
+
+    class Once:
+        n = 0
+
+        async def call(self, tool, args):
+            Once.n += 1
+            if Once.n == 1:
+                raise McpError("too_big")
+            return {"results": [{"symbol": "QQQ", "bars": [_hist_bar()]}]}
+    out = await reads.Reader(Once()).bars(["QQQ"], "minute", "2020-01-01T00:00:00Z")
+    assert len(out["QQQ"]["bars"]) == 1
+
+
+async def test_bars_other_errors_are_not_retried():
+    from projectx_desk.rh.mcp import McpError
+    n = []
+
+    class Fake:
+        async def call(self, tool, args):
+            n.append(1)
+            raise McpError("rate_limited")
+    with pytest.raises(McpError):
+        await reads.Reader(Fake()).bars(["QQQ"], "minute", "2026-11-01T00:00:00Z")
+    assert len(n) == 1
+
+
+async def test_huge_reply_is_cut_by_the_client_cap():
+    from projectx_desk.rh.mcp import McpError
+    _, st, spy = make()
+    st.hist_reply = "huge"
+    with pytest.raises(McpError) as e:
+        await spy.c.call("get_equity_historicals", {"symbols": ["QQQ"], "start_time": "2026-01-01"})
+    assert e.value.code == "too_big"
+
+
+async def test_quotes_reader_multi_symbol_one_call_and_unknown_prev_close():
+    _, st, spy = make()
+    r = reads.Reader(spy)
+    out = await r.quotes(["QQQ", "TQQQ", "QQQ"])
+    assert [t for t, _ in spy.seen] == ["get_equity_quotes"]                           # one call, no get_accounts
+    assert spy.seen[0][1]["symbols"] == ["QQQ", "TQQQ"]
+    for s in ("QQQ", "TQQQ"):
+        q = out[s]
+        assert q["bid"] < q["last"] < q["ask"] and q["prev_close"] > 0 and q["updated_at"] is not None
+    assert out["QQQ"]["last"] != out["TQQQ"]["last"]
+    st.quote_reply = "empty"
+    assert await r.quotes(["QQQ"]) == {}
+
+    class NoPrev:
+        async def call(self, tool, args):
+            return {"results": [{"quote": {"symbol": "SPY", "bid_price": "1", "ask_price": "2", "last_trade_price": "1.5"}}]}
+    assert (await reads.Reader(NoPrev()).quotes(["SPY"]))["SPY"]["prev_close"] is None   # unknown, never 0
+
+
+async def test_single_quote_is_unchanged_for_the_guard():
+    _, _, spy = make()
+    q = await reads.Reader(spy).quote("AAA")
+    assert set(q) == {"bid", "ask", "last", "updated_at"}                               # no prev_close leaks into the guard's shape
+    assert (q["bid"], q["ask"], q["last"]) == (101.2, 101.3, 101.25)                    # AAA keeps the fixed mock quote
+
+
+async def test_mock_etf_moves_about_leverage_times_the_underlying():
+    _, _, spy = make()
+    out = await reads.Reader(spy).bars(["QQQ", "TQQQ"], "day", "2026-06-01")
+    # each series drops its own gap-fill bars, so pair the days by timestamp (as the UI's alignDaily does), never by position
+    cu = {b[0]: b[4] for b in out["QQQ"]["bars"]}
+    ce = {b[0]: b[4] for b in out["TQQQ"]["bars"]}
+    days = sorted(set(cu) & set(ce))
+    ru = [cu[b] / cu[a] - 1 for a, b in zip(days, days[1:])]
+    re_ = [ce[b] / ce[a] - 1 for a, b in zip(days, days[1:])]
+    mu, me = sum(ru) / len(ru), sum(re_) / len(re_)
+    beta = sum((a - mu) * (b - me) for a, b in zip(ru, re_)) / sum((a - mu) ** 2 for a in ru)
+    assert len(ru) >= 20 and 2.9 < beta < 3.1

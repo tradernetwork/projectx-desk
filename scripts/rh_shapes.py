@@ -10,6 +10,7 @@ in a terminal, a log or a chat.
 """
 import asyncio
 import json
+from datetime import datetime, timedelta, timezone
 import os
 import pathlib
 import sys
@@ -73,7 +74,10 @@ async def main():
                  ("get_option_positions", {"account_number": acct}), ("get_option_orders", {"account_number": acct}),
                  ("get_trade_approvals", {"account_number": acct}), ("get_trade_approval_setting", {"account_number": acct}),
                  ("get_portfolio", {"account_number": acct}), ("get_realized_pnl", {"account_number": acct}),
-                 ("get_equity_quotes", {"symbols": ["SPY"]})]
+                 ("get_equity_quotes", {"symbols": ["SPY"]}),
+                 # LETF desk charts: market data, no account; the reply shape is what the desk's bar view reads
+                 ("get_equity_historicals", {"symbols": ["SPY"], "interval": "day",
+                                             "start_time": (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")})]
         for tool, args in calls:
             try:
                 out[tool] = skeleton(await client.call(tool, args))

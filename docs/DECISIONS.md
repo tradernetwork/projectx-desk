@@ -804,11 +804,35 @@ fill or the row's `fillVolume` carries, else the NEWEST active ticket (a positio
 gone entry never outranks the entry just placed), else the newest rejection with an order id. The newest wins inside each step.
 `_retire_dead_entries` moves a cancelled (human or TTL) entry to CLOSED once the broker no longer lists it working, no fill carries its
 order id, it owns no fill, and `CANCEL_GRACE_S` (30 s) has passed since the cancel was confirmed (`Ticket.cancelled_at`); from then on it
-can never own a fill. It runs on every position event, every resync and the once-a-second deadline loop. Its intents are left alone, so
-an unexplained position in that contract before the reseed closes them is flattened and halted, never adopted. The unclear-cancel path
+can never own a fill. It runs on every position event, every resync and the once-a-second deadline loop. The unclear-cancel path
 checks `_entry_has_fill` before declaring cancelled: a fill returns the fixed code `filled`, audits `state=FILLED`, sets no cancelled
-flag, and the fill is protected by the normal path. Tests: `test_px_guard_one_owner.py` (the human and TTL re-entries arm exactly one
-stop, owned by the new ticket; a gone entry; a fill carrying the older order id; the race inside the grace; retirement needs every
-condition; the resync picks the same owner; `filled`). The race tests in `test_px_guard_cancel.py` and `test_px_guard_protect.py` are
-unchanged. Not verified: a fill whose hub and REST evidence both arrive more than 30 s after the cancel ACK finds no owner and is
-flattened and halted by `protect_open_positions` (fail closed), not protected.
+flag, and the fill is protected by the normal path.
+
+**Problem 4 (a second adversarial review of Decision 3).** A ticket whose stop filled while the user hub was down got no size-0
+event: it stayed PLACED with its stop ACKED, `contract_flat` let the next entry through (no position, no listed order), and as the
+"already owns it" ticket it took the new entry's fill. The size matched its old stop, so nothing was sent: the new entry had no stop
+and no watchdog until a reseed flattened and halted. Separately, a late fill on a retired cancelled entry, after a reseed while flat had
+closed its intent, became `EXTERNAL_UNPROTECTED`: never touched, no halt, so the "flattened and halted" claim above was false.
+
+**Decision 4.** Belt and braces.
+- Root cause: `protect_open_positions` (every resync and reseed) closes out a filled PLACED ticket on a contract with no open
+  position, only when a FRESH REST positions read also shows that contract flat; an unreadable read changes nothing.
+- Before picking the owner, `handle_position` and `protect_open_positions` close out a ticket whose stop provably filled (a fill
+  carries its id) and is no longer working (`_stop_done`; a partly filled stop still protects the rest and is left alone).
+- `_position_owner` does not count a ticket whose stop is provably gone (`_stop_unlisted`: its stop filled, or the seeded book no
+  longer lists it) in the first two steps, so the newest active ticket owns the fill. Such a ticket can still win the last step, which
+  is what keeps a lone ticket the owner while the hub has not listed its just-ACKED stop yet.
+- `protect_open_positions` re-runs the owner decision after it retires a stale owner whose stop filled, instead of flattening the
+  position as ours while a newer ticket could own it.
+- A nonzero position event with no owner is audited (`position`, `state=NO_OWNER`, the size, once per size change). It is OURS when our
+  own entry intent for the contract is open or a fill carries the entry order id of a cancelled entry we retired (`_ours_unowned`):
+  `handle_position` and the resync then flatten and halt `unprotected_position`, as for any position of ours with no provable stop.
+  Anything else stays external and untouched.
+
+Tests: `test_px_guard_one_owner.py` (the human and TTL re-entries arm exactly one stop, owned by the new ticket; a gone entry; a fill
+carrying the older order id; the race inside the grace; retirement needs every condition; the resync picks the same owner; `filled`;
+the stale owner, by a seen stop fill and by an unlisted stop; the flat close-out and its unreadable-read refusal; the re-run in the
+resync; the late fill on a retired entry with and without a reseed while flat; an external position audited once and never touched).
+The race tests in `test_px_guard_cancel.py` and `test_px_guard_protect.py` are unchanged. Not verified against the real gateway:
+whether the hub lists a just-ACKED stop before the next position event (the last step covers a lone ticket either way), and how often
+the gateway sends position events with an unchanged size (the NO_OWNER audit is written once per size).

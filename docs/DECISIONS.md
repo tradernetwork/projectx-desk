@@ -735,3 +735,57 @@ callout trade on a side it had guessed from the stop, and the Robinhood docs sai
 
 **Where.** `push.py`, `notify.py`, `gex.py`, `paper.py`, `feed.py`, `scripts/verify_audit.py`, `scripts/rh_drift.py`, `docs/ROBINHOOD.md`.
 Tests: `test_px_notify.py`, `test_px_push.py`, `test_px_gex.py`, `test_paper.py`, `test_px_feed.py`, `test_rh_scripts.py`, `test_verify_audit.py`.
+
+## Round 31: limit entries are judged against the live book, and the trader can cancel one (2026-11-20)
+
+**Problem 1.** A limit entry was checked only for its distance from the market (`entry_deviation`), and the stop only against the
+entry price (`stop_side`). Nothing stopped a limit at or through the far side (a buy at or over the ask fills at once, so it is a
+market order the stop was never checked for), an off-tick limit (the broker rejects it), or a stop that is beyond the entry but at or
+through the live book (a long's sell stop at or over the bid). `place()` re-checked drift for market orders only, and the market can
+cross between staging and the write. The UI blocked a marketable limit; the server and MCP preview did not. The failure was never a
+naked position, but it was an avoidable flatten and halt (a rejected post-fill stop goes through `_naked`) or an instant stop-out.
+
+**Decision 1.** All inside `guard.py`, no new write path.
+- `quote_book`: both `bestBid` and `bestAsk` finite, positive and not crossed, or refuse. A one-sided book cannot say where a stop or a
+  limit sits, so it fails closed for every entry.
+- For a limit: `entry_aligned` (the price is on a tick) and `limit_rests` (buy strictly under the ask, sell strictly over the bid; a
+  buy at the bid rests).
+- For every entry, market included: `stop_clear_of_market` (long stop strictly under the bid, short stop strictly over the ask).
+- `_commit_gate` re-checks the book, `limit_rests` and the stop synchronously on the quote as it stands at the write, after the
+  awaited REST reads; the market drift check stays market-only. `readiness()` runs the same `_evaluate`, so its blockers name the new checks.
+- Not done, on purpose: `_arm_stop` still sends the planned stop after a fill even if the market has since run through it. Moving or
+  skipping a stop after the fill is a behaviour change to protection and needs its own design pass; today the rejected stop flattens
+  and halts once (tested).
+
+**Problem 2.** The only way to pull a resting limit was FLATTEN, which also closes positions. `Guard.cancel(order_id)` existed with no
+caller but one test, and it took ANY integer, a protective stop's id included.
+
+**Decision 2.** `Guard.cancel_entry(ticket_id)`, `POST /api/cancel {ticket_id}`, a CANCEL button on the bracket tree. The old
+`cancel(order_id)` is deleted: a human cancel names a ticket, never an order id, so it can only reach the entry the desk placed.
+- Refused with a fixed code: a non-sim account or a broker that does not say simulated (`live_cannot_cancel`, no write: the API cannot
+  cancel on live), a ticket that is not a PLACED limit entry with a broker id (`not_entry`), any fill on the ticket, a fill carrying the
+  order id or a fill volume on the row (`has_fill`: a partial fill is a position and goes through FLATTEN, which sweeps the rest), an
+  earlier cancel (`already_cancelled`), an id that any ticket uses as its stop or a row `is_protective_stop` accepts or of a stop type
+  (`protective_stop`), an order no longer listed or not working (`not_working`), a row that does not match the ticket's contract,
+  entry side, type 1 or `customTag` when the row carries one (`order_mismatch`).
+- One `ORDER_CANCEL` under the place lock, audited `cancel` with `code=user` and `state` OK, FAILED or UNKNOWN. No halt check: it only
+  reduces exposure. An unclear reply (transport unknown, 429, malformed) is never resent: one read-only REST orders read decides
+  `still_working` (listed), cancelled (gone) or, unreadable, `trip_halt("cancel_unknown")`.
+- `t.state` is not changed. `user_cancelled` makes `entry_status` read `cancelled`, but a fill that won the race still reaches
+  `_arm_stop` through `handle_position`, and `entry_status` reads `filled` first.
+- The limit TTL uses the same checks and the same send (`code=limit_ttl`), so it gains the read-back and can no longer reach a stop.
+- The route is behind the same Origin + JSON + CSRF gate, is registered after the `PX_RECORD_ONLY` return (a recorder has no POST
+  route), and has no MCP tool. `cancel_entry` joins the pin's money attributes, allowed only in `app.py`.
+- The button needs the ticket id, which only the page that staged the ticket holds; after a reload, FLATTEN or the TTL remove the order.
+
+**UNVERIFIED (needs a sim run):**
+- How the real gateway treats a crossed stop: whether a sell stop at or over the bid is rejected (`success:false`, and the order still
+  created) or accepted and triggered at once. The checks refuse both before the entry; only the post-fill race remains.
+- Whether `Order/cancel` on a partially filled limit cancels only the unfilled rest (the usual behaviour) or fails. The desk does not
+  depend on it: any fill refuses the cancel and FLATTEN is the path.
+- Whether the order rows carry `fillVolume` and `customTag` on this account; both checks only add refusals when present.
+
+**Where.** `guard.py` (`_book`, `_limit_rests`, `_stop_clear`, `_evaluate`, `_commit_gate`, `_entry_cancel_refusal`,
+`_cancel_entry_locked`, `cancel_entry`, `expire_resting_entries`, `entry_status`, `Ticket.user_cancelled`, `CancelResult`),
+`app.py` (`/api/cancel`), `static/desk.js`, `static/index.html`, `static/desk.css`. Tests: `test_px_guard_book.py`,
+`test_px_guard_cancel.py`, `test_px_guard_pin.py` (`cancel_entry`), `test_px_app_actions.py` (`/api/cancel`), `test_px_guard_protect.py`.

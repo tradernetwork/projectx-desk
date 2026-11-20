@@ -94,6 +94,7 @@ class Ticket:
     ttl_tries: int = 0              # limit-TTL cancel attempts so far (capped)
     ttl_last: float = 0.0           # clock() of the last attempt
     ttl_cancelled: bool = False     # the TTL cancel was acknowledged: the entry expired unfilled
+    user_cancelled: bool = False    # the trader's CANCEL was confirmed (cancel_entry). t.state stays PLACED: a fill that won the race is still protected
     abandoned: bool = False         # the naked-position path flattened this ticket; a late stop ACK must be cancelled
     one_lot: bool = False           # Round 28: staged through the 1-lot branch; its post-fill protective stop goes in as a TRAIL
     account_suffix: str = ""        # sensitive: confirm screen only, never in the AI surface or audit
@@ -146,6 +147,12 @@ TRAIL_MAX_PER_RUN = 20
 
 
 @dataclass
+class CancelResult:
+    ok: bool
+    code: str                        # a fixed word: cancelled, or why not (see Guard.cancel_entry)
+
+
+@dataclass
 class FlattenResult:
     flat: bool
     closed: tuple = ()
@@ -180,6 +187,31 @@ def canonical(obj) -> str:
 
 def _finite_pos(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0
+
+
+def _book(q) -> Optional[tuple]:
+    """(bestBid, bestAsk) as Decimals when both sides are finite, positive and not crossed; None otherwise (fail closed)."""
+    if not isinstance(q, dict):
+        return None
+    bid, ask = q.get("bestBid"), q.get("bestAsk")
+    if not (_finite_pos(bid) and _finite_pos(ask)):
+        return None
+    bid, ask = Decimal(str(bid)), Decimal(str(ask))
+    return (bid, ask) if bid <= ask else None
+
+
+def _limit_rests(side, entry, book) -> bool:
+    """A limit entry RESTS only strictly inside its own side: a buy under the ask, a sell over the bid."""
+    bid, ask = book
+    e = Decimal(str(entry))
+    return e < ask if side == "long" else e > bid
+
+
+def _stop_clear(side, stop_price, book) -> bool:
+    """The protective stop must sit beyond the live market: a long's sell stop under the bid, a short's buy stop over the ask."""
+    bid, ask = book
+    s = Decimal(str(stop_price))
+    return s < bid if side == "long" else s > ask
 
 
 class Guard:
@@ -599,6 +631,8 @@ class Guard:
             return "filled"
         if getattr(t, "ttl_cancelled", False):
             return "expired"
+        if getattr(t, "user_cancelled", False):
+            return "cancelled"
         if getattr(t, "broker_order_id", None) is not None and t.broker_order_id in self.live.orders:
             return "working"
         return "working" if self.clock() - getattr(t, "acked_at", 0.0) < self.IN_FLIGHT_S else "gone"
@@ -706,16 +740,27 @@ class Guard:
         # price reference: market orders are sized off the side that would fill
         q = self.live.quotes.get(contract_id)
         ref = None
+        book = None                 # (bestBid, bestAsk) when both sides are readable: the live market the stop and a limit are judged against
         if chk("quote", isinstance(q, dict) and self.clock() - q.get("_rx", -1e9) <= lim.max_quote_age_s,
                "no quote or older than the freshness limit"):
+            book = _book(q)
+            chk("quote_book", book is not None, "quote has no two-sided book (bestBid and bestAsk)")
             ref = q.get("bestAsk" if side == "long" else "bestBid") or q.get("lastPrice")
             chk("quote_price", _finite_pos(ref), "quote has no usable price")
         entry_px = float(ref) if _finite_pos(ref) else None
         if order_type == "limit":
             chk("limit_allowed", lim.account_kind == "sim", "limit opens are sim-only in v1")
             if chk("limit_entry", _finite_pos(entry), "limit order needs an entry price") and entry_px and spec:
-                dev = abs(Decimal(str(entry)) - Decimal(str(entry_px))) / Decimal(str(spec.tick_size))
+                try:
+                    dev = abs(Decimal(str(entry)) - Decimal(str(entry_px))) / Decimal(str(spec.tick_size))
+                    on_tick = (Decimal(str(entry)) / Decimal(str(spec.tick_size))) % 1 == 0
+                except ArithmeticError:             # an absurd price overflows Decimal: refuse it, never raise
+                    dev, on_tick = Decimal(10) ** 9, False
                 chk("entry_deviation", dev <= lim.max_entry_dev_ticks, "limit entry too far from the market")
+                chk("entry_aligned", on_tick, "limit price is not on a tick")
+                if book is not None:    # a limit at or through the far side trades at once: it is a market order the stop was not checked for
+                    chk("limit_rests", _limit_rests(side, entry, book),
+                        "limit price is at or through the market (buy must be under the ask, sell over the bid): it would fill at once")
                 entry_px = float(entry)
 
         if spec and entry_px:
@@ -727,6 +772,11 @@ class Guard:
             chk("stop_aligned", aligned, "stop is not on a tick")
             chk("stop_side", (side == "long" and stop_price < entry_px) or (side == "short" and stop_price > entry_px),
                 "stop is on the wrong side of entry")
+            if book is not None:
+                # Every entry, market or limit: the post-fill stop must rest beyond the LIVE book, not just beyond the entry price. A
+                # long's sell stop at or above the bid (a short's buy stop at or below the ask) is rejected or triggers at once on the fill.
+                chk("stop_clear_of_market", _stop_clear(side, stop_price, book),
+                    "stop is at or through the market (long: under the bid, short: over the ask)")
             if one_lot:         # no tick cap: the loss room below is the ceiling
                 chk("stop_distance", ticks_dec >= lim.min_stop_ticks, f"stop must be at least {lim.min_stop_ticks} ticks away")
             else:
@@ -923,14 +973,23 @@ class Guard:
         q = self.live.quotes.get(t.contract_id)
         if not isinstance(q, dict) or self.clock() - q.get("_rx", -1e9) > lim.max_quote_age_s:
             out.append("recheck: quote stale during the broker read")
-        elif t.order_type == "market":
-            ref = q.get("bestAsk" if t.side == "long" else "bestBid") or q.get("lastPrice")
-            if not _finite_pos(ref):
-                out.append("recheck: quote has no usable price")
+        else:
+            book = _book(q)         # the same live-market checks as _evaluate, on the quote as it stands at the commit point
+            if book is None:
+                out.append("recheck: quote has no two-sided book")
             else:
-                drift = abs(Decimal(str(ref)) - Decimal(str(t.readback["entry_ref"]))) / Decimal(str(ev.spec.tick_size))
-                if drift > lim.max_drift_ticks:
-                    out.append(f"recheck: market moved {drift} ticks during the broker read; restage")
+                if t.order_type == "limit" and not (_finite_pos(t.entry_limit) and _limit_rests(t.side, t.entry_limit, book)):
+                    out.append("recheck: the market reached the limit price during the broker read; it would fill at once: restage")
+                if not _stop_clear(t.side, t.stop_price, book):
+                    out.append("recheck: the stop is no longer clear of the market; restage")
+            if t.order_type == "market":
+                ref = q.get("bestAsk" if t.side == "long" else "bestBid") or q.get("lastPrice")
+                if not _finite_pos(ref):
+                    out.append("recheck: quote has no usable price")
+                else:
+                    drift = abs(Decimal(str(ref)) - Decimal(str(t.readback["entry_ref"]))) / Decimal(str(ev.spec.tick_size))
+                    if drift > lim.max_drift_ticks:
+                        out.append(f"recheck: market moved {drift} ticks during the broker read; restage")
         remaining, _daily = self.budget(self.wall())
         risk = t.readback.get("risk_usd")
         if remaining is None or (isinstance(risk, (int, float)) and remaining < lim.min_budget_multiple * risk):
@@ -1675,30 +1734,100 @@ class Guard:
                     or t.ttl_tries >= self.TTL_TRIES or now - t.ttl_last < self.TTL_RETRY_S):
                 continue
             t.ttl_tries, t.ttl_last = t.ttl_tries + 1, now
-            ok = False
-            try:
-                async with self._lock:
-                    resp = await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id, "orderId": t.broker_order_id})
-                ok = isinstance(resp, dict) and resp.get("success") is True
-            except Exception:  # noqa: BLE001 - a failed cancel leaves the order working; the next pass retries, and a fill is protected normally
-                ok = False
-            self._audit("cancel", ticket=t.hash8, origin="ui", state="OK" if ok else "FAILED", code="limit_ttl")
-            if ok:
-                t.ttl_cancelled = True
+            async with self._lock:          # re-judged under the lock: a fill or a human cancel may have landed meanwhile
+                if self._entry_cancel_refusal(t) is not None:
+                    continue
+                out = await self._cancel_entry_locked(t, "limit_ttl", "ui")
+            if out == "cancelled":
                 done += 1
         return done
 
-    async def cancel(self, order_id: int, *, origin: str = "ui") -> bool:
-        """Cancel a working order. The API supports this on simulated accounts only."""
-        if self.limits.account_kind != "sim":
-            raise GuardError("the API cannot cancel orders on a live account; cancel it in the TopstepX UI")
-        if not isinstance(order_id, int) or isinstance(order_id, bool):
-            raise GuardError("order_id must be an integer")
+    def _entry_has_fill(self, t: Ticket) -> bool:
+        """Any sign the entry traded: a fill the ticket already counted, a non-voided fill carrying its order id, or a fill volume on the row."""
+        oid = t.broker_order_id
+        if t.filled_size or any(tr.get("orderId") == oid and not tr.get("voided") for tr in self.live.trades):
+            return True
+        fv = (self.live.orders.get(oid) or {}).get("fillVolume")
+        return isinstance(fv, (int, float)) and not isinstance(fv, bool) and fv > 0
+
+    def _entry_cancel_refusal(self, t: Optional[Ticket]) -> Optional[str]:
+        """Why this ticket's resting LIMIT entry may NOT be cancelled (a fixed code), or None. Shared by the TTL and the human cancel, so
+        neither can ever reach a protective stop, a filled entry or an order the ticket does not own. Read-only."""
+        if self.limits.account_kind != "sim" or (self.live.account or {}).get("simulated") is not True:
+            return "live_cannot_cancel"         # Order/cancel is sim-only: on live the API cannot cancel, cancel it in the TopstepX UI
+        oid = getattr(t, "broker_order_id", None)
+        if t is None or t.state != PLACED or t.order_type != "limit" or not isinstance(oid, int) or isinstance(oid, bool):
+            return "not_entry"
+        if t.user_cancelled or t.ttl_cancelled:
+            return "already_cancelled"
+        if self._entry_has_fill(t):
+            return "has_fill"                   # a partial fill is a position: FLATTEN closes it and sweeps the rest
+        if any(x.stop_order_id == oid for x in self.tickets.values()):
+            return "protective_stop"
+        row = self.live.orders.get(oid)
+        if not isinstance(row, dict):
+            return "not_working"
+        if row.get("type") in STOP_TYPES or any(is_protective_stop(row, s, 1) for s in ("long", "short")):
+            return "protective_stop"
+        if row.get("status") is not None and row.get("status") not in WORKING_STATUSES:
+            return "not_working"
+        tag = row.get("customTag")
+        if (row.get("contractId") != t.contract_id or row.get("type") != 1 or row.get("side") != (0 if t.side == "long" else 1)
+                or (tag is not None and tag != t.custom_tag)):
+            return "order_mismatch"
+        return None
+
+    async def _cancel_entry_locked(self, t: Ticket, code: str, origin: str) -> str:
+        """ONE ORDER_CANCEL for a ticket's resting entry. The caller holds self._lock and has just run _entry_cancel_refusal. Never resent:
+        an unclear reply is settled by ONE read-only REST orders read (still listed: still_working; gone: cancelled; unreadable: halt
+        cancel_unknown). t.state is never changed, so a fill that wins the race still reaches _arm_stop through handle_position.
+        Returns cancelled | cancel_failed | still_working | cancel_unknown."""
+        oid = t.broker_order_id
+        resp = None
+        try:
+            resp = await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id, "orderId": oid})
+        except (PXWriteUnknown, PXRateLimited):
+            resp = None                         # may or may not have landed: read, never resend
+        except PXError:                         # connect or login failed: nothing was sent
+            self._audit("cancel", ticket=t.hash8, origin=origin, state="FAILED", code=code)
+            return "cancel_failed"
+        except Exception:  # noqa: BLE001 - anything else is an unclear outcome
+            resp = None
+        if isinstance(resp, dict) and resp.get("success") is False:
+            self._audit("cancel", ticket=t.hash8, origin=origin, state="FAILED", code=code)
+            return "cancel_failed"
+        if not (isinstance(resp, dict) and resp.get("success") is True):
+            try:
+                listed = any(o.get("id") == oid for o in await self.client.open_orders(self.live.account_id))
+            except Exception:  # noqa: BLE001 - cannot tell whether the entry can still fill
+                self._audit("cancel", ticket=t.hash8, origin=origin, state="UNKNOWN", code=code)
+                self.trip_halt("cancel_unknown")
+                return "cancel_unknown"
+            if listed:
+                self._audit("cancel", ticket=t.hash8, origin=origin, state="FAILED", code=code)
+                return "still_working"
+        if code == "limit_ttl":
+            t.ttl_cancelled = True
+        else:
+            t.user_cancelled = True
+        self._audit("cancel", ticket=t.hash8, origin=origin, state="OK", code=code)
+        return "cancelled"
+
+    async def cancel_entry(self, ticket_id, origin: str = "ui") -> CancelResult:
+        """HUMAN cancel of a resting LIMIT entry the desk placed (POST /api/cancel; no MCP tool). Takes a ticket id, never an order id, so
+        it cannot reach a protective stop or an order the desk does not own. Sim only. Refused with a fixed code on a live account, a
+        ticket that is not a placed limit entry, any fill (a partial fill is a position: use FLATTEN), an earlier cancel, or a broker row
+        that does not match the ticket. No halt check: it only reduces exposure. One write under the place lock, never resent."""
+        if origin not in ("ui",):
+            return CancelResult(False, "bad_origin")
         async with self._lock:
-            resp = await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id, "orderId": order_id})
-        ok = isinstance(resp, dict) and resp.get("success") is True
-        self._audit("cancel", origin=origin, state="OK" if ok else "FAILED")
-        return ok
+            t = self.tickets.get(ticket_id) if isinstance(ticket_id, str) else None
+            why = self._entry_cancel_refusal(t)
+            if why is not None:
+                self._audit("cancel", ticket=t.hash8 if t else None, origin=origin, state="REFUSED", code=why)
+                return CancelResult(False, why)
+            out = await self._cancel_entry_locked(t, "user", origin)
+        return CancelResult(out == "cancelled", out)
 
     # ---- stop management: tighten only ---------------------------------------------------------
 

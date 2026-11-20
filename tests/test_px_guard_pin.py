@@ -11,7 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 WRITE_ENDPOINT = re.compile(r"(Order/(place|modify|cancel)|Position/(close|partialClose))", re.I)
 GUARD_ONLY_NAMES = {"ORDER_PLACE", "ORDER_MODIFY", "ORDER_CANCEL", "POSITION_CLOSE", "POSITION_PARTIAL_CLOSE"}
 # attributes that reach the order path; only the web layer may touch them (UI buttons), never MCP/state/etc.
-MONEY_ATTRS = {"place", "flatten", "cancel_order", "close_position", "move_stop", "arm_trail",
+MONEY_ATTRS = {"place", "flatten", "cancel_order", "cancel_entry", "close_position", "move_stop", "arm_trail",
                # the guard's other writers and human-only controls: only the web layer (a human's click) may reach them
                "clear_halt", "resolve_intent", "reconcile", "handle_position",
                "_arm_stop", "_naked", "_resize_stop", "_verify_stop_after_unknown"}

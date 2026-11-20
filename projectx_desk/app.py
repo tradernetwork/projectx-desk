@@ -598,6 +598,19 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         r = await request.app.state.guard.flatten(contract_id=c, origin="ui")
         return {"flat": r.flat, "orphan_orders": r.orphan_orders, "reasons": list(r.reasons)}
 
+    @app.post("/api/cancel")
+    async def api_cancel(request: Request):
+        """Cancel a resting LIMIT entry by its ticket id. Human click only: there is no MCP tool. Sim only; refuses a filled entry, a stop,
+        or any order the ticket does not own, with a fixed code. Allowed while halted (it only reduces exposure)."""
+        b = await body(request)
+        tid = b.get("ticket_id")
+        if not isinstance(tid, str) or not 1 <= len(tid) <= 64:
+            raise HTTPException(400, "ticket_id required")
+        g = request.app.state.guard
+        r = await g.cancel_entry(tid, origin="ui")
+        t = g.tickets.get(tid)
+        return {"ok": r.ok, "code": r.code, "entry_status": g.entry_status(t) if t is not None else None}
+
     @app.post("/api/stop")
     async def api_stop(request: Request):
         """Tighten the working stop. Human click only: there is no MCP equivalent. Never widens."""

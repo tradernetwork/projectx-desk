@@ -28,6 +28,10 @@ MAX_QUOTE_AGE_S = 20.0
 FEED_DOWN_S = 30.0
 ROOM_LOW, ROOM_REARM = 0.25, 0.35
 CALLOUT_FRESH_S = 300
+RETRY_WINDOW_S = 60.0                  # a fill or critical alert that failed transiently is retried only this long after the event
+RETRY_GAP_S = 10.0                     # and no sooner than this after the previous attempt
+RETRY_MAX_ATTEMPTS = 3                 # per (event, subscription), the first send included
+FILL_TTL_S = 60                        # a fill that cannot be delivered within a minute is stale; critical events keep the default TTL
 STOP_ORDER_TYPES = (3, 4, 5)           # STOPLIMIT, STOP, TRAIL
 _ROOT_RE = re.compile(r"^[A-Z0-9]{1,5}$")
 _CID_RE = re.compile(r"^CON\.[A-Za-z0-9._]{1,40}$")
@@ -297,10 +301,36 @@ class Notifier:
         self.armed_at = self.t0 = None
         self.last_regime_poll = -1e9
         self.sent = 0
+        self.retries = {}                # event serial -> retry state; separate from the Detector's seen sets on purpose
+        self._serial = 0
         self.log = deque(maxlen=500)     # every event that reached the sender stage, pushed or held back
 
     def wants(self, kind):
         return any(s["prefs"]["events"].get(kind) for s in self.pusher.store.subs.values())
+
+    async def _retry(self, now):
+        """Re-send a transient failure (push 'retry': 429, 5xx, network) to ONLY the subscriptions that failed, for fills and critical events,
+        at most RETRY_MAX_ATTEMPTS sends per (event, subscription), RETRY_GAP_S apart, within RETRY_WINDOW_S of the event. The limiter is not
+        charged again: one event, one slot. A subscription that was pruned is dropped."""
+        for serial in list(self.retries):
+            r = self.retries[serial]
+            if now - r["t0"] > RETRY_WINDOW_S:
+                del self.retries[serial]
+                continue
+            if now - r["last"] < RETRY_GAP_S:
+                continue
+            live = {sid for sid in r["failed"] if sid in self.pusher.store.subs and r["tries"].get(sid, 0) < RETRY_MAX_ATTEMPTS}
+            if not live:
+                del self.retries[serial]
+                continue
+            r["last"] = now
+            res = await self.pusher.broadcast_results(r["kind"], r["payload"], r["critical"], only=live, ttl=r["ttl"])
+            for sid in live:
+                r["tries"][sid] += 1
+            r["failed"] = {sid for sid, x in res.items() if x == "retry" and r["tries"][sid] < RETRY_MAX_ATTEMPTS}
+            self.sent += sum(1 for x in res.values() if x == "ok")
+            if not r["failed"]:
+                del self.retries[serial]
 
     async def tick(self):
         now = self.clock()
@@ -324,6 +354,7 @@ class Notifier:
             baseline = True
         if now - self.t0 < self.grace_s:
             return []                    # brief grace after boot: a restart must not replay old state as new events
+        await self._retry(now)
         sent = []
         for ev in events:
             if ev.kind not in ("feed", "halt") and (not seeded or baseline):
@@ -333,8 +364,15 @@ class Notifier:
                 continue
             if not self.limiter.allow(ev.key, now, _contract_of(ev.key), ev.kind):
                 continue
-            n = await self.pusher.broadcast(ev.kind, {"title": TITLE, "body": ev.text, "tag": ev.key, "kind": ev.kind}, ev.critical)
-            self.sent += n
+            payload = {"title": TITLE, "body": ev.text, "tag": ev.key, "kind": ev.kind}
+            ttl = FILL_TTL_S if ev.kind == "fill" and not ev.critical else 600
+            res = await self.pusher.broadcast_results(ev.kind, payload, ev.critical, ttl=ttl)
+            self.sent += sum(1 for r in res.values() if r == "ok")
+            failed = {sid for sid, r in res.items() if r == "retry"}
+            if failed and (ev.kind == "fill" or ev.critical):
+                self._serial += 1
+                self.retries[self._serial] = {"kind": ev.kind, "payload": payload, "critical": ev.critical, "ttl": ttl, "t0": now,
+                                              "last": now, "failed": failed, "tries": {sid: 1 for sid in failed}}
             sent.append(ev)
         kind = self.limiter.held_kind
         if self.limiter.held and kind and self.pusher.store.subs and self.wants(kind):
@@ -342,7 +380,8 @@ class Notifier:
             if n:
                 summary = Event(kind, "summary", f"{n} alerts held back")
                 self.log.append(summary)
-                self.sent += await self.pusher.broadcast(kind, {"title": TITLE, "body": summary.text, "tag": summary.key, "kind": kind}, False)
+                res = await self.pusher.broadcast_results(kind, {"title": TITLE, "body": summary.text, "tag": summary.key, "kind": kind}, False)
+                self.sent += sum(1 for r in res.values() if r == "ok")
                 sent.append(summary)
         return sent
 

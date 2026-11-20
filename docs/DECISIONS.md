@@ -704,3 +704,34 @@ Four changes from a critiqued design, all on the text-only Ask path or its secre
 **Where.** `llm_chat.py`, `reply_guard.py`, `secretcheck.py`, `chat.py`, `agui.py`, `recorder.py`, `gex.py`, `mcp.py`, `static/chat.js`,
 `static/llmsetup.js`, `scripts/deskagent.py`. Tests: `test_llm_chat.py`, `test_reply_guard.py`, `test_secretcheck.py`, `test_deskagent_budget.py`,
 additions to `test_px_chat.py`, `test_px_gex.py`, `test_px_recorder_merge.py`.
+
+## Round 31: small reliability changes, and what a critique talked us out of (2026-11-20)
+
+**Problem.** A transient push failure (429, 5xx, network) dropped a fill alert for good: the trade id and the limiter slot were spent before the
+send, and `Pusher.broadcast` discarded the `retry` result. Separately, the GEX client had no 429 branch, the paper journal could open a
+callout trade on a side it had guessed from the stop, and the Robinhood docs said the MCP exposes only the flagged account.
+
+**Decision.** Each of these was reviewed and then critiqued; the critique removed more than it added.
+
+- **Retry is for fills and critical events only** (halt, unprotected position, stop failure). A late "level crossed" or analyst ENTRY is
+  worse than none, and a second push of a regime or callout would only add noise. Those stay fire-and-forget.
+- **Retry only the failed subscriptions**, at most 3 sends each, 10 s apart, inside 60 s. A phone that already got the alert is never sent
+  it twice. A fill uses a 60 s push TTL, so a retry cannot deliver something stale; critical events keep the long TTL because a halt is
+  still true an hour later.
+- **No limiter refund.** The slot is charged once per event. Refunding on failure would let a flapping push service turn one fill into a
+  burst of sends and spend the hourly cap on retries; the retry rides on the slot the event already took.
+- **`seen_trades` is not touched.** It is pruned to a random 1000 by set order, so an id removed to force a re-send could come back as a
+  duplicate. Retry state lives in its own dict, keyed per event, and dies with the 60 s window.
+- **GEX 429** maps to `RATE_LIMIT` and its `Retry-After` (clamped to 0..300 s) can only lengthen the error cache entry. A good entry and
+  every other status are unchanged.
+- **A paper trade from a callout needs an explicit side.** TraderDiscord-v2 now emits it, so inferring it from the stop guessed a trade
+  the analyst never made. `feed.py` reads the plural `Longs`/`Shorts` as the side; without that, requiring a side would have opened nothing.
+- **The audit hash chain is a script, not an app feature.** An in-app chain lives in the same process and filesystem as the files it
+  guards, so whatever can rewrite an audit line can rewrite the chain: ceremony. As `scripts/verify_audit.py` with the head file kept
+  outside `data/`, it detects an after-the-fact edit by anything that cannot also reach that file. It is honest about what it is: evidence,
+  not prevention, and it adds no desk route, digest line or state field.
+- **The Robinhood drift check warns on description, type and enum changes** but still fails only on a vanished tool or a new required input,
+  because prose changes constantly and a failing check people learn to ignore protects nothing.
+
+**Where.** `push.py`, `notify.py`, `gex.py`, `paper.py`, `feed.py`, `scripts/verify_audit.py`, `scripts/rh_drift.py`, `docs/ROBINHOOD.md`.
+Tests: `test_px_notify.py`, `test_px_push.py`, `test_px_gex.py`, `test_paper.py`, `test_px_feed.py`, `test_rh_scripts.py`, `test_verify_audit.py`.

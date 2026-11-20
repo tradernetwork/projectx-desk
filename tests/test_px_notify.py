@@ -168,10 +168,22 @@ class FakePusher:
         from projectx_desk import push
         self.store = type("S", (), {"subs": {"a" * 16: {"prefs": push.clean_prefs(prefs or {})}}})()
         self.sent = []
+        self.script = {}      # sid -> list of outcomes to hand out in order ('ok' once it runs out)
+        self.calls = []       # (kind, only, ttl) per broadcast_results call
 
-    async def broadcast(self, kind, payload, critical=False):
+    async def broadcast_results(self, kind, payload, critical=False, only=None, ttl=600):
+        self.calls.append((kind, None if only is None else set(only), ttl))
+        out = {}
+        for sid in list(self.store.subs):
+            if only is not None and sid not in only:
+                continue
+            q = self.script.get(sid) or []
+            r = q.pop(0) if q else "ok"
+            if r == "gone":
+                del self.store.subs[sid]
+            out[sid] = r
         self.sent.append((kind, payload, critical))
-        return 1
+        return out
 
 
 class Clock:
@@ -447,3 +459,103 @@ def test_levelwatch_rearm_needs_a_retreat_and_text_is_a_closed_template():
     assert w.observe({"a": 100.0}, 101.0, 1.0, 3) == []                     # only 0.5 retreat
     w.observe({"a": 100.0}, 98.9, 1.0, 4)
     assert [e.text for e in w.observe({"a": 100.0}, 101.0, 1.0, 5)] == ["Level crossed up"]
+
+
+# ---- transient push failure: retry only fills and critical events, only the failed subscription ------------------------
+
+A, B = "a" * 16, "b" * 16
+
+
+def two_phones(states, extras, grace=0.0):
+    from projectx_desk import push
+    n, fp, clk, seq = make(states=states, extras=extras, grace=grace)
+    fp.store.subs[B] = {"prefs": push.clean_prefs({})}
+    return n, fp, clk
+
+
+def fill_extras(i):
+    return {"trades": [trade(j) for j in range(1, i + 1)], "orders": {}}
+
+
+async def fill_case(script):
+    """Baseline tick, then one new fill. Returns the notifier, fake, clock positioned right after the fill tick."""
+    ex = fill_extras(1)
+    n, fp, clk = two_phones([state(positions=[pos()])], ex)
+    fp.script = script
+    await n.tick()
+    clk.t += 5
+    ex["trades"] = fill_extras(2)["trades"]
+    await n.tick()
+    return n, fp, clk
+
+
+async def test_failed_fill_is_resent_only_to_the_failed_phone():
+    n, fp, clk = await fill_case({B: ["retry"]})
+    assert fp.calls == [("fill", None, 60)]                                # a fill gets a one-minute TTL
+    clk.t += 4
+    await n.tick()
+    assert len(fp.calls) == 1                                              # not before the gap
+    clk.t += 10
+    await n.tick()
+    assert fp.calls[-1] == ("fill", {B}, 60)                               # A already got it and is never resent
+    clk.t += 20
+    await n.tick()
+    assert len(fp.calls) == 2 and n.retries == {}                          # B succeeded: done
+    assert n.limiter.sent.__len__() == 1                                   # charged once
+
+
+async def test_retry_is_capped_at_three_attempts_per_phone():
+    n, fp, clk = await fill_case({B: ["retry"] * 10})
+    for _ in range(6):
+        clk.t += 10
+        await n.tick()
+    assert len(fp.calls) == 3 and n.retries == {}                          # first send plus two retries
+    assert n.limiter.sent.__len__() == 1
+
+
+async def test_retry_stops_after_sixty_seconds():
+    n, fp, clk = await fill_case({B: ["retry"] * 10})
+    clk.t += 61
+    await n.tick()
+    assert len(fp.calls) == 1 and n.retries == {}
+
+
+async def test_pruned_phone_is_not_retried():
+    n, fp, clk = await fill_case({B: ["retry"]})
+    del fp.store.subs[B]                                                   # 404/410 pruned it between attempts
+    clk.t += 10
+    await n.tick()
+    assert len(fp.calls) == 1 and n.retries == {}
+
+
+async def test_critical_halt_is_retried_with_the_long_ttl_and_without_a_second_charge():
+    n, fp, clk = two_phones([state(), state(mode={"halt": True})], None)
+    fp.script = {A: ["retry"], B: ["ok"]}
+    await n.tick()
+    clk.t += 5
+    await n.tick()
+    assert fp.calls[0] == ("halt", None, 600)
+    clk.t += 10
+    await n.tick()
+    assert fp.calls[1] == ("halt", {A}, 600)
+    assert len(n.limiter.sent) == 1
+
+
+async def test_callout_failure_is_not_retried():
+    co = {"status": "OK", "items": [{"ts": 1, "age_s": 5, "event": "ENTRY", "symbol": "MES", "side": "LONG", "analyst": "x"}]}
+    n, fp, clk = make(prefs={"events": {"callout": True}}, states=[state(), state(callouts=co)], grace=0.0)[:3]
+    fp.script = {A: ["retry"]}
+    await n.tick()
+    clk.t += 5
+    await n.tick()
+    clk.t += 20
+    await n.tick()
+    assert [c[0] for c in fp.calls] == ["callout"] and n.retries == {}
+
+
+async def test_the_retry_state_never_touches_seen_trades():
+    n, fp, clk = await fill_case({B: ["retry"]})
+    assert n.det.seen_trades == {1, 2}
+    clk.t += 10
+    await n.tick()
+    assert n.det.seen_trades == {1, 2}                                     # a retry neither removes nor re-adds an id

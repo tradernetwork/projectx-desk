@@ -11,9 +11,15 @@ placement is phase 1 and does not exist yet. Design: `docs/superpowers/specs/202
   futures desk has a simulated account to rehearse on; this broker does not.
 - **Trade approvals must be ON before phase 1.** Robinhood can require a human to approve each agent order. The desk
   reads that setting (`approval_setting` in `/api/rh/state`) and phase 1 will refuse to place anything while it is off
-  or unknown. Turn it on in the Robinhood app now.
-- **Use a dedicated, small account.** The MCP only exposes the account you flagged for agent use. Fund it with money
-  you can afford to lose entirely. Every other account is dropped before it reaches state, digest or the Ask agent.
+  or unknown. Turn it on in the Robinhood app now. Robinhood says trade approvals are OFF by default for MCP accounts
+  and that the feature is still rolling out, so do not assume it is on. What the desk does: `Guard.preview` and
+  `Guard.place` both re-read the setting at that moment, and `human_must_approve: false` refuses with `approvals_off`;
+  a failed read or a missing value refuses with `approvals_unknown`. Nothing is sent in either case. The desk never
+  turns the setting on for you and never approves a trade itself.
+- **Use a dedicated, small account.** The MCP can read all of your Robinhood accounts but lets the agent trade only the
+  one you flagged `agentic_allowed`. The desk reads and shows only that one: every other account is dropped inside the
+  desk, by `rh/reads.py`, before it reaches state, the digest or the Ask agent. Fund it with money you can afford to
+  lose entirely.
 - The tool shapes in the mock are modelled on public fixtures and are UNVERIFIED against the live service until you
   run `scripts/rh_capture.py` and compare.
 

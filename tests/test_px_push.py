@@ -252,6 +252,19 @@ async def test_broadcast_honours_event_toggles_and_quiet_hours(tmp_path):
     assert await p.broadcast("callout", {"body": "x"}) == 0    # off by default everywhere
 
 
+@pytest.mark.asyncio
+async def test_broadcast_results_are_per_subscription_ttl_passes_through_and_only_limits(tmp_path):
+    seen = []
+    p, uas = pusher(tmp_path, 503, seen, subs=2)
+    a, b = uas[0][3], uas[1][3]
+    assert await p.broadcast_results("halt", {"body": "x"}, critical=True, ttl=60) == {a: "retry", b: "retry"}
+    assert {r.headers["ttl"] for r in seen} == {"60"}
+    seen.clear()
+    assert await p.broadcast_results("halt", {"body": "x"}, critical=True, only={b}) == {b: "retry"}
+    assert len(seen) == 1
+    assert await p.send_to("f" * 16, {"body": "x"}) == "gone"          # a pruned sid never raises
+
+
 # ---- routes -------------------------------------------------------------------------------------------------------------
 
 def app_with(tmp_path, status=201):

@@ -320,21 +320,30 @@ class Pusher:
         t = self.clock()
         return t.tm_hour * 60 + t.tm_min
 
-    async def send_to(self, sid, payload) -> str:
+    async def send_to(self, sid, payload, ttl: int = 600) -> str:
+        """One subscription. 'ok', 'gone' (also when the sid is no longer stored), 'retry' or 'fail'. Never raises."""
         s = self.store.subs.get(sid)
         if s is None:
             return "gone"
-        res = await send(s, payload, self.vapid, self.sub_claim, self.client)
+        res = await send(s, payload, self.vapid, self.sub_claim, self.client, ttl)
         if res == "gone":
             self.store.remove(sid)
         return res
 
-    async def broadcast(self, kind, payload, critical=False) -> int:
-        n = 0
+    async def broadcast_results(self, kind, payload, critical=False, only=None, ttl: int = 600) -> dict:
+        """Fan one message out and return {sid: result} for every subscription that was actually tried (event toggle on, and not in quiet
+        hours unless critical). `only` restricts it to those sids (a retry never resends to a phone that already got it)."""
+        out = {}
         for sid, s in list(self.store.subs.items()):
+            if only is not None and sid not in only:
+                continue
             p = s["prefs"]
             if not p["events"].get(kind) or (not critical and in_quiet(p["quiet"], self.minutes_now())):
                 continue
-            if await self.send_to(sid, payload) == "ok":
-                n += 1
-        return n
+            out[sid] = await self.send_to(sid, payload, ttl)
+        return out
+
+    async def broadcast(self, kind, payload, critical=False) -> int:
+        """Count of subscriptions that got it (ok)."""
+        res = await self.broadcast_results(kind, payload, critical)
+        return sum(1 for r in res.values() if r == "ok")

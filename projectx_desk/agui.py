@@ -22,7 +22,7 @@ CODES = {
     "chat off": "chat_off", "not_configured": "not_configured", "empty prompt": "empty_prompt", "prompt too long": "prompt_too_long",
     "key_like": "key_like", "busy": "busy", "agent timed out": "agent_timeout", "agent unreachable": "agent_unreachable",
     "agent refused": "agent_refused", "bad agent reply": "bad_agent_reply", "rate_limited": "rate_limited",
-    "empty": "empty", "bad image": "bad_image", "too many images": "bad_image", "images need the desk agent": "bad_image",
+    "empty": "empty", "bad_reply": "bad_reply", "bad image": "bad_image", "too many images": "bad_image", "images need the desk agent": "bad_image",
 }
 MESSAGES = {c: "the Ask box could not answer (" + c + ")" for c in set(CODES.values()) | {"chat_error"}}
 
@@ -82,10 +82,10 @@ def run_events(thread_id: str, run_id: str, result: dict, message_id: str = None
           {"type": "TEXT_MESSAGE_START", "messageId": mid, "role": "assistant"}]
     ev += [{"type": "TEXT_MESSAGE_CONTENT", "messageId": mid, "delta": d} for d in chunks(reply) if d]
     ev.append({"type": "TEXT_MESSAGE_END", "messageId": mid})
-    flags = {"lint": result.get("lint") or [], "ungrounded": result.get("ungrounded") or []}
+    flags = {"lint": result.get("lint") or [], "ungrounded": result.get("ungrounded") or [], "guard": result.get("guard") or []}
     if isinstance(result.get("usage"), dict):
         flags["usage"] = result["usage"]
-    if flags["lint"] or flags["ungrounded"] or "usage" in flags:
+    if flags["lint"] or flags["ungrounded"] or flags["guard"] or "usage" in flags:
         ev.append({"type": "CUSTOM", "name": FLAGS_EVENT, "value": flags})
     ev.append({"type": "RUN_FINISHED", "threadId": thread_id, "runId": run_id})
     return ev

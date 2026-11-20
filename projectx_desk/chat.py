@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from . import ground, lint, llm_chat, llm_config, redact
+from . import ground, lint, llm_chat, llm_config, redact, reply_guard
 from .net import is_loopback
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -182,7 +182,8 @@ class Chat:
                     "ungrounded": ground.ground_reply(reply, digest) if isinstance(digest, str) and digest else []}
 
     async def _ask_http(self, prompt, digest):
-        """The text-only provider path (llm_chat): fixed desk rules plus the digest as the only context, no tools, one turn, same soft flags."""
+        """The text-only provider path (llm_chat): fixed desk rules plus the digest as the only context, no tools, one turn, same soft flags plus `guard` (reply_guard words). A reply that is only tool-call
+        markup is `bad_reply`. The claude -p desk-agent path above is NOT guarded by reply_guard."""
         cfg = llm_config.resolve()
         if cfg is None:
             raise ChatError("not_configured", 400)
@@ -195,6 +196,8 @@ class Chat:
             except llm_chat.LlmError as e:
                 raise ChatError(e.code, 429 if e.code == "rate_limited" else 502)
         reply = redact.redact_secrets(r.text[:MAX_REPLY])
-        return {"reply": reply, "lint": lint.lint_reply(reply),
+        if reply_guard.only_markup(reply):
+            raise ChatError("bad_reply", 502)
+        return {"reply": reply, "lint": lint.lint_reply(reply), "guard": reply_guard.check(reply),
                 "ungrounded": ground.ground_reply(reply, digest) if isinstance(digest, str) and digest else [],
                 "usage": r.usage()}

@@ -94,6 +94,7 @@
     const bits = [];
     if(Array.isArray(data.lint) && data.lint.length) bits.push('Some wording may read like advice: ' + data.lint.slice(0, 3).join('; ') + '. The agent describes the data; any decision is yours.');
     if(Array.isArray(data.ungrounded) && data.ungrounded.length) bits.push('Not in the desk data I checked: ' + data.ungrounded.slice(0, 6).join(', ') + '.');
+    if(Array.isArray(data.guard) && data.guard.length) bits.push('This reply looks malformed (' + data.guard.slice(0, 4).join(', ') + '). Treat it with care.');
     if(!bits.length) return;
     const d = document.createElement('div');
     d.className = 'chat-msg bot note';

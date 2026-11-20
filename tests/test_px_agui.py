@@ -68,7 +68,7 @@ def test_chunking_reassembles_to_the_reply():
 def test_flags_ride_in_a_custom_event_before_run_finished():
     ev = agui.run_events("t", "r", {"reply": "go long", "lint": ["buy"], "ungrounded": ["7704"]})
     c = [e for e in ev if e["type"] == "CUSTOM"]
-    assert c == [{"type": "CUSTOM", "name": "px.reply_flags", "value": {"lint": ["buy"], "ungrounded": ["7704"]}}]
+    assert c == [{"type": "CUSTOM", "name": "px.reply_flags", "value": {"lint": ["buy"], "ungrounded": ["7704"], "guard": []}}]
     assert ev.index(c[0]) == len(ev) - 2
 
 

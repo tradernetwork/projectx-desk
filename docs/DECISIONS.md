@@ -630,3 +630,29 @@ also move between underlyings on one side (all bears while the market sells off)
 **Where.** `rh/letf.py` (`scan_plan`, `mover_row`, `movers_response`), `rh/letf_gex.py`, `gex.py` (`allowed`), `rh/reads.py`, `app.py`
 (`/api/rh/movers`, `/api/rh/gex`), `static/letf.js`, `static/rh.css`. Tests: `test_letf_gex.py`, additions to `test_letf.py`,
 `test_letf_routes.py`, `test_letf_ui.py`.
+
+## Round 31: issuer name and a Fibonacci extension tool, and what was left out (2026-11-20)
+
+**What.** Two display-only additions. (1) Every vendored LETF fund now carries an `issuer` (`letf_data.json` version 2). The inverse
+CSV has an `issuer` column; the long CSV has none, so `scripts/letf_sync.py` reads it from the start of `fund_name` against a small
+explicit allowlist (`LONG_ISSUERS`, built from the names really in the data) and leaves it null for anything else. `rh/letf.py` reads
+a malformed issuer as null instead of refusing the file. The fund title shows the issuer only when the name does not already start with it.
+(2) A `userFibExt` drawing (three clicks: swing start, swing end, retracement end; levels 0, 0.618, 1, 1.272, 1.618, 2, 2.618 of the first
+leg projected from the third point, prices through the existing tick snap, hotkey `x`). It is the trader's own drawing: saved and
+restored with the others, not in `NONUSER`, registered under a unique name so the global overlay registry is not shadowed. The level
+arithmetic is `static/fibext.js`, pure and node-tested.
+
+**Deliberately NOT added.**
+- **No expense ratio, AUM, inception date or yield.** The source repo has none of them. A figure with no source would be invented, and
+  `last` and share counts stay dropped (reverse splits).
+- **No guessed issuer.** An unknown prefix, a partial word ("Direxionary") or a hostile string is null, never a best match.
+- **No harmonic, Elliott or Gann tools.** They exist to name patterns, which invites pattern claims the respect framework refuses to make
+  without a placebo baseline. The extension tool draws only arithmetic from points the trader placed; the desk computes no levels from it,
+  scores nothing and sends nothing.
+- **No log-axis correction in the extension tool.** It uses the same linear pixel arithmetic as the handoff template; the desk's price
+  axis is linear.
+
+**Where.** `scripts/letf_sync.py`, `rh/letf.py`, `rh/letf_data.json`, `static/letf.js`, `static/fibext.js`, `static/desk.js`,
+`static/index.html`. Tests: `test_letf_sync.py`, `test_letf.py`, `test_letf_ui.py`, `test_fibext.py`. The committed JSON was derived
+from the fund names already in the previous committed file (the network CSVs were not re-fetched), with the sync script's own
+`issuer_from_name`; a test pins that every long issuer equals what that function gives for its name.

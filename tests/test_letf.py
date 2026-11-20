@@ -302,3 +302,89 @@ async def test_bars_cached_second_call_makes_no_reader_call(uni):
     await letf.bars_response(r, uni, c, "QQQ", "5m", True, NOW)
     again = await letf.bars_response(r, uni, c, "QQQ", "5m", True, NOW)
     assert again["cached"] is True and len(r.bar_calls) == 1
+
+
+# ---- the movers scan -----------------------------------------------------------------------------------------------------------------
+class ScanReader:
+    """Every symbol quoted at 100 with a previous close of 100, except where `moves` says otherwise."""
+
+    def __init__(self, moves=None, fail_after=None):
+        self.calls, self.moves, self.fail_after = [], moves or {}, fail_after
+
+    async def quotes(self, symbols):
+        self.calls.append(list(symbols))
+        if self.fail_after is not None and len(self.calls) > self.fail_after:
+            raise McpError("rate_limited")
+        return {s: {"bid": 99.9, "ask": 100.1, "last": 100.0 * (1 + self.moves.get(s, 0.0)), "prev_close": 100.0, "updated_at": 1795098600.0}
+                for s in symbols}
+
+
+def test_scan_plan_is_top_by_dollar_volume_batched_and_stable(uni):
+    funds, batches = letf.scan_plan(uni)
+    assert len(funds) == letf.SCAN_N == 120
+    dv = [f["dv20"] if f["dv20"] is not None else -1 for _, f in funds]
+    assert dv == sorted(dv, reverse=True)
+    flat = [s for b in batches for s in b]
+    assert len(flat) == len(set(flat)) and all(len(b) <= letf.SCAN_BATCH for b in batches) and all(s in uni.allowed for s in flat)
+    assert all(s in flat for s, _ in funds)                           # every scanned fund is in some batch
+    assert letf.scan_plan(uni)[1] == batches                          # same order next time, so cache keys repeat
+
+
+def test_mover_row_gap_unknown_and_split_rules():
+    f = {"u": "Nasdaq 100", "lev": 3.0, "dv20": 5e9}
+    r = letf.mover_row("TQQQ", f, {"last": 94.0, "prev_close": 100.0, "bid": 93.9, "ask": 94.1}, {"last": 98.0, "prev_close": 100.0})
+    assert r["move"] == pytest.approx(-0.06) and r["u_move"] == pytest.approx(-0.02) and r["gap_bps"] == pytest.approx(0.0, abs=1e-6)
+    assert r["spread_bps"] == pytest.approx(21.28, abs=0.1)
+    r = letf.mover_row("TQQQ", f, {"last": 90.0, "prev_close": 100.0}, {"last": 98.0, "prev_close": 100.0})
+    assert r["gap_bps"] == pytest.approx(-400.0)
+    for q, uq in ((None, {"last": 98.0, "prev_close": 100.0}), ({"last": 90.0}, {"last": 98.0, "prev_close": 100.0}),
+                  ({"last": 90.0, "prev_close": 100.0}, None), ({"last": 90.0, "prev_close": 100.0}, {"last": 98.0})):
+        r = letf.mover_row("TQQQ", f, q, uq)
+        assert r["gap_bps"] is None                                   # unknown is None, never 0
+    r = letf.mover_row("TQQQ", f, {"last": 30.0, "prev_close": 100.0}, {"last": 99.0, "prev_close": 100.0})
+    assert r["move"] is None and r["gap_bps"] is None                 # -70% that 3x of -1% cannot explain: a corporate action, not a gap
+
+
+async def test_movers_response_rows_and_one_call_per_batch(uni):
+    funds, batches = letf.scan_plan(uni)
+    top = funds[0][0]
+    r = ScanReader(moves={top: -0.03})
+    out = await letf.movers_response(r, uni, letf.MarketCache(per_s=100.0, burst=100.0), True, NOW)
+    assert out["ok"] and out["scan_n"] == 120 and len(out["rows"]) == 120 and out["list_as_of"] == uni.doc["as_of"]
+    assert len(r.calls) == len(batches) and out["session_open"] is True and out["n_quoted"] == 120
+    row = next(x for x in out["rows"] if x["s"] == top)
+    assert row["move"] == pytest.approx(-0.03)
+
+
+async def test_movers_busy_keeps_the_batches_already_fetched(uni):
+    _, batches = letf.scan_plan(uni)
+    clk = type("C", (), {"t": 0.0})()
+    cache = letf.MarketCache(clock=lambda: clk.t, per_s=2.0, burst=4.0)
+    r = ScanReader()
+    assert await letf.movers_response(r, uni, cache, True, NOW) == {"ok": False, "code": "busy"}
+    assert len(r.calls) == 4                                          # the burst
+    out = None
+    for _ in range(5):                                                # the client retries every 3 s, inside the 30 s TTL
+        clk.t += 3.0
+        out = await letf.movers_response(r, uni, cache, True, NOW)
+        if out["ok"]:
+            break
+    assert out["ok"] and len(r.calls) == len(batches)                 # every batch fetched exactly once across the retries
+
+
+async def test_movers_refusals_make_no_call_and_errors_are_fixed_codes(uni):
+    r = ScanReader()
+    assert await letf.movers_response(r, uni, letf.MarketCache(), False, NOW) == {"ok": False, "code": "not_connected"}
+    assert r.calls == []
+    out = await letf.movers_response(ScanReader(fail_after=0), uni, letf.MarketCache(per_s=100.0, burst=100.0), True, NOW)
+    assert out == {"ok": False, "code": "rate_limited"}
+
+
+async def test_movers_ttl_is_longer_when_the_market_is_closed(uni):
+    r, c = ScanReader(), letf.MarketCache(per_s=100.0, burst=100.0)
+    sat = datetime(2026, 11, 21, 15, 0, tzinfo=timezone.utc)
+    await letf.movers_response(r, uni, c, True, sat)
+    n = len(r.calls)
+    c.clock = lambda: c._last + 300.0                                  # five minutes later: still cached on a closed market
+    await letf.movers_response(r, uni, c, True, sat)
+    assert len(r.calls) == n

@@ -71,9 +71,10 @@ def gex_config(environ=None):
 
 # ------------------------------------------------------------------ fetch
 
-async def fetch_gex(base, key, symbol):
-    """Raw JSON dict for one source symbol. Raises GexError with a fixed code only."""
-    if symbol not in _SYMS:
+async def fetch_gex(base, key, symbol, allowed=_SYMS):
+    """Raw JSON dict for one source symbol. Raises GexError with a fixed code only. `allowed` is the set of symbols this caller
+    may ask for: the futures chart's own set by default; the LETF desk passes its one validated chart symbol."""
+    if symbol not in allowed:
         raise GexError("SYMBOL")
     try:
         async with httpx.AsyncClient(timeout=8.0, follow_redirects=False) as c:

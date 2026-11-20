@@ -99,8 +99,10 @@ class Reader:
 
     async def quotes(self, symbols):
         """Market-data quotes for a few symbols in ONE call (the LETF desk): {symbol: {bid, ask, last, prev_close, updated_at}}.
-        No account is resolved. `prev_close` is the quote's `previous_close` (or `adjusted_previous_close`), else None: the
-        location of the official close in the live reply is UNVERIFIED. A symbol the reply does not carry is absent."""
+        No account is resolved. `prev_close` is the quote's `adjusted_previous_close` (the tool's own advice for a daily change:
+        it follows a split), else `previous_close`, else None. Both are fields of the live quote (checked against the real Trading
+        MCP 2026-11-20). Any number of symbols works (the official `close` block is dropped above 20, which this does not use).
+        A symbol the reply does not carry is absent."""
         want = [s for s in dict.fromkeys(symbols) if views.symbol(s)]
         if not want:
             return {}
@@ -111,9 +113,9 @@ class Reader:
             sym = views.symbol(q.get("symbol")) if isinstance(q, dict) else None
             if sym in want and sym not in out:
                 r = self._quote_row(q)
-                r["prev_close"] = views.num(q.get("previous_close"))
+                r["prev_close"] = views.num(q.get("adjusted_previous_close"))
                 if r["prev_close"] is None:
-                    r["prev_close"] = views.num(q.get("adjusted_previous_close"))
+                    r["prev_close"] = views.num(q.get("previous_close"))
                 out[sym] = r
         return out
 

@@ -134,3 +134,31 @@ def test_letf_never_reaches_the_ai_surface(monkeypatch):
         for p in ("/ai/digest", "/ai/state"):
             r = c.get(p)
             assert "TQQQ" not in r.text and "letf" not in r.text.lower()
+
+
+def test_movers_route_scans_the_top_funds_in_batches_and_caches():
+    rt, st = runtime()
+    app = build(rh=rt)
+    app.state.rh_market = letf.MarketCache(per_s=100.0, burst=100.0)
+    with TestClient(app) as c:
+        base = st.calls.count("get_equity_quotes")
+        j = c.get("/api/rh/movers").json()
+        assert j["ok"] and j["scan_n"] == 120 and len(j["rows"]) == 120 and j["n_quoted"] >= 100
+        made = st.calls.count("get_equity_quotes") - base
+        assert 1 <= made <= 10                                        # about 175 symbols in batches of 20, no account call
+        row = next(r for r in j["rows"] if r["s"] == "TQQQ")
+        assert abs(row["gap_bps"]) < 5 and abs(row["move"] - row["lev"] * row["u_move"]) < 1e-3     # the mock fund is daily-reset 3x
+        assert c.get("/api/rh/movers").json()["ok"]
+        assert st.calls.count("get_equity_quotes") - base == made    # the second scan came from the cache
+
+
+def test_movers_busy_and_no_token():
+    rt, st = runtime()
+    app = build(rh=rt)
+    app.state.rh_market = letf.MarketCache(per_s=0.0, burst=0.0)
+    with TestClient(app) as c:
+        assert c.get("/api/rh/movers").json() == {"ok": False, "code": "busy"}
+    rt2, st2 = runtime(token=False)
+    with TestClient(build(rh=rt2)) as c:
+        assert c.get("/api/rh/movers").json() == {"ok": False, "code": "not_connected"}
+    assert st2.requests == 0

@@ -46,7 +46,7 @@ from projectx_desk import journal as px_journal
 from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
 from projectx_desk import ticks as px_ticks
-from projectx_desk.rh import letf as px_letf, state as px_rh
+from projectx_desk.rh import letf as px_letf, letf_gex as px_letf_gex, state as px_rh
 from projectx_desk.rh.guard import Guard as RhGuard, Refused as RhRefused
 from projectx_desk.guard import Guard, GuardError
 from projectx_desk.limits import Limits
@@ -762,6 +762,30 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             if uni is None:
                 return px_letf.fail("letf_unavailable")
             return await px_letf.quotes_response(r.reader, uni, _letf_cache(request), symbols, r.can_read())
+
+        @app.get("/api/rh/movers")
+        async def rh_movers(request: Request):
+            r = getattr(request.app.state, "rh", None)
+            if r is None:
+                return {"enabled": False}
+            uni = _letf_universe(request)
+            if uni is None:
+                return px_letf.fail("letf_unavailable")
+            return await px_letf.movers_response(r.reader, uni, _letf_cache(request), r.can_read())
+
+        @app.get("/api/rh/gex")
+        async def rh_gex(request: Request, symbol: str = ""):
+            """Dealer-gamma levels in the underlying's own price space (QQQ levels are QQQ prices). Needs PX_GEX_KEY; without one
+            the answer is {ok: false, code: gex_off}. Display only."""
+            if getattr(request.app.state, "rh", None) is None:
+                return {"enabled": False}
+            uni = _letf_universe(request)
+            if uni is None:
+                return px_letf.fail("letf_unavailable")
+            st = request.app.state
+            if getattr(st, "rh_letf_gex", None) is None:
+                st.rh_letf_gex = {}
+            return await px_letf_gex.levels(st.rh_letf_gex, uni, symbol)
 
     # ---- phone alerts (Web Push): full desk only. The service worker, the key, and a handful of CSRF-gated POSTs ----
 

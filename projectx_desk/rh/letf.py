@@ -55,6 +55,10 @@ TF = {
 }
 BARS_TTL_S = {"1m": 15.0, "5m": 30.0, "15m": 30.0, "30m": 120.0, "1h": 300.0, "1D": 1800.0}
 QUOTES_TTL_S = 2.0
+SCAN_N = 120                     # the movers scan covers the top funds by 20-day dollar volume, not all 694 (the call budget)
+SCAN_BATCH = 20                  # symbols per quote call: the broker drops its official-close block above 20
+MOVERS_TTL_OPEN_S = 30.0
+MOVERS_TTL_CLOSED_S = 600.0
 CACHE_MAX = 64
 BUDGET_PER_S = 2.0               # market-data calls per second; the MCP limiter is 4 and the guard and the 30 s poll share it
 BUDGET_BURST = 4.0
@@ -76,7 +80,8 @@ def utcnow() -> datetime:
 class Universe:
     def __init__(self, doc):
         self.doc = doc
-        self.allowed = frozenset(doc["funds"]) | frozenset(u["chart"] for u in doc["underlyings"] if u["chart"])
+        self.charts = frozenset(u["chart"] for u in doc["underlyings"] if u["chart"])
+        self.allowed = frozenset(doc["funds"]) | self.charts
 
     def public_view(self, today=None):
         d = self.doc
@@ -312,6 +317,25 @@ async def bars_response(reader, universe, cache, symbols_text, tf, can_read, now
 _Q_FIELDS = ("bid", "ask", "last", "prev_close", "updated_ms")
 
 
+async def _fetch_quotes(reader, symbols):
+    """{symbol: {bid, ask, last, prev_close, updated_ms, unknown:[...]}} for `symbols`, one outbound call. A missing field is
+    listed in `unknown`, never turned into 0."""
+    got = await reader.quotes(symbols)
+    out = {}
+    for s in symbols:
+        q = got.get(s)
+        row = {}
+        if q:
+            for k in ("bid", "ask", "last", "prev_close"):
+                if _finite(q.get(k)):
+                    row[k] = q[k]
+            if _finite(q.get("updated_at")):
+                row["updated_ms"] = int(q["updated_at"] * 1000)
+        row["unknown"] = [k for k in _Q_FIELDS if k not in row]
+        out[s] = row
+    return out
+
+
 async def quotes_response(reader, universe, cache, symbols_text, can_read, now=None):
     now = now or utcnow()
     try:
@@ -320,22 +344,80 @@ async def quotes_response(reader, universe, cache, symbols_text, can_read, now=N
             raise LetfError("not_connected")
 
         async def fetch():
-            got = await reader.quotes(symbols)
-            out = {}
-            for s in symbols:
-                q = got.get(s)
-                row = {}
-                if q:
-                    for k in ("bid", "ask", "last", "prev_close"):
-                        if _finite(q.get(k)):
-                            row[k] = q[k]
-                    if _finite(q.get("updated_at")):
-                        row["updated_ms"] = int(q["updated_at"] * 1000)
-                row["unknown"] = [k for k in _Q_FIELDS if k not in row]     # missing is listed, never turned into 0
-                out[s] = row
-            return out
+            return await _fetch_quotes(reader, symbols)
 
         quotes, cached = await cache.get(("quotes", tuple(symbols)), QUOTES_TTL_S, fetch)
     except Exception as e:  # noqa: BLE001
         return fail(_code_of(e))
     return {"ok": True, "as_of_ms": int(now.timestamp() * 1000), "cached": cached, "quotes": quotes}
+
+
+# ---- the movers scan -----------------------------------------------------------------------------------------------------------
+def _dv_key(item):
+    sym, f = item
+    return (-(f["dv20"] if _finite(f["dv20"]) else -1.0), sym)
+
+
+def scan_plan(universe, n=SCAN_N, batch=SCAN_BATCH):
+    """-> (funds, batches). `funds` is the top `n` funds by 20-day dollar volume (an unknown volume sorts last, ties by symbol) as
+    (symbol, fund) pairs; `batches` are lists of at most `batch` symbols holding those funds and their underlyings' chart symbols
+    (once each), in a fixed order so the cache keys stay the same from one scan to the next."""
+    funds = sorted(universe.doc["funds"].items(), key=_dv_key)[:n]
+    chart = {u["key"]: u["chart"] for u in universe.doc["underlyings"]}
+    syms = []
+    for sym, f in funds:
+        for s in (sym, chart.get(f["u"])):
+            if s and s not in syms:
+                syms.append(s)
+    return funds, [syms[i:i + batch] for i in range(0, len(syms), batch)]
+
+
+def _move(last, prev):
+    return last / prev - 1 if _finite(last) and _finite(prev) and prev > 0 else None
+
+
+def _spread_bps(q):
+    b, a = q.get("bid"), q.get("ask")
+    if not (_finite(b) and _finite(a)) or b <= 0 or a < b:
+        return None
+    mid = (a + b) / 2
+    return (a - b) / mid * 1e4 if mid > 0 else None
+
+
+def mover_row(sym, fund, q, uq):
+    """One scan row. Unknown is None. A fund move over 50% that L x the underlying does not explain is read as a probable
+    split or corporate action and shown as unknown (the same rule as the page's `todayMove`)."""
+    e = _move(q.get("last"), q.get("prev_close")) if q else None
+    u = _move(uq.get("last"), uq.get("prev_close")) if uq else None
+    lev = fund["lev"]
+    exp = lev * u if u is not None else None
+    if e is not None and exp is not None and abs(e) > 0.5 and abs(e - exp) > 0.2:
+        e = None
+    gap = (e - exp) * 1e4 if e is not None and exp is not None else None
+    return {"s": sym, "u": fund["u"], "lev": lev, "dv20": fund["dv20"], "last": q.get("last") if q else None, "move": e,
+            "u_move": u, "gap_bps": gap, "spread_bps": _spread_bps(q) if q else None}
+
+
+async def movers_response(reader, universe, cache, can_read, now=None):
+    """Today's move of the top funds against L x their underlying. Each batch of quotes is its own cache entry, so a `busy` answer
+    part way through keeps what was fetched and the client's retry only makes the missing calls."""
+    now = now or utcnow()
+    try:
+        if not can_read:
+            raise LetfError("not_connected")
+        funds, batches = scan_plan(universe)
+        open_now = equity_session_open(now)
+        ttl = MOVERS_TTL_OPEN_S if open_now else MOVERS_TTL_CLOSED_S
+        quotes = {}
+        for b in batches:
+            async def fetch(b=b):
+                return await _fetch_quotes(reader, b)
+            got, _ = await cache.get(("movers", tuple(b)), ttl, fetch)
+            quotes.update(got)
+    except Exception as e:  # noqa: BLE001
+        return fail(_code_of(e))
+    chart = {u["key"]: u["chart"] for u in universe.doc["underlyings"]}
+    rows = [mover_row(sym, f, quotes.get(sym), quotes.get(chart.get(f["u"]) or "")) for sym, f in funds]
+    stamps = [q["updated_ms"] for q in quotes.values() if "updated_ms" in q]
+    return {"ok": True, "as_of_ms": int(now.timestamp() * 1000), "quotes_ms": max(stamps) if stamps else None, "session_open": open_now,
+            "list_as_of": universe.doc["as_of"], "scan_n": len(funds), "n_quoted": sum(1 for r in rows if r["last"] is not None), "rows": rows}

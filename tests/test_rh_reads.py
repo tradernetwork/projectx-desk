@@ -435,6 +435,14 @@ async def test_quotes_reader_multi_symbol_one_call_and_unknown_prev_close():
             return {"results": [{"quote": {"symbol": "SPY", "bid_price": "1", "ask_price": "2", "last_trade_price": "1.5"}}]}
     assert (await reads.Reader(NoPrev()).quotes(["SPY"]))["SPY"]["prev_close"] is None   # unknown, never 0
 
+    class Both:
+        async def call(self, tool, args):
+            return {"results": [{"quote": {"symbol": "SPY", "last_trade_price": "1.5", "previous_close": "10", "adjusted_previous_close": "9.5"}},
+                                {"quote": {"symbol": "QQQ", "last_trade_price": "1.5", "previous_close": "7"}}]}
+    q = await reads.Reader(Both()).quotes(["SPY", "QQQ"])
+    assert q["SPY"]["prev_close"] == 9.5                       # the adjusted close wins (it follows a split), as the broker advises for a daily change
+    assert q["QQQ"]["prev_close"] == 7.0                       # and the plain one is the fallback
+
 
 async def test_single_quote_is_unchanged_for_the_guard():
     _, _, spy = make()

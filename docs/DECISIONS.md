@@ -736,7 +736,7 @@ callout trade on a side it had guessed from the stop, and the Robinhood docs sai
 **Where.** `push.py`, `notify.py`, `gex.py`, `paper.py`, `feed.py`, `scripts/verify_audit.py`, `scripts/rh_drift.py`, `docs/ROBINHOOD.md`.
 Tests: `test_px_notify.py`, `test_px_push.py`, `test_px_gex.py`, `test_paper.py`, `test_px_feed.py`, `test_rh_scripts.py`, `test_verify_audit.py`.
 
-## Round 31: limit entries are judged against the live book, and the trader can cancel one (2026-11-20)
+## Round 35: limit entries are judged against the live book, and the trader can cancel one (2026-11-20)
 
 **Problem 1.** A limit entry was checked only for its distance from the market (`entry_deviation`), and the stop only against the
 entry price (`stop_side`). Nothing stopped a limit at or through the far side (a buy at or over the ask fills at once, so it is a

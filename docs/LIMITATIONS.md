@@ -98,7 +98,7 @@ rail off on purpose; a blank, garbled or negative value falls back to the defaul
 `PX_SIZE_SCALERS=1` switches the ADX/ATR cuts on.
 
 **Quote age and drift.** The 2 second quote age applies to every open. The price-drift check (8 ticks since staging) applies to
-market entries only; limit opens (simulated accounts only) skip it, but since Round 31 a limit must still rest (strictly inside its own
+market entries only; limit opens (simulated accounts only) skip it, but since Round 35 a limit must still rest (strictly inside its own
 side of the book) at preview, at place and at the commit point, and every stop must sit beyond the live book. A market that crosses the
 limit or the stop AFTER the entry write is not something the desk can refuse: that fill and its stop go through the normal path.
 

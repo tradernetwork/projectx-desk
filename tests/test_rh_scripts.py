@@ -58,6 +58,60 @@ def test_drift_added_tool_and_uncalled_removal_do_not_fail(tmp_path):
     assert drift.main([_write(tmp_path, "a.json", old), _write(tmp_path, "b.json", new)]) == 0
 
 
+FIXTURE = ROOT / "tests" / "fixtures" / "rh" / "tools_live_2026-11-17.json"
+
+
+def _fixture_tools():
+    return json.loads(FIXTURE.read_text(encoding="utf-8"))["tools"]
+
+
+def test_drift_fixture_against_itself_is_clean(capsys):
+    assert drift.main([str(FIXTURE), str(FIXTURE)]) == 0
+    assert "WARN" not in capsys.readouterr().out
+
+
+def test_drift_description_type_and_enum_changes_warn_but_do_not_fail(tmp_path, capsys):
+    tools = _fixture_tools()
+    new = json.loads(json.dumps(tools))
+    t = next(x for x in new if x["name"] == "get_equity_positions")
+    t["description"] += " (changed)"
+    props = t["input_schema"]["properties"]
+    k = next(iter(props))
+    props[k]["type"] = "integer" if props[k].get("type") == "string" else "string"
+    props[k]["enum"] = ["a", "b"]
+    assert drift.main([_write(tmp_path, "a.json", tools), _write(tmp_path, "b.json", new)]) == 0
+    out = capsys.readouterr().out
+    assert "WARN description changed get_equity_positions" in out and f"WARN type changed get_equity_positions.{k}" in out
+    assert f"WARN enum changed get_equity_positions.{k}" in out and "no drift that affects the desk (3 warning(s))" in out
+
+
+def test_drift_enum_values_changing_are_reported_and_tool_set_changes_are_noted(tmp_path, capsys):
+    def t(enum, name="get_portfolio"):
+        return {"name": name, "description": "d", "input_schema": {"type": "object", "required": [], "properties": {"p": {"type": "string", "enum": enum}}}}
+    a = _write(tmp_path, "a.json", [t(["x", "y"]), t(["q"], "old_tool")])
+    b = _write(tmp_path, "b.json", [t(["y", "z"]), t(["q"], "new_tool")])
+    assert drift.main([a, b]) == 0
+    out = capsys.readouterr().out
+    assert "WARN enum changed get_portfolio.p" in out and '"z"' in out and '"x"' in out
+    assert "added new_tool" in out and "removed (not called by the desk) old_tool" in out
+
+
+def test_drift_a_vanished_tool_or_new_required_input_still_exits_1_from_the_fixture(tmp_path, capsys):
+    tools = _fixture_tools()
+    gone = [x for x in tools if x["name"] != "get_portfolio"]
+    assert drift.main([str(FIXTURE), _write(tmp_path, "g.json", gone)]) == 1
+    new = json.loads(json.dumps(tools))
+    t = next(x for x in new if x["name"] == "get_portfolio")
+    t["input_schema"]["required"] = list(t["input_schema"].get("required") or []) + ["brand_new_required"]
+    assert drift.main([str(FIXTURE), _write(tmp_path, "n.json", new)]) == 1
+    assert "NEW REQUIRED INPUT get_portfolio: brand_new_required" in capsys.readouterr().out
+
+
+def test_drift_keeps_only_a_hash_of_the_description(tmp_path):
+    p = _write(tmp_path, "a.json", [{"name": "x", "description": "SECRET-DESCRIPTION", "input_schema": {}}])
+    assert "SECRET-DESCRIPTION" not in json.dumps(drift.load(p), default=list)
+
+
 def test_drift_bad_args_and_files(tmp_path):
     assert drift.main([]) == 2
     assert drift.main([str(tmp_path / "nope.json"), str(tmp_path / "nope2.json")]) == 2

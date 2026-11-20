@@ -48,8 +48,11 @@
     if(!f) return sym;
     const side = f.lev > 0 ? 'long' : 'short';
     let s = sym + ' ' + levLabel(f.lev) + ' ' + side;
-    if(f.name) s += ', ' + f.name;
-    else if(f.issuer) s += ', ' + f.issuer;
+    // The issuer is shown beside the name unless the name already starts with it (longs: "ProShares UltraPro QQQ").
+    const iss = typeof f.issuer === 'string' && f.issuer ? f.issuer : '';
+    const named = !!(f.name && f.name.toLowerCase().indexOf(iss.toLowerCase()) === 0);
+    if(f.name) s += ', ' + f.name + (iss && !named ? ' (' + iss + ')' : '');
+    else if(iss) s += ', ' + iss;
     return s + ', ' + fmtDollarVol(f.dv20) + '/day (20d)';
   }
   // How old the vendored list is: plain words and a level the UI colours (ok, warn at 14 days, stale at 45).

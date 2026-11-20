@@ -22,6 +22,7 @@ import math
 import os
 import time
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -42,9 +43,35 @@ _WALL_TYPES = {"resistance": "RESISTANCE", "support": "SUPPORT", "pin": "PIN"}
 
 
 class GexError(Exception):
-    def __init__(self, code):
+    def __init__(self, code, retry_after=None):
         super().__init__(code)
         self.code = code
+        self.retry_after = retry_after        # seconds the server asked us to wait (429 only), already clamped; None when absent or garbled
+
+
+RETRY_AFTER_MAX_S = 300.0
+
+
+def retry_after_s(header, now=None):
+    """Seconds from a Retry-After header (integer seconds or an HTTP date, relative to `now`), clamped to 0..300; garbage, negative or
+    missing returns None. Pure."""
+    if not isinstance(header, str) or not header.strip() or len(header) > 64:
+        return None
+    h = header.strip()
+    if h.isascii() and h.isdigit():
+        return min(float(int(h)), RETRY_AFTER_MAX_S)
+    if h.startswith("-"):
+        return None
+    try:
+        when = parsedate_to_datetime(h)
+    except (TypeError, ValueError, IndexError):
+        return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    t = time.time() if now is None else now
+    return max(0.0, min(when.timestamp() - t, RETRY_AFTER_MAX_S))
 
 
 # ------------------------------------------------------------------ config
@@ -81,6 +108,8 @@ async def fetch_gex(base, key, symbol, allowed=_SYMS):
             async with c.stream("GET", f"{base}/gex/{symbol}", headers={"X-API-Key": key, "Authorization": f"Bearer {key}"}) as r:
                 if r.status_code in (401, 403):
                     raise GexError("AUTH")
+                if r.status_code == 429:
+                    raise GexError("RATE_LIMIT", retry_after_s(r.headers.get("retry-after")))
                 if r.status_code != 200:
                     raise GexError("UPSTREAM_ERROR")
                 buf = bytearray()
@@ -221,14 +250,14 @@ def _base(status, **kw):
 async def _source(st, base, key, symbol, fetch):
     """(clean | None, code | None) for one source symbol, cached; caller holds st.gex_lock."""
     hit = st.gex_cache.get(symbol)
-    if hit and time.monotonic() - hit[0] < (TTL_S if hit[1] else ERR_TTL_S):
+    if hit and time.monotonic() - hit[0] < (TTL_S if hit[1] else (hit[3] if len(hit) > 3 else ERR_TTL_S)):
         return hit[1], hit[2]
     try:
         clean, code = sanitize_payload(await fetch(base, key, symbol), symbol), None
     except GexError as e:
-        clean, code = None, e.code
+        clean, code, wait = None, e.code, e.retry_after
     except Exception:  # noqa: BLE001
-        clean, code = None, "UPSTREAM_ERROR"
+        clean, code, wait = None, "UPSTREAM_ERROR", None
     if not hasattr(st, "gex_good"):
         st.gex_good = {}
     good = st.gex_good
@@ -240,7 +269,8 @@ async def _source(st, base, key, symbol, fetch):
         # counting, so PX_GEX_MAX_AGE_S still bounds how stale they can get. Retry after the short error TTL.
         st.gex_cache[symbol] = (time.monotonic() - (TTL_S - ERR_TTL_S), good[symbol], None)
         return good[symbol], None
-    st.gex_cache[symbol] = (time.monotonic(), clean, code)
+    # An error entry waits out a server Retry-After when it is longer than ERR_TTL_S; a good entry is unchanged.
+    st.gex_cache[symbol] = (time.monotonic(), clean, code, max(ERR_TTL_S, wait or 0.0)) if clean is None else (time.monotonic(), clean, code)
     return clean, code
 
 

@@ -241,3 +241,62 @@ def test_pin_typed_key_levels_are_walls_with_kind_and_size():
     assert any(x.startswith("GEX_NEAR_BELOW: PUT wall") and "(SPY 760)" in x for x in L)
     assert any(x.startswith("GEX_NEAR_ABOVE: ") for x in L)
     assert px_gex.near_lines(None) == [] and px_gex.near_lines({"levels": [{"name": "wall_below", "pts": "x"}]}) == []
+
+
+# ---- 429 and Retry-After ------------------------------------------------------------------------------------------------
+
+def test_a_429_is_a_fixed_rate_limit_code_and_carries_the_clamped_retry_after(monkeypatch):
+    import httpx
+
+    def handler(request):
+        return httpx.Response(429, headers={"Retry-After": "7"}, json={})
+
+    monkeypatch.setattr(px_gex.httpx, "AsyncClient", lambda **kw: _REAL_CLIENT(transport=httpx.MockTransport(handler), **kw))
+    with pytest.raises(px_gex.GexError) as e:
+        asyncio.run(px_gex.fetch_gex("https://x.test/api/v1", "k", "SPY"))
+    assert e.value.code == "RATE_LIMIT" and e.value.retry_after == 7.0
+    for status, code in ((401, "AUTH"), (500, "UPSTREAM_ERROR")):           # the other branches are unchanged
+        _serve(monkeypatch, {}, status=status)
+        with pytest.raises(px_gex.GexError) as e2:
+            asyncio.run(px_gex.fetch_gex("https://x.test/api/v1", "k", "SPY"))
+        assert e2.value.code == code and e2.value.retry_after is None
+
+
+@pytest.mark.parametrize("header,want", [("7", 7.0), ("0", 0.0), ("  12 ", 12.0), ("garbage", None), ("-5", None), ("", None), (None, None),
+                                         ("99999", 300.0), ("1.5", None), ("Fri, 99 Foo 2026 25:61:61 GMT", None)])
+def test_retry_after_s_seconds_and_garbage(header, want):
+    assert px_gex.retry_after_s(header) == want
+
+
+def test_retry_after_s_http_date_is_relative_to_now_and_clamped():
+    from email.utils import formatdate
+    now = 1_800_000_000.0
+    assert px_gex.retry_after_s(formatdate(now + 42, usegmt=True), now=now) == 42.0
+    assert px_gex.retry_after_s(formatdate(now - 100, usegmt=True), now=now) == 0.0     # a date in the past is "now", not garbage
+    assert px_gex.retry_after_s(formatdate(now + 86400, usegmt=True), now=now) == 300.0
+
+
+def test_the_error_cache_honours_retry_after_and_good_entries_are_unchanged():
+    import time
+    a, calls = app(), []
+    err = px_gex.GexError("RATE_LIMIT", 200.0)
+    r = run(a, {"SPX": err, "SPY": err}, calls=calls)
+    assert r["status"] == "ERROR" and r["code"] == "RATE_LIMIT"
+    for k in list(a.state.gex_cache):                                       # 100 s later: past ERR_TTL_S, inside the Retry-After
+        a.state.gex_cache[k] = (time.monotonic() - 100.0,) + a.state.gex_cache[k][1:]
+    run(a, {"SPX": err, "SPY": err}, calls=calls)
+    assert len(calls) == 2                                                  # still cached: no new fetch
+    for k in list(a.state.gex_cache):
+        a.state.gex_cache[k] = (time.monotonic() - 201.0,) + a.state.gex_cache[k][1:]
+    run(a, {"SPX": err, "SPY": err}, calls=calls)
+    assert len(calls) == 4
+    b, c2 = app(), []
+    plain = px_gex.GexError("RATE_LIMIT")                                   # no header: the 60 s default
+    run(b, {"SPX": plain, "SPY": plain}, calls=c2)
+    for k in list(b.state.gex_cache):
+        b.state.gex_cache[k] = (time.monotonic() - px_gex.ERR_TTL_S - 1,) + b.state.gex_cache[k][1:]
+    run(b, {"SPX": plain, "SPY": plain}, calls=c2)
+    assert len(c2) == 4
+    g = app()
+    run(g, {"SPX": spx()})
+    assert all(len(v) == 3 for v in g.state.gex_cache.values())             # a good entry keeps its old shape

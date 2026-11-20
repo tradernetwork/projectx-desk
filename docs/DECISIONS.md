@@ -789,3 +789,26 @@ caller but one test, and it took ANY integer, a protective stop's id included.
 `_cancel_entry_locked`, `cancel_entry`, `expire_resting_entries`, `entry_status`, `Ticket.user_cancelled`, `CancelResult`),
 `app.py` (`/api/cancel`), `static/desk.js`, `static/index.html`, `static/desk.css`. Tests: `test_px_guard_book.py`,
 `test_px_guard_cancel.py`, `test_px_guard_pin.py` (`cancel_entry`), `test_px_app_actions.py` (`/api/cancel`), `test_px_guard_protect.py`.
+
+**Problem 3 (adversarial review of this branch; the bug pre-dates it).** `handle_position` gave a nonzero position to EVERY active
+ticket on the contract: each got `filled_size` and, with no stop yet, `_arm_stop`. A cancelled entry stays PLACED on purpose, so CANCEL
+(or the 300 s TTL) followed by a market entry on the same contract (which `contract_flat` allows once the old order left the book and
+`IN_FLIGHT_S` passed) armed TWO size-1 sell stops for one long: price trades through, both fill, and the account is short 1 with no
+stop. An entry that went `gone` did the same. The reviewer reproduced it on the old main through the TTL cancel, before the human
+CANCEL existed. Separately, an unclear cancel reply followed by "not listed in `Order/searchOpen`" was recorded as a clean cancel, but
+searchOpen drops FILLED orders too.
+
+**Decision 3.** A position has exactly one owner, `Guard._position_owner`, used by `handle_position` and `protect_open_positions`
+alike: the ticket that already owns it (a counted fill or a stop; it resizes), else the ticket whose own entry order id a non-voided
+fill or the row's `fillVolume` carries, else the NEWEST active ticket (a position event carries no order id, and an older cancelled or
+gone entry never outranks the entry just placed), else the newest rejection with an order id. The newest wins inside each step.
+`_retire_dead_entries` moves a cancelled (human or TTL) entry to CLOSED once the broker no longer lists it working, no fill carries its
+order id, it owns no fill, and `CANCEL_GRACE_S` (30 s) has passed since the cancel was confirmed (`Ticket.cancelled_at`); from then on it
+can never own a fill. It runs on every position event, every resync and the once-a-second deadline loop. Its intents are left alone, so
+an unexplained position in that contract before the reseed closes them is flattened and halted, never adopted. The unclear-cancel path
+checks `_entry_has_fill` before declaring cancelled: a fill returns the fixed code `filled`, audits `state=FILLED`, sets no cancelled
+flag, and the fill is protected by the normal path. Tests: `test_px_guard_one_owner.py` (the human and TTL re-entries arm exactly one
+stop, owned by the new ticket; a gone entry; a fill carrying the older order id; the race inside the grace; retirement needs every
+condition; the resync picks the same owner; `filled`). The race tests in `test_px_guard_cancel.py` and `test_px_guard_protect.py` are
+unchanged. Not verified: a fill whose hub and REST evidence both arrive more than 30 s after the cancel ACK finds no owner and is
+flattened and halted by `protect_open_positions` (fail closed), not protected.

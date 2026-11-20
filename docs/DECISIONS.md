@@ -630,3 +630,27 @@ also move between underlyings on one side (all bears while the market sells off)
 **Where.** `rh/letf.py` (`scan_plan`, `mover_row`, `movers_response`), `rh/letf_gex.py`, `gex.py` (`allowed`), `rh/reads.py`, `app.py`
 (`/api/rh/movers`, `/api/rh/gex`), `static/letf.js`, `static/rh.css`. Tests: `test_letf_gex.py`, additions to `test_letf.py`,
 `test_letf_routes.py`, `test_letf_ui.py`.
+
+## Round 31: Ask-box hardening (2026-11-20)
+
+Four changes from a critiqued design, all on the text-only Ask path or its secrets. None touches the guard.
+
+- **Reply cap 1024 to 3000 tokens, plus a fixed `empty` code.** Reasoning models spend the budget thinking and return nothing; that is not a
+  malformed reply, so it gets its own word (in all four lists: `llm_chat.CODES`, `llmsetup.js`, `agui.CODES`, the setup test).
+- **One retry, and a narrow one.** Only an empty, non-`length` reply from the `openrouter` profile is asked again, with reasoning off on the retry
+  body only: sending reasoning-off first would be rejected by reasoning-mandatory models, and custom, local, venice, openai and anthropic
+  endpoints never see the field. It stays inside the single-flight lock and the per-attempt timeout (2 x 60 s is under the relay's 300 s). No
+  HTTP error is retried. The Settings probe is one attempt at 8 tokens and counts empty as ok.
+- **No `truncated` flag.** A cut-off non-empty reply is returned as before: a flag would change the reply shape in three layers (llm_chat, chat,
+  agui and the UI) for a case the trader can see.
+- **`reply_guard` soft-flags, with one hard case.** Tool markup, `<think>` blocks, CJK runs and repeated lines are flagged through
+  `px.reply_flags` (`guard`); a prose mention of `<think>` stays clean. Only a reply that is entirely tool-call markup is rejected (`bad_reply`).
+- **One placeholder check, two strengths.** Our own bearer tokens use the strict rule. A vendor key (`PX_GEX_KEY`) does not: its format is
+  unknown and a real key may contain `token` or `secret` or be short, so only template words refuse it. A weak chat token turns the relay off
+  and the log names the variable (otherwise the Ask button would vanish with no visible reason).
+- **Desk agent: a cost cap, not plan mode.** `--max-budget-usd` bounds one question. `--permission-mode plan`, `--no-session-persistence` and an
+  async job pattern were rejected: plan mode blocks the Playwright snapshots the agent exists for, and the other two break session resume.
+
+**Where.** `llm_chat.py`, `reply_guard.py`, `secretcheck.py`, `chat.py`, `agui.py`, `recorder.py`, `gex.py`, `mcp.py`, `static/chat.js`,
+`static/llmsetup.js`, `scripts/deskagent.py`. Tests: `test_llm_chat.py`, `test_reply_guard.py`, `test_secretcheck.py`, `test_deskagent_budget.py`,
+additions to `test_px_chat.py`, `test_px_gex.py`, `test_px_recorder_merge.py`.

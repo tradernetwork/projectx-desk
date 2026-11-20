@@ -123,7 +123,7 @@ def _mutated(tmp_path, fn):
 
 
 @pytest.mark.parametrize("fn", [
-    lambda d: d.update(version=2),
+    lambda d: d.update(version=3),
     lambda d: d.update(as_of="yesterday"),
     lambda d: d["funds"]["TQQQ"].update(lev=float("nan")),
     lambda d: d["funds"]["TQQQ"].update(lev=9.0),
@@ -388,3 +388,14 @@ async def test_movers_ttl_is_longer_when_the_market_is_closed(uni):
     c.clock = lambda: c._last + 300.0                                  # five minutes later: still cached on a closed market
     await letf.movers_response(r, uni, c, True, sat)
     assert len(r.calls) == n
+
+
+def test_bad_issuer_reads_as_null_not_a_failed_file(tmp_path):
+    u = _mutated(tmp_path, lambda d: d["funds"]["TQQQ"].update(issuer="<img src=x>"))
+    assert u is not None and u.public_view(date(2026, 11, 20))["funds"]["TQQQ"]["issuer"] is None
+    u = _mutated(tmp_path, lambda d: d["funds"]["TQQQ"].update(issuer=7))
+    assert u is not None and u.public_view(date(2026, 11, 20))["funds"]["TQQQ"]["issuer"] is None
+
+
+def test_real_universe_has_issuers(uni):
+    assert uni.public_view(date(2026, 11, 20))["funds"]["TQQQ"]["issuer"] == "ProShares"

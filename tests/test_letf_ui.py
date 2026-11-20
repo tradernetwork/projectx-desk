@@ -87,6 +87,11 @@ def test_chart_titles_say_what_is_charted():
     assert run("r.fundTitle('TQQQ', f)", f={"lev": 3, "name": "ProShares UltraPro QQQ", "issuer": None, "dv20": 5.3e9}) \
         == "TQQQ 3x long, ProShares UltraPro QQQ, $5.3B/day (20d)"
     assert run("r.fundTitle('SQQQ', f)", f={"lev": -3, "name": None, "issuer": "ProShares", "dv20": None}) == "SQQQ -3x short, ProShares, NA/day (20d)"
+    # a name that already starts with the issuer is not repeated; otherwise the issuer follows it; null shows nothing
+    assert run("r.fundTitle('TQQQ', f)", f={"lev": 3, "name": "ProShares UltraPro QQQ", "issuer": "ProShares", "dv20": 5.3e9}) \
+        == "TQQQ 3x long, ProShares UltraPro QQQ, $5.3B/day (20d)"
+    assert run("r.fundTitle('BITX', f)", f={"lev": 2, "name": "2x Bitcoin Strategy ETF", "issuer": "Volatility Shares", "dv20": None}) \
+        == "BITX 2x long, 2x Bitcoin Strategy ETF (Volatility Shares), NA/day (20d)"
 
 
 @needs_node

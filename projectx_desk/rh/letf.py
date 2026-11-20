@@ -100,7 +100,7 @@ def load(path=DEFAULT_PATH):
     Everything is re-validated here even though the sync script validated it: a hand edit must not reach the page."""
     try:
         doc = json.loads(Path(path).read_text(encoding="utf-8"))
-        if doc.get("version") != 1 or not _DATE.fullmatch(doc.get("as_of", "")):
+        if doc.get("version") not in (1, 2) or not _DATE.fullmatch(doc.get("as_of", "")):
             return None
         date.fromisoformat(doc["as_of"])
         if [g[0] for g in doc["groups"]] != list(GROUP_SLUGS):
@@ -115,8 +115,9 @@ def load(path=DEFAULT_PATH):
                 return None
             if f["name"] is not None and not _NAME.fullmatch(f["name"]):
                 return None
-            if f["issuer"] is not None and not _ISSUER.fullmatch(f["issuer"]):
-                return None
+            iss = f.get("issuer")
+            if iss is not None and not (isinstance(iss, str) and _ISSUER.fullmatch(iss)):
+                f["issuer"] = None          # a bad issuer reads as unknown; it never fails the whole file
             if not _LABEL.fullmatch(f["u"]):
                 return None
         keys = set()

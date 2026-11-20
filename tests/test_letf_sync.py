@@ -248,7 +248,7 @@ def committed():
 
 def test_committed_json_matches_proxies_and_validates(committed):
     d = committed
-    assert d["version"] == 1 and re.fullmatch(r"\d{4}-\d{2}-\d{2}", d["as_of"])
+    assert d["version"] == 2 and re.fullmatch(r"\d{4}-\d{2}-\d{2}", d["as_of"])
     assert [g for g, _ in d["groups"]] == [g for g, _ in ls.GROUPS]
     funds = d["funds"]
     seen = set()
@@ -301,3 +301,27 @@ def test_no_dashes_in_new_files():
     for p in (ROOT / "scripts" / "letf_sync.py", ROOT / "projectx_desk" / "rh" / "letf_proxies.py", Path(__file__)):
         text = p.read_text(encoding="utf-8")
         assert em not in text and en not in text, p.name
+
+
+def test_issuer_inverse_parsed_long_derived_from_name_unknown_is_null_hostile_dropped():
+    texts = _inputs(
+        extra_long=[_long("LA", 2.0, "S000", name="ProShares Ultra QQQ"), _long("LB", 2.0, "S001", name="T-Rex 2X Long NVDA Daily Target ETF"),
+                    _long("LC", 2.0, "S002", name="Mystery Capital 2X Long"), _long("LD", 2.0, "S003", name="Direxionary 2X Long"),
+                    _long("LE", 2.0, "S004", name="Tradr")],
+        extra_inv=[_inv("IA", -2.0, "S000", issuer="ProShares"), _inv("IB", -2.0, "S001", issuer="<b>x</b>"), _inv("IC", -2.0, "S002", issuer="")],
+    )
+    doc, warns, _ = ls.build(*texts, "2026-11-19")
+    f = doc["funds"]
+    assert doc["version"] == 2
+    assert f["LA"]["issuer"] == "ProShares" and f["LB"]["issuer"] == "T-REX" and f["LE"]["issuer"] == "Tradr"
+    assert f["LC"]["issuer"] is None and f["LD"]["issuer"] is None       # unknown prefix, partial word: never a guess
+    assert f["IA"]["issuer"] == "ProShares" and f["IB"]["issuer"] is None and f["IC"]["issuer"] is None
+    assert any("issuer dropped for IB" in w for w in warns)
+
+
+def test_committed_issuers_valid_and_match_names(committed):
+    for sym, f in committed["funds"].items():
+        assert f["issuer"] is None or re.fullmatch(ls.RE_ISSUER, f["issuer"])
+        if f["lev"] > 0 and f["issuer"]:
+            assert ls.issuer_from_name(f["name"]) == f["issuer"], sym
+    assert sum(1 for f in committed["funds"].values() if f["issuer"]) > 500

@@ -10,6 +10,9 @@ Source: https://github.com/mphinance/leveraged-etfs (data/*.csv). The CSVs are u
 written to disk), size-capped, redirects are refused, every field is checked against a strict pattern, and ANY failure rejects the
 whole run and leaves the old file in place. The desk itself never makes this request; it only reads the committed JSON.
 
+Issuer: the inverse CSV has an `issuer` column; for longs it is derived from the start of `fund_name` against LONG_ISSUERS (else null).
+The source has no expense ratio, AUM, inception date or yield, so none is shown.
+
 Dropped on purpose: `last` and `avg_shares_20d` (reverse splits make them misleading; live quotes replace them) and any fund with
 leverage inside +/-1.5. Shorts join an underlying on the CSV `bucket` column (the inverse `underlying` column is messy).
 Never uses a bare `.write(`: the guard pin rejects it everywhere outside the order guards. Files are written with json.dump and
@@ -57,6 +60,24 @@ SHORT_LEV = (-5.0, -1.5)
 RE_BUCKET = re.compile(r"[A-Za-z0-9 &.,'()/+\-]{1,48}")
 RE_NAME = re.compile(r"[A-Za-z0-9 &.,'()/+%\-]{1,96}")
 RE_ISSUER = re.compile(r"[A-Za-z0-9 &.\-]{1,40}")
+# Long-fund issuers: the long CSV has no issuer column, so it is read from the start of fund_name, and ONLY for these names
+# (lowercase prefix -> the name shown). Built from the fund names actually in the data; an unknown prefix is None, never a guess.
+# Matched on a whole leading word group (the prefix must be followed by a space or the end of the name).
+LONG_ISSUERS = {
+    "leverage shares": "Leverage Shares", "direxion": "Direxion", "tradr": "Tradr", "proshares": "ProShares",
+    "defiance": "Defiance", "graniteshares": "GraniteShares", "t-rex": "T-REX", "corgi": "Corgi",
+    "microsectors": "MicroSectors", "teucrium": "Teucrium", "21shares": "21Shares", "roundhill": "Roundhill",
+    "advisorshares": "AdvisorShares", "uscf": "USCF",
+}
+
+
+def issuer_from_name(name):
+    """Issuer for a long fund from its cleaned fund_name, or None. Case-insensitive, whole leading words only."""
+    low = (name or "").lower()
+    for pre, shown in LONG_ISSUERS.items():
+        if low == pre or low.startswith(pre + " "):
+            return shown
+    return None
 
 
 class SyncError(Exception):
@@ -136,6 +157,7 @@ def _funds(longs, inv, warnings):
             fname = None
             if side == "long":
                 fname = _clean_name(r["fund_name"], warnings, sym)
+                issuer = issuer_from_name(fname)
             else:
                 iss = r["issuer"].strip()
                 if iss and RE_ISSUER.fullmatch(iss):
@@ -218,7 +240,7 @@ def build(longs_csv, inv_csv, best_csv, as_of):
     for sym in sorted(set(funds) - placed):
         warnings.append(f"{sym}: bucket {funds[sym]['u']!r} matches no underlying, left out")
     out_funds = {s: {k: v for k, v in funds[s].items() if not k.startswith("_")} for s in sorted(placed)}
-    doc = {"version": 1, "as_of": as_of, "source": SOURCE, "groups": [list(g) for g in GROUPS],
+    doc = {"version": 2, "as_of": as_of, "source": SOURCE, "groups": [list(g) for g in GROUPS],
            "underlyings": unders, "funds": out_funds}
     return doc, warnings, sorted(unmapped)
 

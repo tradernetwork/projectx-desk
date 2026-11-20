@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from . import ground, lint, llm_chat, llm_config, redact, reply_guard
+from . import ground, lint, llm_chat, llm_config, redact, reply_guard, secretcheck
 from .net import is_loopback
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -43,14 +43,19 @@ def config(environ=None):
     parts = urlsplit(url)
     if parts.scheme != "http" or not is_loopback(parts.hostname or ""):
         return None
-    token = (env.get("PX_CHAT_TOKEN") or "").strip()
+    token, name = (env.get("PX_CHAT_TOKEN") or "").strip(), "PX_CHAT_TOKEN"
     if not token:
         path = Path(env.get("PX_CHAT_TOKEN_FILE") or ROOT / "data" / "agent_token")
+        name = "PX_CHAT_TOKEN_FILE" if env.get("PX_CHAT_TOKEN_FILE") else "data/agent_token"
         try:
             token = path.read_text().strip()
         except OSError:
             return None
-    return (url, token) if len(token) >= 32 else None
+    why = secretcheck.weak_secret_reason(token)
+    if why:
+        print(f"Ask relay off: {name} is not usable ({why}); generate one with: openssl rand -hex 32", flush=True)   # the name and reason, never the value
+        return None
+    return url, token
 
 
 def dims(blob: bytes, ext: str):

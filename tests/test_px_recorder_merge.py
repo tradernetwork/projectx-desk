@@ -189,9 +189,20 @@ def test_merge_ticks_noop_cases():
 
 # ---- config, cache, polling -------------------------------------------------------------------
 
+HEX = "0123456789abcdef" * 4
+
+
+def test_recorder_weak_token_is_a_config_error_without_the_value():
+    for weak in ("your_recorder_token_goes_here_xxxxxxxxxxxx", "short", "a" * 64):
+        with pytest.raises(RecorderError) as e:
+            R.recorder_config({"PX_RECORDER_URL": "https://rec.lan:8601", "PX_RECORDER_TOKEN": weak})
+        assert e.value.code == "CONFIG" and weak not in repr(e.value)
+    assert R.recorder_config({"PX_RECORDER_TOKEN": "short"}) is None          # no URL: the token is never looked at
+
+
 def test_recorder_config_trust_rules():
     assert R.recorder_config({}) is None
-    assert R.recorder_config({"PX_RECORDER_URL": "https://rec.lan:8601/", "PX_RECORDER_TOKEN": " t "}) == ("https://rec.lan:8601", "t")
+    assert R.recorder_config({"PX_RECORDER_URL": "https://rec.lan:8601/", "PX_RECORDER_TOKEN": " " + HEX + " "}) == ("https://rec.lan:8601", HEX)
     assert R.recorder_config({"PX_RECORDER_URL": "http://127.0.0.1:18601"}) == ("http://127.0.0.1:18601", "")
     for bad in ("http://rec.lan:8601", "ftp://x", "https://u:p@rec.lan", "https://rec.lan/?a=1", "https://", "https://rec.lan:99999", "nonsense"):
         with pytest.raises(RecorderError) as e:

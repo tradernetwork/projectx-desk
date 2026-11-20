@@ -22,7 +22,7 @@ CODES = {
     "chat off": "chat_off", "not_configured": "not_configured", "empty prompt": "empty_prompt", "prompt too long": "prompt_too_long",
     "key_like": "key_like", "busy": "busy", "agent timed out": "agent_timeout", "agent unreachable": "agent_unreachable",
     "agent refused": "agent_refused", "bad agent reply": "bad_agent_reply", "rate_limited": "rate_limited",
-    "bad image": "bad_image", "too many images": "bad_image", "images need the desk agent": "bad_image",
+    "empty": "empty", "bad image": "bad_image", "too many images": "bad_image", "images need the desk agent": "bad_image",
 }
 MESSAGES = {c: "the Ask box could not answer (" + c + ")" for c in set(CODES.values()) | {"chat_error"}}
 

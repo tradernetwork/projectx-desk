@@ -3,7 +3,9 @@
 No tools, no files, no browser: the model gets the fixed desk rules plus the `/ai/digest` text the caller passes in, and returns text.
 Rules: redirects are never followed (a bearer key must not hop hosts), 60 s timeout, response and reply size caps, one request at a
 time (a second concurrent call is `rate_limited`), and errors are FIXED CODES only: never provider text, never the key.
-The result is counters plus text; nothing is stored here. Never talks to the guard, the client or the hubs.
+One retry exists: an EMPTY reply (not cut off by the length limit) from the openrouter profile is asked once more with reasoning
+off, inside the same single-flight lock (worst case 2 x TIMEOUT_S, under chat.py's 300 s relay timeout). HTTP errors are never retried.
+`reasoning` / `reasoning_content` fields are never read. The result is counters plus text; nothing is stored here. Never talks to the guard, the client or the hubs.
 """
 import json
 
@@ -19,11 +21,11 @@ MAX_REPLY = 8000
 MAX_TURNS = 20
 MAX_TURN_CHARS = 4000
 MAX_DIGEST = 24_000
-MAX_TOKENS = 1024
+MAX_TOKENS = 3000                   # reasoning models spend part of this before any visible text
 ANTHROPIC_VERSION = "2023-06-01"
 TITLE = "ProjectX Desk"
 
-CODES = ("not_configured", "bad_request", "unauthorized", "rate_limited", "model_blocked", "unreachable", "timeout", "bad_reply")
+CODES = ("not_configured", "bad_request", "unauthorized", "rate_limited", "model_blocked", "unreachable", "timeout", "bad_reply", "empty")
 
 RULES = (
     "You are the read-only assistant of a futures trading desk. Answer from the desk digest below and nothing else.\n"
@@ -75,7 +77,16 @@ def _turns(turns):
     return out
 
 
-def _request(cfg, system, turns, max_tokens):
+FINISH = {"stop": "stop", "end_turn": "stop", "stop_sequence": "stop", "length": "length", "max_tokens": "length",
+          "content_filter": "filter", "refusal": "filter", "tool_calls": "tool", "tool_use": "tool", "function_call": "tool"}
+
+
+def _finish(v):
+    """The provider's stop reason as an enum word ('stop', 'length', 'filter', 'tool') or None. Never free text."""
+    return FINISH.get(v) if isinstance(v, str) else None
+
+
+def _request(cfg, system, turns, max_tokens, reasoning_off=False):
     """(url, headers, body) for the provider's profile."""
     p, base = cfg.preset, cfg.base_url.rstrip("/")
     if p.profile == "anthropic":
@@ -88,6 +99,8 @@ def _request(cfg, system, turns, max_tokens):
     if p.profile == "openrouter":
         headers["x-title"] = TITLE
     body = {"model": cfg.model, "max_tokens": max_tokens, "messages": [{"role": "system", "content": system}] + turns}
+    if reasoning_off and p.profile == "openrouter":
+        body["reasoning"] = {"enabled": False}
     return base + "/chat/completions", headers, body
 
 
@@ -104,7 +117,7 @@ def _parse(profile, data):
             raise LlmError("bad_reply")
         text = "".join(b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str))
         u = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-        return text, _count(u.get("input_tokens")), _count(u.get("output_tokens"))
+        return text, _count(u.get("input_tokens")), _count(u.get("output_tokens")), _finish(data.get("stop_reason"))
     ch = data.get("choices")
     if not isinstance(ch, list) or not ch or not isinstance(ch[0], dict) or not isinstance(ch[0].get("message"), dict):
         raise LlmError("bad_reply")
@@ -114,7 +127,7 @@ def _parse(profile, data):
     if not isinstance(c, str):
         raise LlmError("bad_reply")
     u = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-    return c, _count(u.get("prompt_tokens")), _count(u.get("completion_tokens"))
+    return c, _count(u.get("prompt_tokens")), _count(u.get("completion_tokens")), _finish(ch[0].get("finish_reason"))
 
 
 async def _read_capped(resp, cap):
@@ -126,14 +139,33 @@ async def _read_capped(resp, cap):
     return bytes(buf)
 
 
-async def _call(cfg, system, turns, max_tokens, transport):
+class _Empty(Exception):
+    def __init__(self, finish):
+        super().__init__("empty")
+        self.finish = finish
+
+
+async def _call(cfg, system, turns, max_tokens, transport, retry=True):
     p = cfg.preset
     if p.needs_key and not cfg.key:
         raise LlmError("not_configured")
     if not cfg.model:
         raise LlmError("not_configured")
     turns = _turns(turns)
-    url, headers, body = _request(cfg, system, turns, max_tokens)
+    try:
+        return await _attempt(cfg, system, turns, max_tokens, transport, False)
+    except _Empty as e:
+        if not (retry and p.profile == "openrouter" and e.finish != "length"):
+            raise LlmError("empty") from None
+    try:
+        return await _attempt(cfg, system, turns, max_tokens, transport, True)
+    except _Empty:
+        raise LlmError("empty") from None
+
+
+async def _attempt(cfg, system, turns, max_tokens, transport, reasoning_off):
+    p = cfg.preset
+    url, headers, body = _request(cfg, system, turns, max_tokens, reasoning_off)
     try:
         async with httpx.AsyncClient(transport=transport, follow_redirects=False, timeout=TIMEOUT_S, trust_env=False) as client:
             async with client.stream("POST", url, headers=headers, json=body) as resp:
@@ -165,14 +197,14 @@ async def _call(cfg, system, turns, max_tokens, transport):
         data = json.loads(raw)
     except ValueError:
         raise LlmError("bad_reply") from None
-    text, tin, tout = _parse(p.profile, data)
+    text, tin, tout, finish = _parse(p.profile, data)
     text = redact.redact_secrets(text.strip())[:MAX_REPLY]
     if not text:
-        raise LlmError("bad_reply")
+        raise _Empty(finish)
     return Reply(text, tin, tout)
 
 
-async def ask(cfg, system, turns, *, max_tokens=MAX_TOKENS, transport=None):
+async def ask(cfg, system, turns, *, max_tokens=MAX_TOKENS, transport=None, retry=True):
     """Send `turns` (alternating user/assistant dicts, ending with the user's) under `system`. Returns a Reply or raises LlmError(code).
     `cfg` is `llm_config.resolve()`. `transport` is for tests."""
     global _busy
@@ -182,7 +214,7 @@ async def ask(cfg, system, turns, *, max_tokens=MAX_TOKENS, transport=None):
         raise LlmError("rate_limited")
     _busy = True
     try:
-        return await _call(cfg, system, turns, max_tokens, transport)
+        return await _call(cfg, system, turns, max_tokens, transport, retry)
     finally:
         _busy = False
 
@@ -190,7 +222,9 @@ async def ask(cfg, system, turns, *, max_tokens=MAX_TOKENS, transport=None):
 async def test(cfg, *, transport=None):
     """One tiny call. Returns {"ok": True, ...counters} or {"ok": False, "code": <fixed code>}."""
     try:
-        r = await ask(cfg, "Reply with the single word ok.", [{"role": "user", "content": "ping"}], max_tokens=8, transport=transport)
+        r = await ask(cfg, "Reply with the single word ok.", [{"role": "user", "content": "ping"}], max_tokens=8, transport=transport, retry=False)
     except LlmError as e:
+        if e.code == "empty":       # a reasoning model returns nothing at 8 tokens: the provider answered, so the key and model work
+            return {"ok": True, "code": None, "input_tokens": None, "output_tokens": None}
         return {"ok": False, "code": e.code}
     return {"ok": True, "code": None, **r.usage()}

@@ -98,7 +98,13 @@ rail off on purpose; a blank, garbled or negative value falls back to the defaul
 `PX_SIZE_SCALERS=1` switches the ADX/ATR cuts on.
 
 **Quote age and drift.** The 2 second quote age applies to every open. The price-drift check (8 ticks since staging) applies to
-market entries only; limit opens (simulated accounts only) skip it.
+market entries only; limit opens (simulated accounts only) skip it, but since Round 31 a limit must still rest (strictly inside its own
+side of the book) at preview, at place and at the commit point, and every stop must sit beyond the live book. A market that crosses the
+limit or the stop AFTER the entry write is not something the desk can refuse: that fill and its stop go through the normal path.
+
+**The CANCEL button needs the page that staged the ticket.** `POST /api/cancel` takes the ticket id, which only the page that staged
+the ticket holds (the AI surface carries the 8-character hash, not the id). After a reload the button does not show; FLATTEN (which
+also sweeps working orders on sim) or the limit TTL still remove the order. Live accounts cannot cancel through the API at all.
 
 **A 401 or 429 on an order write becomes UNKNOWN and halts**, even though the order was certainly not processed. That is the
 safe direction, and it means an expired token will halt the desk until a human clears it.
@@ -160,7 +166,6 @@ are not modelled, and while it is quiet a dropped feed stays down (the feed dots
 
 ## Found on day one (2026-10-23), not fixed
 
-- **A resting limit order can only be cancelled with FLATTEN.** There is no cancel route or button; `guard.cancel` exists but nothing calls it from the UI. FLATTEN also closes positions, and live accounts cannot cancel through the API at all.
 - **No loss-breach flatten.** Past the daily limit the desk refuses new opens, but it does not flatten an open position that is already losing more than the limit. The protection is the stop on every order and the firm's own limits, not a desk latch. Needs a design pass before it is trusted.
 - **Micro crude does not size.** ProjectX names it `MCLE`, which `sizing.spec_for` does not recognise, so MCL fails closed. It is not tracked by default.
 - **The trend read is untested.** The first version showed no follow-through edge over 21 days; the current rule (v2.1) has never been backtested. Judge it only after 60 or more logged trade days (`data/bias_log.jsonl`), against always-long, always-short and shuffled nulls, with day-clustered intervals.

@@ -499,7 +499,8 @@
       if(my !== L.seq || !L.visible) return;
       if(!r.ok){
         L.err = codeText(r.code); status.textContent = L.err;
-        if(r.code === 'busy' || r.code === 'rate_limited' || r.code === 'timeout' || r.code === 'unreachable') L.timers.bars = setTimeout(loadBars, 15000);
+        if(r.code === 'busy') L.timers.bars = setTimeout(loadBars, 3000);                 // the budget refills at 2 calls a second
+        else if(r.code === 'rate_limited' || r.code === 'timeout' || r.code === 'unreachable') L.timers.bars = setTimeout(loadBars, 15000);
         return;
       }
       L.err = ''; L.sessionOpen = !!r.session_open; L.barMs = r.bar_ms || L.barMs;

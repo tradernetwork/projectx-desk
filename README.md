@@ -200,6 +200,21 @@ More in [known limitations](docs/LIMITATIONS.md).
 
 <p align="center"><img src="docs/img/ui-robinhood-demo.jpg" alt="The Robinhood panel against the offline mock broker: DEMO banner, positions, option positions, working orders and a pending approval" width="900"></p>
 
+### Leveraged ETF desk
+
+<p align="center"><img src="docs/img/ui-letf-desk.jpg" alt="The leveraged ETF desk: a picker of 694 funds, the underlying QQQ and TQQQ charted side by side, live quotes, and an analytics strip with realized leverage and volatility decay" width="900"></p>
+
+The Robinhood panel opens on a LETF desk: about 700 leveraged ETFs (574 long, 120 short, 315 underlyings) in a searchable picker, the
+underlying and the fund charted side by side, and a strip of numbers under them: today's move against leverage times the underlying,
+the gap in bps, realized leverage over 20 sessions, volatility decay with its formula, 20-day dollar volume and live spread. Unknown
+is NA, never 0. It is display only: a click on a fund fills the ticker box and nothing else, and the order ticket works exactly as
+below. The fund list is vendored from the leveraged-etfs data and refreshed with `scripts/letf_sync.py`.
+
+<p align="center"><img src="docs/img/ui-letf-proxy.jpg" alt="Gold charted through the GLD proxy next to UGL, with a warning that the comparison is approximate" width="900"></p>
+
+Where an underlying is not a ticker (gold, semiconductors, EUR/USD) it is charted through a proxy ETF and the chart says so. The
+screenshots are the offline mock, so every number is invented. Details: `docs/ROBINHOOD.md`.
+
 Phase 0 and 1 are built: a mock Robinhood MCP server, OAuth login with a rotating token store, read-only positions, orders and
 approvals (only the dedicated agent-enabled account, never the others), and an order guard that mirrors the ProjectX one: kill
 switches default off, caps that refuse when blank, a hashed single-use ticket, no replay of an ambiguous write, a separate halt

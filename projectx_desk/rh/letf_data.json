@@ -1,0 +1,9459 @@
+{
+ "as_of": "2026-11-19",
+ "funds": {
+  "AALG": {
+   "dv20": 292344.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long AAL Daily ETF",
+   "u": "AAL"
+  },
+  "AAOG": {
+   "dv20": 3637557.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long AAOI Daily ETF",
+   "u": "AAOI"
+  },
+  "AAOX": {
+   "dv20": 75167066.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long AAOI Daily ETF",
+   "u": "AAOI"
+  },
+  "AAOZ": {
+   "dv20": 26262421.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "AAOI"
+  },
+  "AAPB": {
+   "dv20": 808769.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long AAPL Daily ETF",
+   "u": "AAPL"
+  },
+  "AAPE": {
+   "dv20": 209323.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long AAPL Daily ETF",
+   "u": "AAPL"
+  },
+  "AAPU": {
+   "dv20": 26518390.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily AAPL Bull 2X Shares",
+   "u": "AAPL"
+  },
+  "AAPX": {
+   "dv20": 1607848.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long Apple Daily Target ETF",
+   "u": "AAPL"
+  },
+  "ACHX": {
+   "dv20": 10285.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ACHR 2x Daily ETF",
+   "u": "ACHR"
+  },
+  "ACLZ": {
+   "dv20": 4988.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ACLS 2x Daily ETF",
+   "u": "ACLS"
+  },
+  "ACMM": {
+   "dv20": 28805.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ACMR 2x Daily ETF",
+   "u": "ACMR"
+  },
+  "ADBG": {
+   "dv20": 7298833.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long ADBE Daily ETF",
+   "u": "ADBE"
+  },
+  "ADBU": {
+   "dv20": 179728.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Adbe Bull 2X ETF",
+   "u": "ADBE"
+  },
+  "ADIU": {
+   "dv20": 71516.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long ADI Daily ETF",
+   "u": "ADI"
+  },
+  "AEHG": {
+   "dv20": 11062535.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long AEHR Da",
+   "u": "AEHR"
+  },
+  "AGQ": {
+   "dv20": 164616577.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Silver",
+   "u": "Silver"
+  },
+  "AIBD": {
+   "dv20": 910318.0,
+   "issuer": "Direxion",
+   "lev": -2.0,
+   "name": null,
+   "u": "AI & Big Data index"
+  },
+  "AIBU": {
+   "dv20": 365399.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily AI And Big Data Bull 2X Shares",
+   "u": "AI & Big Data index"
+  },
+  "AIQD": {
+   "dv20": 75098.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "AI index"
+  },
+  "AKAL": {
+   "dv20": 276855.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long AKAM Daily Target ETF",
+   "u": "AKAM"
+  },
+  "ALA": {
+   "dv20": 105349.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ALAB 2x Daily ETF",
+   "u": "ALAB"
+  },
+  "AMA": {
+   "dv20": 1875395.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long AMAT ETF",
+   "u": "AMAT"
+  },
+  "AMAA": {
+   "dv20": 37326.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi AMZN 2x Daily ETF",
+   "u": "AMZN"
+  },
+  "AMAU": {
+   "dv20": 2025855.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long AMAT Daily ETF",
+   "u": "AMAT"
+  },
+  "AMDC": {
+   "dv20": 547447.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi AMD 2x Daily ETF",
+   "u": "AMD"
+  },
+  "AMDG": {
+   "dv20": 7525286.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long AMD Daily ETF",
+   "u": "AMD"
+  },
+  "AMDL": {
+   "dv20": 244996153.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long AMD Daily ETF",
+   "u": "AMD"
+  },
+  "AMKL": {
+   "dv20": 776917.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long AMKR ETF",
+   "u": "AMKR"
+  },
+  "AMKX": {
+   "dv20": 19853.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi AMKR 2x Daily ETF",
+   "u": "AMKR"
+  },
+  "AMUU": {
+   "dv20": 24242729.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily AMD Bull 2X Shares",
+   "u": "AMD"
+  },
+  "AMZG": {
+   "dv20": 763896.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long AMZN Daily ETF",
+   "u": "AMZN"
+  },
+  "AMZO": {
+   "dv20": 1549948.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "AMZN"
+  },
+  "AMZU": {
+   "dv20": 66039809.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily AMZN Bull 2X Shares",
+   "u": "AMZN"
+  },
+  "AMZZ": {
+   "dv20": 4886029.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long AMZN Daily ETF",
+   "u": "AMZN"
+  },
+  "ANEL": {
+   "dv20": 1456238.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long ANET ETF",
+   "u": "ANET"
+  },
+  "APHG": {
+   "dv20": 44194.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long APH Daily ETF",
+   "u": "APH"
+  },
+  "APHU": {
+   "dv20": 116335.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2x Long Aph Daily Target ETF",
+   "u": "APH"
+  },
+  "APLX": {
+   "dv20": 16997560.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long APLD Daily ETF",
+   "u": "APLD"
+  },
+  "APLZ": {
+   "dv20": 2072763.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "APLD"
+  },
+  "APMI": {
+   "dv20": 7550.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi AMAT 2x Daily ETF",
+   "u": "AMAT"
+  },
+  "APPC": {
+   "dv20": 108682.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi APP 2x Daily ETF",
+   "u": "APP"
+  },
+  "APPX": {
+   "dv20": 23439740.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long APP Daily ETF",
+   "u": "APP"
+  },
+  "ARCX": {
+   "dv20": 359700.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long ACHR Daily ETF",
+   "u": "ACHR"
+  },
+  "ARMA": {
+   "dv20": 8888.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ARM 2x Daily ETF",
+   "u": "ARM"
+  },
+  "ARMG": {
+   "dv20": 8093161.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long ARM Daily ETF",
+   "u": "ARM"
+  },
+  "ASMG": {
+   "dv20": 962444.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long ASML Daily ETF",
+   "u": "ASML"
+  },
+  "ASMU": {
+   "dv20": 942567.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily ASML Bull 2X ETF",
+   "u": "ASML"
+  },
+  "ASMZ": {
+   "dv20": 12999.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ASML 2x Daily ETF",
+   "u": "ASML"
+  },
+  "ASSX": {
+   "dv20": 3418356.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long Asst Daily Target ETF",
+   "u": "ASST"
+  },
+  "ASTG": {
+   "dv20": 294510.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long ASTS Daily ETF",
+   "u": "ASTS"
+  },
+  "ASTT": {
+   "dv20": 19240.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ASTS 2x Daily ETF",
+   "u": "ASTS"
+  },
+  "ASTX": {
+   "dv20": 27628548.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long ASTS Daily ETF",
+   "u": "ASTS"
+  },
+  "ASTY": {
+   "dv20": 572262.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long A",
+   "u": "ASTS"
+  },
+  "AVAZ": {
+   "dv20": 102897.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "2x Avalanche ETF",
+   "u": "AVAX"
+  },
+  "AVGC": {
+   "dv20": 51796.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi AVGO 2x Daily ETF",
+   "u": "AVGO"
+  },
+  "AVGG": {
+   "dv20": 4503273.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long AVGO Daily ETF",
+   "u": "AVGO"
+  },
+  "AVGU": {
+   "dv20": 3771777.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long AVGO Daily ETF",
+   "u": "AVGO"
+  },
+  "AVGX": {
+   "dv20": 14977469.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long AVGO ETF",
+   "u": "AVGO"
+  },
+  "AVL": {
+   "dv20": 28808305.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily AVGO Bull 2X Shares",
+   "u": "AVGO"
+  },
+  "AVXX": {
+   "dv20": 757629.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long AVAV ETF",
+   "u": "AVAV"
+  },
+  "AXTC": {
+   "dv20": 104248.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi AXTI 2x Daily ETF",
+   "u": "AXTI"
+  },
+  "AXTL": {
+   "dv20": 3820803.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long AXTI Daily ETF",
+   "u": "AXTI"
+  },
+  "AXTQ": {
+   "dv20": 16640858.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "AXTI"
+  },
+  "AXTU": {
+   "dv20": 1849385.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long AXTI Daily Target ETF",
+   "u": "AXTI"
+  },
+  "AXTX": {
+   "dv20": 82127813.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long AXTI Daily ETF",
+   "u": "AXTI"
+  },
+  "BABC": {
+   "dv20": 5331.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi BABA 2x Daily ETF",
+   "u": "BABA"
+  },
+  "BABU": {
+   "dv20": 739895.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily BABA Bull 2X ETF",
+   "u": "BABA"
+  },
+  "BABX": {
+   "dv20": 11943209.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long BABA Daily ETF",
+   "u": "BABA"
+  },
+  "BAIG": {
+   "dv20": 381490.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long BBAI Daily ETF",
+   "u": "BBAI"
+  },
+  "BBUL": {
+   "dv20": 65286.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long BB Daily ETF",
+   "u": "BB"
+  },
+  "BEC": {
+   "dv20": 438857.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi BE 2x Daily ETF",
+   "u": "BE"
+  },
+  "BEG": {
+   "dv20": 14281124.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long BE Daily ETF",
+   "u": "BE"
+  },
+  "BERZ": {
+   "dv20": 1568946.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "FANG+"
+  },
+  "BEX": {
+   "dv20": 83804814.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long BE Daily ETF",
+   "u": "BE"
+  },
+  "BEZ": {
+   "dv20": 45642919.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "BE"
+  },
+  "BIB": {
+   "dv20": 958167.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Nasdaq Biotechnology",
+   "u": "IBB"
+  },
+  "BIDG": {
+   "dv20": 616934.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long BIDU Daily ETF",
+   "u": "BIDU"
+  },
+  "BIS": {
+   "dv20": 114891.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "IBB"
+  },
+  "BITU": {
+   "dv20": 41208111.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Proshares Ultra Bitcoin ETF",
+   "u": "BTC"
+  },
+  "BITX": {
+   "dv20": 90620074.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "2x Bitcoin Strategy ETF",
+   "u": "BTC"
+  },
+  "BMNG": {
+   "dv20": 3783247.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long BMNR Daily ETF",
+   "u": "BMNR"
+  },
+  "BMNU": {
+   "dv20": 55871897.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long BMNR Daily Target ETF",
+   "u": "BMNR"
+  },
+  "BMNZ": {
+   "dv20": 22901969.0,
+   "issuer": "Defiance",
+   "lev": -2.0,
+   "name": null,
+   "u": "BMNR"
+  },
+  "BNKD": {
+   "dv20": 17147.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Big US Banks"
+  },
+  "BNKU": {
+   "dv20": 345378.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectors U.S. Big Banks 3x Leveraged ETNs",
+   "u": "Big US Banks"
+  },
+  "BNMC": {
+   "dv20": 8336.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi BMNR 2x Daily ETF",
+   "u": "BMNR"
+  },
+  "BOEG": {
+   "dv20": 1017505.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long BA Daily ETF",
+   "u": "BA"
+  },
+  "BOEU": {
+   "dv20": 2045715.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily BA Bull 2X Shares",
+   "u": "BA"
+  },
+  "BOIL": {
+   "dv20": 111885635.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Bloomberg Natural Gas",
+   "u": "Natural gas"
+  },
+  "BRKL": {
+   "dv20": 27278.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi BRKB 2x Daily ETF",
+   "u": "BRKB"
+  },
+  "BRKU": {
+   "dv20": 2674121.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily BRKB Bull 2X Shares",
+   "u": "BRKB"
+  },
+  "BRZD": {
+   "dv20": 273434.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Brazil"
+  },
+  "BRZL": {
+   "dv20": 4307523.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectors 3x Long Brazil Etns",
+   "u": "Brazil"
+  },
+  "BRZU": {
+   "dv20": 17603090.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily MSCI Brazil Bull 2X Shares",
+   "u": "Brazil"
+  },
+  "BRZX": {
+   "dv20": 19681.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi Brazil 2x Daily ETF",
+   "u": "Brazil"
+  },
+  "BTCL": {
+   "dv20": 806780.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long Bitcoin Daily Target ETF",
+   "u": "BTC"
+  },
+  "BTCU": {
+   "dv20": 492397.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Bitcoin Bull 2X ETF",
+   "u": "BTC"
+  },
+  "BTCZ": {
+   "dv20": 95630256.0,
+   "issuer": "T-REX",
+   "lev": -2.0,
+   "name": null,
+   "u": "BTC"
+  },
+  "BTDL": {
+   "dv20": 464926.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long BTDR Daily ETF",
+   "u": "BTDR"
+  },
+  "BULG": {
+   "dv20": 90507.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long BULL Daily ETF",
+   "u": "BULL"
+  },
+  "BULZ": {
+   "dv20": 27009071.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectors Solactive FANG Innovation 3X Leveraged ETNs",
+   "u": "FANG+"
+  },
+  "BZQ": {
+   "dv20": 342651.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Brazil"
+  },
+  "CAMC": {
+   "dv20": 3947.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi CAMT 2x Daily ETF",
+   "u": "CAMT"
+  },
+  "CARD": {
+   "dv20": 26587.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Auto industry"
+  },
+  "CARU": {
+   "dv20": 24136.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Max Auto Industry 3X Leveraged ETN",
+   "u": "Auto industry"
+  },
+  "CARX": {
+   "dv20": 9892.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi CART 2x Daily ETF",
+   "u": "CART"
+  },
+  "CATG": {
+   "dv20": 1135917.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long CAT Daily ETF",
+   "u": "CAT"
+  },
+  "CBRG": {
+   "dv20": 10217830.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long CBRS Daily ETF",
+   "u": "CBRS"
+  },
+  "CBRX": {
+   "dv20": 8112772.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long CBRS Daily",
+   "u": "CBRS"
+  },
+  "CBRZ": {
+   "dv20": 4013929.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "CBRS"
+  },
+  "CCPX": {
+   "dv20": 2008.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi China 2x Daily ETF",
+   "u": "China"
+  },
+  "CCUP": {
+   "dv20": 759401.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long CRCL Daily Target ETF",
+   "u": "CRCL"
+  },
+  "CDNG": {
+   "dv20": 85739.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long CDNS Daily ETF",
+   "u": "CDNS"
+  },
+  "CEGX": {
+   "dv20": 1125998.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long CEG Daily ETF",
+   "u": "CEG"
+  },
+  "CHAU": {
+   "dv20": 908450.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily CSI 300 China A Share Bull 2X Shares",
+   "u": "China A-shares"
+  },
+  "CHNU": {
+   "dv20": 127529.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "2x Chainlink ETF",
+   "u": "LINK"
+  },
+  "CIEG": {
+   "dv20": 6150162.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long CIEN Daily ETF",
+   "u": "CIEN"
+  },
+  "CIEX": {
+   "dv20": 238559.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long CIEN Daily ETF",
+   "u": "CIEN"
+  },
+  "CIFC": {
+   "dv20": 44436.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi CIFR 2x Daily ETF",
+   "u": "CIFR"
+  },
+  "CIFG": {
+   "dv20": 1412247.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long CIFR Daily ETF",
+   "u": "CIFR"
+  },
+  "CIFU": {
+   "dv20": 8429919.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X LONG CIFR DAILY TARGET ETF",
+   "u": "CIFR"
+  },
+  "CIR": {
+   "dv20": 11100.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi CRCL 2x Daily ETF",
+   "u": "CRCL"
+  },
+  "CLSX": {
+   "dv20": 2144636.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long CLSK Daily ETF",
+   "u": "CLSK"
+  },
+  "COHC": {
+   "dv20": 53661.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi COHR 2x Daily ETF",
+   "u": "COHR"
+  },
+  "COHH": {
+   "dv20": 9907256.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long COHR Daily ETF",
+   "u": "COHR"
+  },
+  "COHQ": {
+   "dv20": 2585029.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "COHR"
+  },
+  "COHX": {
+   "dv20": 24763373.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long COHR Daily ETF",
+   "u": "COHR"
+  },
+  "COIG": {
+   "dv20": 441152.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long COIN Daily ETF",
+   "u": "COIN"
+  },
+  "COIX": {
+   "dv20": 2998.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi COIN 2x Daily ETF",
+   "u": "COIN"
+  },
+  "CONI": {
+   "dv20": 4727832.0,
+   "issuer": "GraniteShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "COIN"
+  },
+  "CONL": {
+   "dv20": 55387811.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long COIN Daily ETF",
+   "u": "COIN"
+  },
+  "CONX": {
+   "dv20": 451239.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily COIN Bull 2X ETF",
+   "u": "COIN"
+  },
+  "COPZ": {
+   "dv20": 123817.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long Copper Miners ETF",
+   "u": "Copper miners"
+  },
+  "CORD": {
+   "dv20": 121441600.0,
+   "issuer": "T-REX",
+   "lev": -2.0,
+   "name": null,
+   "u": "CRWV"
+  },
+  "COTG": {
+   "dv20": 1037714.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long Cost Daily ETF",
+   "u": "COST"
+  },
+  "COZX": {
+   "dv20": 400455.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long CORZ Daily ETF",
+   "u": "CORZ"
+  },
+  "CPXR": {
+   "dv20": 340990.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "USCF Daily Target 2X Copper Index ETF",
+   "u": "Copper"
+  },
+  "CRCD": {
+   "dv20": 7367400.0,
+   "issuer": "T-REX",
+   "lev": -2.0,
+   "name": null,
+   "u": "CRCL"
+  },
+  "CRCG": {
+   "dv20": 14943366.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long CRCL Daily ETF",
+   "u": "CRCL"
+  },
+  "CRD": {
+   "dv20": 138521.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi CRDO 2x Daily ETF",
+   "u": "CRDO"
+  },
+  "CRDU": {
+   "dv20": 24564527.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long CRDO Daily ETF",
+   "u": "CRDO"
+  },
+  "CRDX": {
+   "dv20": 94323.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "2x Cardano ETF",
+   "u": "ADA"
+  },
+  "CRMG": {
+   "dv20": 5677482.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long CRM Daily ETF",
+   "u": "CRM"
+  },
+  "CRMX": {
+   "dv20": 763041.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long CRML Daily ETF",
+   "u": "CRML"
+  },
+  "CRUC": {
+   "dv20": 3003.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi CRUS 2x Daily ETF",
+   "u": "CRUS"
+  },
+  "CRWC": {
+   "dv20": 226402.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ETF Trust I - Corgi CRWD 2x Daily ETF",
+   "u": "CRWD"
+  },
+  "CRWG": {
+   "dv20": 84508659.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long CRWV Daily ETF",
+   "u": "CRWV"
+  },
+  "CRWL": {
+   "dv20": 9238487.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long CRWD Daily ETF",
+   "u": "CRWD"
+  },
+  "CRWU": {
+   "dv20": 5018166.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long CRWV Daily Target ETF",
+   "u": "CRWV"
+  },
+  "CRWX": {
+   "dv20": 1258144.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi CRWV 2x Daily ETF",
+   "u": "CRWV"
+  },
+  "CSCL": {
+   "dv20": 1148292.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily CSCO Bull 2X Shares",
+   "u": "CSCO"
+  },
+  "CSEX": {
+   "dv20": 2686381.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long CLS Daily ETF",
+   "u": "CLS"
+  },
+  "CURE": {
+   "dv20": 12044779.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Healthcare Bull 3X Shares",
+   "u": "Health care"
+  },
+  "CWEB": {
+   "dv20": 14649697.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily CSI China Internet Bull 2X Shares",
+   "u": "China internet"
+  },
+  "CWVX": {
+   "dv20": 30264540.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long CRWV Daily ETF",
+   "u": "CRWV"
+  },
+  "CXRN": {
+   "dv20": 92239.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Teucrium 2x Daily Corn ETF",
+   "u": "Corn"
+  },
+  "DAMD": {
+   "dv20": 87645451.0,
+   "issuer": "Defiance",
+   "lev": -2.0,
+   "name": null,
+   "u": "AMD"
+  },
+  "DDM": {
+   "dv20": 22204457.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Dow30",
+   "u": "DIA"
+  },
+  "DFEN": {
+   "dv20": 14678964.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Aerospace & Defense Bull 3X Shares",
+   "u": "Defense"
+  },
+  "DIG": {
+   "dv20": 3192877.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Energy",
+   "u": "Energy"
+  },
+  "DJTU": {
+   "dv20": 279745.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long DJT Daily Target ETF",
+   "u": "DJT"
+  },
+  "DLLL": {
+   "dv20": 24614454.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long DELL Daily ETF",
+   "u": "DELL"
+  },
+  "DPST": {
+   "dv20": 25221164.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Regional Banks Bull 3X Shares",
+   "u": "KRE"
+  },
+  "DRAL": {
+   "dv20": 2077891.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long DRAM ETF",
+   "u": "DRAM"
+  },
+  "DRIP": {
+   "dv20": 49095095.0,
+   "issuer": "Direxion",
+   "lev": -2.0,
+   "name": null,
+   "u": "Oil & gas E&P"
+  },
+  "DRN": {
+   "dv20": 14014376.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Real Estate Bull 3X Shares",
+   "u": "Real estate"
+  },
+  "DRV": {
+   "dv20": 2768883.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "Real estate"
+  },
+  "DUG": {
+   "dv20": 7376916.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Energy"
+  },
+  "DULL": {
+   "dv20": 373891.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Gold"
+  },
+  "DUOG": {
+   "dv20": 281010.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long DUOL Daily ETF",
+   "u": "DUOL"
+  },
+  "DUSL": {
+   "dv20": 1057799.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Industrials Bull 3X Shares",
+   "u": "Industrials"
+  },
+  "DUST": {
+   "dv20": 36962231.0,
+   "issuer": "Direxion",
+   "lev": -2.0,
+   "name": null,
+   "u": "Gold miners"
+  },
+  "DXD": {
+   "dv20": 89688846.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "DIA"
+  },
+  "DZZ": {
+   "dv20": 10164.0,
+   "issuer": "DB",
+   "lev": -2.0,
+   "name": null,
+   "u": "Gold"
+  },
+  "ECHX": {
+   "dv20": 451101.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long ECHO Daily ETF",
+   "u": "ECHO"
+  },
+  "EDC": {
+   "dv20": 4455605.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily MSCI Emerging Markets Bull 3X Shares",
+   "u": "EEM"
+  },
+  "EDZ": {
+   "dv20": 4235398.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "EEM"
+  },
+  "EET": {
+   "dv20": 346107.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra MSCI Emerging Markets",
+   "u": "EEM"
+  },
+  "EEV": {
+   "dv20": 144734.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "EEM"
+  },
+  "EFO": {
+   "dv20": 416124.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra MSCI EAFE",
+   "u": "EFA"
+  },
+  "EFU": {
+   "dv20": 88130.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "EFA"
+  },
+  "ELIL": {
+   "dv20": 2740816.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily LLY Bull 2X Shares",
+   "u": "LLY"
+  },
+  "EMXX": {
+   "dv20": 2061.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi Emerging Markets 2x Daily ETF",
+   "u": "EEM"
+  },
+  "ENTL": {
+   "dv20": 56495.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long ENTG Daily ETF",
+   "u": "ENTG"
+  },
+  "EO": {
+   "dv20": 17166.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi EOSE 2x Daily ETF",
+   "u": "EOSE"
+  },
+  "EOSU": {
+   "dv20": 1326249.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long Eose Daily Target ETF",
+   "u": "EOSE"
+  },
+  "EPV": {
+   "dv20": 275554.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Europe (VGK)"
+  },
+  "EQQQ": {
+   "dv20": 115024.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra QQQ Equal Weight",
+   "u": "QQQ"
+  },
+  "ERX": {
+   "dv20": 52800545.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Energy Bull 2X Shares",
+   "u": "Energy"
+  },
+  "ERY": {
+   "dv20": 200145436.0,
+   "issuer": "Direxion",
+   "lev": -2.0,
+   "name": null,
+   "u": "Energy"
+  },
+  "ETHD": {
+   "dv20": 19304126.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "ETH"
+  },
+  "ETHT": {
+   "dv20": 14179903.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Proshares Ultra Ether ETF",
+   "u": "ETH"
+  },
+  "ETHU": {
+   "dv20": 85553844.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "2x Ether ETF",
+   "u": "ETH"
+  },
+  "ETNG": {
+   "dv20": 70311.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long ETN Daily ETF",
+   "u": "ETN"
+  },
+  "ETU": {
+   "dv20": 255372.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long Ether Daily Target ETF",
+   "u": "ETH"
+  },
+  "EUO": {
+   "dv20": 876604.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "EUR/USD"
+  },
+  "EURL": {
+   "dv20": 507870.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily FTSE Europe Bull 3X Shares",
+   "u": "Europe (VGK)"
+  },
+  "EVMU": {
+   "dv20": 96305.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Ether Bull 2X ETF",
+   "u": "ETH"
+  },
+  "EWV": {
+   "dv20": 350736.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Japan"
+  },
+  "EZJ": {
+   "dv20": 139734.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra MSCI Japan",
+   "u": "Japan"
+  },
+  "FAS": {
+   "dv20": 61935611.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Financial Bull 3X Shares",
+   "u": "Financials"
+  },
+  "FAZ": {
+   "dv20": 63130804.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "Financials"
+  },
+  "FBL": {
+   "dv20": 13839139.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long META Daily ETF",
+   "u": "META"
+  },
+  "FBX": {
+   "dv20": 10811.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi META 2x Daily ETF",
+   "u": "META"
+  },
+  "FGRU": {
+   "dv20": 517809.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long FIGR Daily Target ETF",
+   "u": "FIGR"
+  },
+  "FIGG": {
+   "dv20": 724638.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2x Long FIG Daily ETF",
+   "u": "FIG"
+  },
+  "FIXX": {
+   "dv20": 105502.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long FIX Daily ETF",
+   "u": "FIX"
+  },
+  "FLEL": {
+   "dv20": 32955.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long FLEX Daily ETF",
+   "u": "FLEX"
+  },
+  "FLYD": {
+   "dv20": 45746.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Travel"
+  },
+  "FLYT": {
+   "dv20": 1161347.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long FLY Daily ETF",
+   "u": "FLY"
+  },
+  "FLYU": {
+   "dv20": 68568.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectors Travel 3X Leveraged ETNs",
+   "u": "Travel"
+  },
+  "FNG": {
+   "dv20": 406380.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long FN Daily ETF",
+   "u": "FN"
+  },
+  "FNGD": {
+   "dv20": 19429237.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "FANG+"
+  },
+  "FNGG": {
+   "dv20": 710135.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily NYSE FANG+ Bull 2X Shares",
+   "u": "FANG+"
+  },
+  "FNGO": {
+   "dv20": 466281.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "MicroSectors FANG+ Index 2X Leveraged ETN",
+   "u": "FANG+"
+  },
+  "FNGU": {
+   "dv20": 71696486.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectors FANG+ 3X Leveraged",
+   "u": "FANG+"
+  },
+  "FOMG": {
+   "dv20": 185479.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long FORM Daily ETF",
+   "u": "FORM"
+  },
+  "FPSX": {
+   "dv20": 1418329.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long FPS Daily ETF",
+   "u": "FPS"
+  },
+  "FUTG": {
+   "dv20": 1458173.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long Futu Daily ETF",
+   "u": "FUTU"
+  },
+  "FXP": {
+   "dv20": 104466.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "China"
+  },
+  "GDXD": {
+   "dv20": 40047086.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Gold miners"
+  },
+  "GDXU": {
+   "dv20": 190361712.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectors Gold Miners 3X Leveraged ETNs",
+   "u": "Gold miners"
+  },
+  "GEVC": {
+   "dv20": 23714.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi GEV 2x Daily ETF",
+   "u": "GEV"
+  },
+  "GEVG": {
+   "dv20": 876926.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long GEV Daily ETF",
+   "u": "GEV"
+  },
+  "GEVX": {
+   "dv20": 3406653.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long GEV Daily ETF",
+   "u": "GEV"
+  },
+  "GFSG": {
+   "dv20": 274620.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long GFS Daily ETF",
+   "u": "GFS"
+  },
+  "GGLL": {
+   "dv20": 191520394.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily GOOGL Bull 2X Shares",
+   "u": "GOOGL"
+  },
+  "GLL": {
+   "dv20": 73842916.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Gold"
+  },
+  "GLLD": {
+   "dv20": 9619181.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectors Gold 3X Leveraged ETN",
+   "u": "Gold"
+  },
+  "GLWG": {
+   "dv20": 6974475.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long GLW Daily ETF",
+   "u": "GLW"
+  },
+  "GLX": {
+   "dv20": 15953.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi GLXY 2x Daily ETF",
+   "u": "GLXY"
+  },
+  "GLXU": {
+   "dv20": 1059300.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long GLXY Daily Target",
+   "u": "GLXY"
+  },
+  "GMEC": {
+   "dv20": 3357.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi GME 2x Daily ETF",
+   "u": "GME"
+  },
+  "GMEU": {
+   "dv20": 5841693.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long GME Daily Target ETF",
+   "u": "GME"
+  },
+  "GOGL": {
+   "dv20": 1260942.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi GOOGL 2x Daily ETF",
+   "u": "GOOGL"
+  },
+  "GOOL": {
+   "dv20": 3514046.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long GOOGL Daily ETF",
+   "u": "GOOGL"
+  },
+  "GOOX": {
+   "dv20": 12007391.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long Alphabet Daily Target ETF",
+   "u": "GOOGL"
+  },
+  "GOU": {
+   "dv20": 4539144.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long GOOGL Daily ETF",
+   "u": "GOOGL"
+  },
+  "GRAG": {
+   "dv20": 216942.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long GRAB Daily ETF",
+   "u": "GRAB"
+  },
+  "GUSH": {
+   "dv20": 22142649.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily S&P Oil & Gas Exp. & Prod. Bull 2X Shares",
+   "u": "Oil & gas E&P"
+  },
+  "HIBL": {
+   "dv20": 5747761.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily S&P 500 High Beta Bull 3X Shares",
+   "u": "S&P 500 High Beta"
+  },
+  "HIBS": {
+   "dv20": 5764845.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "S&P 500 High Beta"
+  },
+  "HIMC": {
+   "dv20": 22119.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi HIMS 2x Daily ETF",
+   "u": "HIMS"
+  },
+  "HIMZ": {
+   "dv20": 8074571.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long HIMS ETF",
+   "u": "HIMS"
+  },
+  "HODU": {
+   "dv20": 1222773.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily HOOD Bull 2X ETF",
+   "u": "HOOD"
+  },
+  "HOOC": {
+   "dv20": 14580.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi Hood 2x Daily ETF",
+   "u": "HOOD"
+  },
+  "HOOG": {
+   "dv20": 6619674.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long HOOD Daily ETF",
+   "u": "HOOD"
+  },
+  "HOOX": {
+   "dv20": 565919.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long HOOD ETF",
+   "u": "HOOD"
+  },
+  "HPEL": {
+   "dv20": 1908596.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long HPE Daily ETF",
+   "u": "HPE"
+  },
+  "HUTG": {
+   "dv20": 1494881.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long HUT Daily ETF",
+   "u": "HUT"
+  },
+  "HYGU": {
+   "dv20": 2849.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Microsectors 3x Long High Yield Corporate Bond (HYG) ETNs",
+   "u": "High yield"
+  },
+  "HYNX": {
+   "dv20": 5842644.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long SKHY Daily Target ETF",
+   "u": "SK Hynix"
+  },
+  "IBX": {
+   "dv20": 2453613.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long IBM Daily ETF",
+   "u": "IBM"
+  },
+  "INDL": {
+   "dv20": 1036409.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily MSCI India Bull 2x Shares",
+   "u": "India"
+  },
+  "INFH": {
+   "dv20": 539175.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tidal Trust II - Defiance Daily Target 2X Long INFQ ETF",
+   "u": "INFQ"
+  },
+  "INT": {
+   "dv20": 1779953.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi Intc 2x Daily ETF",
+   "u": "INTC"
+  },
+  "INTW": {
+   "dv20": 116089766.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long INTC Daily ETF",
+   "u": "INTC"
+  },
+  "IONC": {
+   "dv20": 43258.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi IONQ 2x Daily ETF",
+   "u": "IONQ"
+  },
+  "IONL": {
+   "dv20": 10186521.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long IONQ Daily ETF",
+   "u": "IONQ"
+  },
+  "IONX": {
+   "dv20": 16274629.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long IONQ ETF",
+   "u": "IONQ"
+  },
+  "IONZ": {
+   "dv20": 7863376.0,
+   "issuer": "Defiance",
+   "lev": -2.0,
+   "name": null,
+   "u": "IONQ"
+  },
+  "IOSX": {
+   "dv20": 4147.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi AAPL 2x Daily ETF",
+   "u": "AAPL"
+  },
+  "IRE": {
+   "dv20": 57790881.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long IREN ETF",
+   "u": "IREN"
+  },
+  "IREC": {
+   "dv20": 47877.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi IREN 2x Daily ETF",
+   "u": "IREN"
+  },
+  "IREG": {
+   "dv20": 8671724.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long IREN Daily ETF",
+   "u": "IREN"
+  },
+  "IREX": {
+   "dv20": 29618139.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long IREN Daily ETF",
+   "u": "IREN"
+  },
+  "IREZ": {
+   "dv20": 29461392.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "IREN"
+  },
+  "ISUL": {
+   "dv20": 497391.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long ISRG Daily ETF",
+   "u": "ISRG"
+  },
+  "JBLG": {
+   "dv20": 22389.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long JBL Daily ETF",
+   "u": "JBL"
+  },
+  "JDST": {
+   "dv20": 24469636.0,
+   "issuer": "Direxion",
+   "lev": -2.0,
+   "name": null,
+   "u": "Gold miners (junior)"
+  },
+  "JETD": {
+   "dv20": 252788.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Airlines (JETS)"
+  },
+  "JETU": {
+   "dv20": 174785.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MAX Airlines 3X Leveraged ETN",
+   "u": "Airlines (JETS)"
+  },
+  "JNUG": {
+   "dv20": 40950421.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Junior Gold Miners Index Bull 2X Shares",
+   "u": "Gold miners (junior)"
+  },
+  "JOBC": {
+   "dv20": 1225.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi JOBY 2x Daily ETF",
+   "u": "JOBY"
+  },
+  "JOBX": {
+   "dv20": 627435.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long JOBY Daily ETF",
+   "u": "JOBY"
+  },
+  "JPND": {
+   "dv20": 9200.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Japan"
+  },
+  "JPNU": {
+   "dv20": 7638.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectors 3x Long Japan Etns",
+   "u": "Japan"
+  },
+  "KATT": {
+   "dv20": 88951.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long PURR Daily Target ETF",
+   "u": "PURR"
+  },
+  "KEEX": {
+   "dv20": 501277.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2x Long KEEL ETF",
+   "u": "KEEL"
+  },
+  "KEYG": {
+   "dv20": 7901.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long KEYS Daily ETF",
+   "u": "KEYS"
+  },
+  "KEYX": {
+   "dv20": 3798.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi KEYS 2x Daily ETF",
+   "u": "KEYS"
+  },
+  "KLAG": {
+   "dv20": 805884.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long KLAC Daily ETF",
+   "u": "KLAC"
+  },
+  "KOLD": {
+   "dv20": 69828817.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Natural gas"
+  },
+  "KORU": {
+   "dv20": 445985538.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily South Korea Bull 3X Shares",
+   "u": "South Korea"
+  },
+  "KRWX": {
+   "dv20": 37496.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi South Korea 2x Daily ETF",
+   "u": "South Korea"
+  },
+  "KTUP": {
+   "dv20": 1405751.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long KTOS Daily Target ETF",
+   "u": "KTOS"
+  },
+  "LABD": {
+   "dv20": 190758287.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "XBI"
+  },
+  "LABU": {
+   "dv20": 78603337.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily S&P Biotech Bull 3X Shares",
+   "u": "XBI"
+  },
+  "LABX": {
+   "dv20": 11831056.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long ALAB Daily ETF",
+   "u": "ALAB"
+  },
+  "LASC": {
+   "dv20": 23785.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi LASR 2x Daily ETF",
+   "u": "LASR"
+  },
+  "LEUX": {
+   "dv20": 475703.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long LEU Daily ETF",
+   "u": "LEU"
+  },
+  "LINT": {
+   "dv20": 10452939.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily INTC Bull 2X ETF",
+   "u": "INTC"
+  },
+  "LITC": {
+   "dv20": 80069.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi LITE 2x Daily ETF",
+   "u": "LITE"
+  },
+  "LITG": {
+   "dv20": 594367.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long LITE Da",
+   "u": "LITE"
+  },
+  "LITU": {
+   "dv20": 1941861.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long Lite Daily Target ETF",
+   "u": "LITE"
+  },
+  "LITX": {
+   "dv20": 75597996.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long Lite Daily ETF",
+   "u": "LITE"
+  },
+  "LITZ": {
+   "dv20": 24066165.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "LITE"
+  },
+  "LLYX": {
+   "dv20": 8862889.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long LLY ETF",
+   "u": "LLY"
+  },
+  "LMTL": {
+   "dv20": 1009355.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily LMT Bull 2X ETF",
+   "u": "LMT"
+  },
+  "LNOK": {
+   "dv20": 659247.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2x Long NOK ETF",
+   "u": "NOK"
+  },
+  "LOFD": {
+   "dv20": 973996.0,
+   "issuer": "Direxion",
+   "lev": -2.0,
+   "name": null,
+   "u": "SPCX (SpaceX)"
+  },
+  "LOFF": {
+   "dv20": 30826514.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily SpaceX Bull 2X ETF",
+   "u": "SPCX (SpaceX)"
+  },
+  "LQDD": {
+   "dv20": 5713.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "LQD"
+  },
+  "LQDU": {
+   "dv20": 9774.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Microsectors 3x Long Investment Grade Corporate Bond (LQD) ETNs",
+   "u": "LQD"
+  },
+  "LRCC": {
+   "dv20": 91438.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi LRCX 2x Daily ETF",
+   "u": "LRCX"
+  },
+  "LRCU": {
+   "dv20": 2750141.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long LRCX Daily ETF",
+   "u": "LRCX"
+  },
+  "LRNX": {
+   "dv20": 2371.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi LRN 2x Daily ETF",
+   "u": "LRN"
+  },
+  "LTL": {
+   "dv20": 166406.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Communication Services",
+   "u": "Communication services"
+  },
+  "LULG": {
+   "dv20": 811245.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long LULU Daily ETF",
+   "u": "LULU"
+  },
+  "LUNL": {
+   "dv20": 4761781.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long LUNR ETF",
+   "u": "LUNR"
+  },
+  "LWLX": {
+   "dv20": 34787.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long LWLG Daily ETF",
+   "u": "LWLG"
+  },
+  "MAGX": {
+   "dv20": 2535229.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Roundhill Daily 2X Long Magnificent Seven ETF",
+   "u": "Magnificent 7"
+  },
+  "MCHG": {
+   "dv20": 51621.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long MCHP Daily ETF",
+   "u": "MCHP"
+  },
+  "MCHU": {
+   "dv20": 31675.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long MCHP Daily ETF",
+   "u": "MCHP"
+  },
+  "MEGX": {
+   "dv20": 2270.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Mega-Cap Growth 2x D",
+   "u": "US growth"
+  },
+  "METG": {
+   "dv20": 442646.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long META Daily ETF",
+   "u": "META"
+  },
+  "METQ": {
+   "dv20": 2886502.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "META"
+  },
+  "METU": {
+   "dv20": 83643617.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily META Bull 2X ETF",
+   "u": "META"
+  },
+  "MEXX": {
+   "dv20": 202452.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily MSCI Mexico Bull 3X Shares",
+   "u": "Mexico"
+  },
+  "MHX": {
+   "dv20": 3133.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi MARA 2x Daily ETF",
+   "u": "MARA"
+  },
+  "MIC": {
+   "dv20": 132226.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi MU 2x Daily ETF",
+   "u": "MU"
+  },
+  "MIDU": {
+   "dv20": 1631963.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Mid Cap Bull 3X Shares",
+   "u": "Mid cap 400"
+  },
+  "MNSX": {
+   "dv20": 10266.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi MNST 2x Daily ETF",
+   "u": "MNST"
+  },
+  "MPG": {
+   "dv20": 700615.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long MP Daily ETF",
+   "u": "MP"
+  },
+  "MPWC": {
+   "dv20": 10501.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi MPWR 2x Daily ETF",
+   "u": "MPWR"
+  },
+  "MPWX": {
+   "dv20": 275192.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long MPWR Daily ETF",
+   "u": "MPWR"
+  },
+  "MQQQ": {
+   "dv20": 16209697.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long Innovation 100 Monthly ETF",
+   "u": "Innovation 100"
+  },
+  "MRAL": {
+   "dv20": 2105582.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long MARA Daily ETF",
+   "u": "MARA"
+  },
+  "MRAX": {
+   "dv20": 42757.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long MRAM Daily ETF",
+   "u": "MRAM"
+  },
+  "MRNX": {
+   "dv20": 24356996.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long MRNA ETF",
+   "u": "MRNA"
+  },
+  "MRVU": {
+   "dv20": 14097566.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily MRVL Bull 2X ETF",
+   "u": "MRVL"
+  },
+  "MRVX": {
+   "dv20": 202296.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi MRVL 2x Daily ETF",
+   "u": "MRVL"
+  },
+  "MSFC": {
+   "dv20": 30676.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi MSFT 2x Daily ETF",
+   "u": "MSFT"
+  },
+  "MSFL": {
+   "dv20": 5577453.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long MSFT Daily ETF",
+   "u": "MSFT"
+  },
+  "MSFU": {
+   "dv20": 101120772.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily MSFT Bull 2X Shares",
+   "u": "MSFT"
+  },
+  "MSFX": {
+   "dv20": 1171849.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long Microsoft Daily Target ETF",
+   "u": "MSFT"
+  },
+  "MSIX": {
+   "dv20": 23927.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi MSI 2x Daily ETF",
+   "u": "MSI"
+  },
+  "MSOX": {
+   "dv20": 4601375.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "AdvisorShares MSOS Daily Leveraged ETF",
+   "u": "Cannabis (MSOS)"
+  },
+  "MSTC": {
+   "dv20": 16332.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi MSTR 2x Daily ETF",
+   "u": "MSTR"
+  },
+  "MSTP": {
+   "dv20": 764803.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long MSTR Daily ETF",
+   "u": "MSTR"
+  },
+  "MSTU": {
+   "dv20": 96800651.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long MSTR Daily Target ETF",
+   "u": "MSTR"
+  },
+  "MSTX": {
+   "dv20": 79788278.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long MSTR ETF",
+   "u": "MSTR"
+  },
+  "MSTZ": {
+   "dv20": 196908364.0,
+   "issuer": "T-REX",
+   "lev": -2.0,
+   "name": null,
+   "u": "MSTR"
+  },
+  "MTSG": {
+   "dv20": 104951.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long MTSI Daily ETF",
+   "u": "MTSI"
+  },
+  "MUG": {
+   "dv20": 752063.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long MU Daily ETF",
+   "u": "MU"
+  },
+  "MULL": {
+   "dv20": 88593559.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long MU Daily ETF",
+   "u": "MU"
+  },
+  "MUU": {
+   "dv20": 554175832.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily MU Bull 2X Shares",
+   "u": "MU"
+  },
+  "MUZ": {
+   "dv20": 81443289.0,
+   "issuer": "Defiance",
+   "lev": -2.0,
+   "name": null,
+   "u": "MU"
+  },
+  "MVLL": {
+   "dv20": 61537889.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long MRVL Daily ETF",
+   "u": "MRVL"
+  },
+  "MVV": {
+   "dv20": 520609.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra MidCap400",
+   "u": "Mid cap 400"
+  },
+  "MXLL": {
+   "dv20": 539309.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long MXL Daily ETF",
+   "u": "MXL"
+  },
+  "MZZ": {
+   "dv20": 37535.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Mid cap 400"
+  },
+  "NAIL": {
+   "dv20": 51639549.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Homebuilders & Supplies Bull 3X Shares",
+   "u": "Homebuilders"
+  },
+  "NBIC": {
+   "dv20": 202757.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi NBIS 2x Daily ETF",
+   "u": "NBIS"
+  },
+  "NBIG": {
+   "dv20": 47593168.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long NBIS Daily ETF",
+   "u": "NBIS"
+  },
+  "NBIL": {
+   "dv20": 108320219.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long NBIS Daily ETF",
+   "u": "NBIS"
+  },
+  "NBIZ": {
+   "dv20": 58180319.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "NBIS"
+  },
+  "NEBX": {
+   "dv20": 45828431.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long NBIS Daily ETF",
+   "u": "NBIS"
+  },
+  "NETG": {
+   "dv20": 1531467.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long NET Daily ETF",
+   "u": "NET"
+  },
+  "NFLU": {
+   "dv20": 2730268.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long NFLX Daily Target ETF",
+   "u": "NFLX"
+  },
+  "NFX": {
+   "dv20": 4509.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi NFLX 2x Daily ETF",
+   "u": "NFLX"
+  },
+  "NFXL": {
+   "dv20": 16316068.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily NFLX Bull 2X Shares",
+   "u": "NFLX"
+  },
+  "NIOG": {
+   "dv20": 247265.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long NIO Daily ETF",
+   "u": "NIO"
+  },
+  "NOWL": {
+   "dv20": 38416389.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long NOW Daily ETF",
+   "u": "NOW"
+  },
+  "NOWX": {
+   "dv20": 77943.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi NOW 2x Daily ETF",
+   "u": "NOW"
+  },
+  "NRGD": {
+   "dv20": 428460.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Energy"
+  },
+  "NRGU": {
+   "dv20": 3311788.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Microsectors U.S. Big Oil 3x Leveraged ETNs",
+   "u": "Energy"
+  },
+  "NTAL": {
+   "dv20": 79492.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long NTAP Daily ETF",
+   "u": "NTAP"
+  },
+  "NUGT": {
+   "dv20": 103198854.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Gold Miners Index Bull 2X Shares",
+   "u": "Gold miners"
+  },
+  "NVC": {
+   "dv20": 112339.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi NVDA 2x Daily ETF",
+   "u": "NVDA"
+  },
+  "NVD": {
+   "dv20": 616451394.0,
+   "issuer": "GraniteShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "NVDA"
+  },
+  "NVDG": {
+   "dv20": 8438319.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long NVDA Daily ETF",
+   "u": "NVDA"
+  },
+  "NVDL": {
+   "dv20": 672282538.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long NVDA Daily ETF",
+   "u": "NVDA"
+  },
+  "NVDQ": {
+   "dv20": 92310326.0,
+   "issuer": "T-REX",
+   "lev": -2.0,
+   "name": null,
+   "u": "NVDA"
+  },
+  "NVDS": {
+   "dv20": 11869441.0,
+   "issuer": "Tradr",
+   "lev": -1.5,
+   "name": null,
+   "u": "NVDA"
+  },
+  "NVDU": {
+   "dv20": 86930558.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Nvda Bull 2X Shares",
+   "u": "NVDA"
+  },
+  "NVDX": {
+   "dv20": 103237095.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long NVIDIA Daily Target ETF",
+   "u": "NVDA"
+  },
+  "NVOC": {
+   "dv20": 2192.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi NVO 2x Daily ETF",
+   "u": "NVO"
+  },
+  "NVOX": {
+   "dv20": 2271070.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long NVO ETF",
+   "u": "NVO"
+  },
+  "NVTC": {
+   "dv20": 13040.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi NVTS 2x Daily ETF",
+   "u": "NVTS"
+  },
+  "NVTX": {
+   "dv20": 2857680.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long NVTS Daily ETF",
+   "u": "NVTS"
+  },
+  "NXPG": {
+   "dv20": 85585.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long NXPI Daily ETF",
+   "u": "NXPI"
+  },
+  "OCNL": {
+   "dv20": 120570.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long DOCN Daily Target ETF",
+   "u": "DOCN"
+  },
+  "OILD": {
+   "dv20": 2119660.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Oil & gas E&P"
+  },
+  "OILU": {
+   "dv20": 2572356.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectorsTM Oil & Gas Exploration & Production 3X Leveraged ETNs",
+   "u": "Oil & gas E&P"
+  },
+  "OKLC": {
+   "dv20": 18321.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi OKLO 2x Daily ETF",
+   "u": "OKLO"
+  },
+  "OKLL": {
+   "dv20": 12191043.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long OKLO ETF",
+   "u": "OKLO"
+  },
+  "OKTG": {
+   "dv20": 2306199.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long OKTA Daily ETF",
+   "u": "OKTA"
+  },
+  "ONDC": {
+   "dv20": 9511.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ONDS 2x Daily ETF",
+   "u": "ONDS"
+  },
+  "ONDG": {
+   "dv20": 2134950.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long ONDS Daily ETF",
+   "u": "ONDS"
+  },
+  "ONDL": {
+   "dv20": 6904061.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long ONDS ETF",
+   "u": "ONDS"
+  },
+  "ONDU": {
+   "dv20": 190937.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long ONDS Daily ETF",
+   "u": "ONDS"
+  },
+  "ONG": {
+   "dv20": 218351.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long ON Daily ETF",
+   "u": "ON"
+  },
+  "ONTX": {
+   "dv20": 253292.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ONTO 2x Daily ETF",
+   "u": "ONTO"
+  },
+  "ONX": {
+   "dv20": 121920.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long ON Daily ETF",
+   "u": "ON"
+  },
+  "OPEX": {
+   "dv20": 567891.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long OPEN Daily ETF",
+   "u": "OPEN"
+  },
+  "ORAC": {
+   "dv20": 73239.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ORCL 2x Daily ETF",
+   "u": "ORCL"
+  },
+  "ORCU": {
+   "dv20": 27907936.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily ORCL Bull 2X ETF",
+   "u": "ORCL"
+  },
+  "ORCX": {
+   "dv20": 33905887.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long ORCL ETF",
+   "u": "ORCL"
+  },
+  "ORCZ": {
+   "dv20": 4063968.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "ORCL"
+  },
+  "OSCX": {
+   "dv20": 343583.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2x Long OSCR ETF",
+   "u": "OSCR"
+  },
+  "OSSL": {
+   "dv20": 28077.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long OSS ETF",
+   "u": "OSS"
+  },
+  "OUSL": {
+   "dv20": 666110.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long Oust ETF",
+   "u": "OUST"
+  },
+  "PALU": {
+   "dv20": 5034264.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily PANW Bull 2X Shares",
+   "u": "PANW"
+  },
+  "PANG": {
+   "dv20": 1408673.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long PANW Daily ETF",
+   "u": "PANW"
+  },
+  "PATX": {
+   "dv20": 116089.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long PATH Daily ETF",
+   "u": "PATH"
+  },
+  "PDDL": {
+   "dv20": 496126.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long PDD Daily ETF",
+   "u": "PDD"
+  },
+  "PENU": {
+   "dv20": 437619.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long PENG Daily Target ETF",
+   "u": "PENG"
+  },
+  "PILL": {
+   "dv20": 1141340.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Pharmaceutical & Medical Bull 3X Shares ETF",
+   "u": "Pharma"
+  },
+  "PLTG": {
+   "dv20": 957429.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long PLTR Daily ETF",
+   "u": "PLTR"
+  },
+  "PLTL": {
+   "dv20": 27500.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi PLTR 2x Daily ETF",
+   "u": "PLTR"
+  },
+  "PLTU": {
+   "dv20": 23309387.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily PLTR Bull 2X Shares",
+   "u": "PLTR"
+  },
+  "PLTZ": {
+   "dv20": 26741288.0,
+   "issuer": "Defiance",
+   "lev": -2.0,
+   "name": null,
+   "u": "PLTR"
+  },
+  "PLU": {
+   "dv20": 294018.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long PL ETF",
+   "u": "PL"
+  },
+  "PLUL": {
+   "dv20": 302664.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long PLUG Daily ETF",
+   "u": "PLUG"
+  },
+  "POEL": {
+   "dv20": 986782.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long POET ETF",
+   "u": "POET"
+  },
+  "PST": {
+   "dv20": 117200.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "7-10yr Treasury"
+  },
+  "PTIR": {
+   "dv20": 35455649.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long PLTR Daily ETF",
+   "u": "PLTR"
+  },
+  "PUL": {
+   "dv20": 263489.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long P Daily ETF",
+   "u": "P"
+  },
+  "PUR": {
+   "dv20": 2207137.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long PURR ETF",
+   "u": "PURR"
+  },
+  "PYPG": {
+   "dv20": 372108.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long PYPL Daily ETF",
+   "u": "PYPL"
+  },
+  "PYPU": {
+   "dv20": 75875.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily PYPL Bull 2X Shares",
+   "u": "PYPL"
+  },
+  "QBTX": {
+   "dv20": 3971021.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long QBTS Daily ETF",
+   "u": "QBTS"
+  },
+  "QBTZ": {
+   "dv20": 4118232.0,
+   "issuer": "Defiance",
+   "lev": -2.0,
+   "name": null,
+   "u": "QBTS"
+  },
+  "QCML": {
+   "dv20": 6061417.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long QCOM Daily ETF",
+   "u": "QCOM"
+  },
+  "QCMU": {
+   "dv20": 1965535.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily QCOM Bull 2X Shares",
+   "u": "QCOM"
+  },
+  "QID": {
+   "dv20": 548236919.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "QQQ"
+  },
+  "QLD": {
+   "dv20": 605921202.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra QQQ",
+   "u": "QQQ"
+  },
+  "QNTU": {
+   "dv20": 813022.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2x Long QNT Daily ETF",
+   "u": "QNT"
+  },
+  "QPUX": {
+   "dv20": 1567016.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance 2X Daily Long Pure Quantum ETF",
+   "u": "Quantum computing"
+  },
+  "QQDN": {
+   "dv20": 43956.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "QQQ"
+  },
+  "QQQP": {
+   "dv20": 315318.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long Innovation 100 Quarterly ETF",
+   "u": "Innovation 100"
+  },
+  "QQQU": {
+   "dv20": 2193837.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Magnificent 7 Bull 2X Shares",
+   "u": "Magnificent 7"
+  },
+  "QQUP": {
+   "dv20": 184267.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra QQQ Mega",
+   "u": "QQQ"
+  },
+  "QQXL": {
+   "dv20": 112938.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra QQQ TOP 30",
+   "u": "QQQ"
+  },
+  "QSU": {
+   "dv20": 261338.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long QS ETF",
+   "u": "QS"
+  },
+  "QUA": {
+   "dv20": 3994.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi QBTS 2x Daily ETF",
+   "u": "QBTS"
+  },
+  "QUBX": {
+   "dv20": 408683.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long QUBT Daily ETF",
+   "u": "QUBT"
+  },
+  "RAM": {
+   "dv20": 122923539.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Roundhill T-REX 2x Long DRAM Daily Target ETF",
+   "u": "DRAM"
+  },
+  "RAML": {
+   "dv20": 923115.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long Memory Daily ETF",
+   "u": "DRAM"
+  },
+  "RAMZ": {
+   "dv20": 11021013.0,
+   "issuer": "T-REX",
+   "lev": -2.0,
+   "name": null,
+   "u": "DRAM"
+  },
+  "RBLU": {
+   "dv20": 1294869.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long RBLX Daily Target ETF",
+   "u": "RBLX"
+  },
+  "RCAX": {
+   "dv20": 455795.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long RCAT ETF",
+   "u": "RCAT"
+  },
+  "RDDC": {
+   "dv20": 40440.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi RDDT 2x Daily ETF",
+   "u": "RDDT"
+  },
+  "RDTL": {
+   "dv20": 7890105.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long RDDT Daily ETF",
+   "u": "RDDT"
+  },
+  "RDWU": {
+   "dv20": 1354409.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X LONG RDW DAILY TARGET ETF",
+   "u": "RDW"
+  },
+  "RETL": {
+   "dv20": 3971297.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Retail Bull 3X Shares",
+   "u": "Retail"
+  },
+  "REW": {
+   "dv20": 605892.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Technology"
+  },
+  "RGTC": {
+   "dv20": 11191.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ETF Trust I - Corgi RGTI 2x Daily ETF",
+   "u": "RGTI"
+  },
+  "RGTU": {
+   "dv20": 356631.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long RGTI Daily ETF",
+   "u": "RGTI"
+  },
+  "RGTX": {
+   "dv20": 8977751.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long RGTI ETF",
+   "u": "RGTI"
+  },
+  "RGTZ": {
+   "dv20": 5416600.0,
+   "issuer": "Defiance",
+   "lev": -2.0,
+   "name": null,
+   "u": "RGTI"
+  },
+  "RIOX": {
+   "dv20": 3847966.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long RIOT ETF",
+   "u": "RIOT"
+  },
+  "RIVC": {
+   "dv20": 18557.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ETF Trust I - RIVN 2x Daily ETF",
+   "u": "RIVN"
+  },
+  "RKLX": {
+   "dv20": 33133347.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long RKLB ETF",
+   "u": "RKLB"
+  },
+  "RKX": {
+   "dv20": 89684.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi RKLB 2x Daily ETF",
+   "u": "RKLB"
+  },
+  "RMBC": {
+   "dv20": 4765.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi RMBS 2x Daily ETF",
+   "u": "RMBS"
+  },
+  "RMBX": {
+   "dv20": 108029.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long RMBS Daily ETF",
+   "u": "RMBS"
+  },
+  "ROBN": {
+   "dv20": 13725581.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long HOOD Daily Target ETF",
+   "u": "HOOD"
+  },
+  "ROM": {
+   "dv20": 9733304.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Technology",
+   "u": "Technology"
+  },
+  "RTXG": {
+   "dv20": 294632.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long RTX Daily ETF",
+   "u": "RTX"
+  },
+  "RVNL": {
+   "dv20": 1680114.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long RIVN Daily ETF",
+   "u": "RIVN"
+  },
+  "RXD": {
+   "dv20": 295645.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Health care"
+  },
+  "RXL": {
+   "dv20": 936444.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Health Care",
+   "u": "Health care"
+  },
+  "SAA": {
+   "dv20": 111177.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra SmallCap600",
+   "u": "Small cap 600"
+  },
+  "SBIT": {
+   "dv20": 61157981.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "BTC"
+  },
+  "SCC": {
+   "dv20": 110019.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Consumer discretionary"
+  },
+  "SCO": {
+   "dv20": 113958964.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Crude oil"
+  },
+  "SDD": {
+   "dv20": 20811.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Small cap 600"
+  },
+  "SDOW": {
+   "dv20": 118737808.0,
+   "issuer": "ProShares",
+   "lev": -3.0,
+   "name": null,
+   "u": "DIA"
+  },
+  "SDP": {
+   "dv20": 180625.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Utilities"
+  },
+  "SDS": {
+   "dv20": 308092357.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "SPY"
+  },
+  "SHPU": {
+   "dv20": 1309522.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily SHOP Bull 2X ETF",
+   "u": "SHOP"
+  },
+  "SIJ": {
+   "dv20": 148775.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Industrials"
+  },
+  "SIMX": {
+   "dv20": 229136.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi SIMO 2x Daily ETF",
+   "u": "SIMO"
+  },
+  "SITX": {
+   "dv20": 325880.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long SITM Daily ETF",
+   "u": "SITM"
+  },
+  "SK": {
+   "dv20": 6443319.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi SK hynix 2x Daily ETF",
+   "u": "SK Hynix"
+  },
+  "SKDD": {
+   "dv20": 33090201.0,
+   "issuer": "GraniteShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "SK Hynix"
+  },
+  "SKF": {
+   "dv20": 981610.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Financials"
+  },
+  "SKHL": {
+   "dv20": 17547503.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily SK Hynix Bull 2X ETF",
+   "u": "SK Hynix"
+  },
+  "SKHQ": {
+   "dv20": 293982.0,
+   "issuer": "Leverage Shares",
+   "lev": -2.0,
+   "name": null,
+   "u": "SK Hynix"
+  },
+  "SKHX": {
+   "dv20": 32165821.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long SK Hynix Daily ETF",
+   "u": "SK Hynix"
+  },
+  "SKRE": {
+   "dv20": 746776.0,
+   "issuer": "Tuttle",
+   "lev": -2.0,
+   "name": null,
+   "u": "KRE"
+  },
+  "SKUU": {
+   "dv20": 46930380.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Graniteshares 2x Long SK Hynix Daily ETF",
+   "u": "SK Hynix"
+  },
+  "SKYU": {
+   "dv20": 209140.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Cloud Computing",
+   "u": "Cloud computing"
+  },
+  "SLON": {
+   "dv20": 1358987.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Solana ETF",
+   "u": "SOL"
+  },
+  "SMCC": {
+   "dv20": 22737.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi SMCI 2x Daily ETF",
+   "u": "SMCI"
+  },
+  "SMCL": {
+   "dv20": 9402310.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long SMCI Daily ETF",
+   "u": "SMCI"
+  },
+  "SMCX": {
+   "dv20": 48105639.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long SMCI ETF",
+   "u": "SMCI"
+  },
+  "SMCZ": {
+   "dv20": 10452258.0,
+   "issuer": "Defiance",
+   "lev": -2.0,
+   "name": null,
+   "u": "SMCI"
+  },
+  "SMDD": {
+   "dv20": 89384.0,
+   "issuer": "ProShares",
+   "lev": -3.0,
+   "name": null,
+   "u": "Mid cap 400"
+  },
+  "SMHD": {
+   "dv20": 120151.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Semiconductors"
+  },
+  "SMHU": {
+   "dv20": 1012395.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectors 3x Long Semiconductor ETNs",
+   "u": "Semiconductors"
+  },
+  "SMN": {
+   "dv20": 55296.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Materials"
+  },
+  "SMRX": {
+   "dv20": 7583.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi SMR 2x Daily ETF",
+   "u": "SMR"
+  },
+  "SMST": {
+   "dv20": 21034310.0,
+   "issuer": "Defiance",
+   "lev": -2.0,
+   "name": null,
+   "u": "MSTR"
+  },
+  "SMTG": {
+   "dv20": 410175.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long SMTC Daily ETF",
+   "u": "SMTC"
+  },
+  "SMU": {
+   "dv20": 1299620.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long SMR Daily ETF",
+   "u": "SMR"
+  },
+  "SMUP": {
+   "dv20": 286852.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long SMR Daily Target ETF",
+   "u": "SMR"
+  },
+  "SNAG": {
+   "dv20": 236283.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long SNAP Daily ETF",
+   "u": "SNAP"
+  },
+  "SNDC": {
+   "dv20": 1641264.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi SNDK 2x Daily ETF",
+   "u": "SNDK"
+  },
+  "SNDG": {
+   "dv20": 44155235.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long SNDK Daily ETF",
+   "u": "SNDK"
+  },
+  "SNDQ": {
+   "dv20": 435810081.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "SNDK"
+  },
+  "SNDU": {
+   "dv20": 84066172.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long SNDK Daily Target ETF",
+   "u": "SNDK"
+  },
+  "SNK": {
+   "dv20": 37161310.0,
+   "issuer": "GraniteShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "SPCX (SpaceX)"
+  },
+  "SNOU": {
+   "dv20": 912067.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long SNOW Daily Target ETF",
+   "u": "SNOW"
+  },
+  "SNXX": {
+   "dv20": 495973414.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long Sndk Daily ETF",
+   "u": "SNDK"
+  },
+  "SOFA": {
+   "dv20": 967209.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily SOFI Bull 2X ETF",
+   "u": "SOFI"
+  },
+  "SOFC": {
+   "dv20": 41724.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi SOFI 2x Daily ETF",
+   "u": "SOFI"
+  },
+  "SOFX": {
+   "dv20": 11754048.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long SOFI ETF",
+   "u": "SOFI"
+  },
+  "SOLT": {
+   "dv20": 15192436.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "2x Solana ETF",
+   "u": "SOL"
+  },
+  "SOUX": {
+   "dv20": 583456.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long SOUN ETF",
+   "u": "SOUN"
+  },
+  "SOXL": {
+   "dv20": 12462199404.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Semiconductor Bull 3X Shares",
+   "u": "Semiconductors"
+  },
+  "SOXS": {
+   "dv20": 5332906150.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "Semiconductors"
+  },
+  "SPAL": {
+   "dv20": 14985723.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long SpaceX Daily ETF",
+   "u": "SPCX (SpaceX)"
+  },
+  "SPAX": {
+   "dv20": 21364062.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long SPCX Daily Target ETF",
+   "u": "SPCX (SpaceX)"
+  },
+  "SPCF": {
+   "dv20": 22111571.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Proshares Ultra Spacex",
+   "u": "SPCX (SpaceX)"
+  },
+  "SPCG": {
+   "dv20": 16697528.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "SPCX (SpaceX)"
+  },
+  "SPCH": {
+   "dv20": 203921725.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long SPCX Daily ETF",
+   "u": "SPCX (SpaceX)"
+  },
+  "SPCL": {
+   "dv20": 432127.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tidal Trust II - Defiance Daily 2X Space ETF",
+   "u": "Space"
+  },
+  "SPCM": {
+   "dv20": 13704919.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long SpaceX Daily ETF",
+   "u": "SPCX (SpaceX)"
+  },
+  "SPCQ": {
+   "dv20": 17456564.0,
+   "issuer": "Defiance",
+   "lev": -2.0,
+   "name": null,
+   "u": "SPCX (SpaceX)"
+  },
+  "SPCU": {
+   "dv20": 27900376.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long SPCX ETF",
+   "u": "SPCX (SpaceX)"
+  },
+  "SPOG": {
+   "dv20": 297096.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long SPOT Daily ETF",
+   "u": "SPOT"
+  },
+  "SPUU": {
+   "dv20": 9768177.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily S&P 500 Bull 2X Shares",
+   "u": "SPY"
+  },
+  "SPXL": {
+   "dv20": 646224421.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily S&P500 Bull 3X Shares",
+   "u": "SPY"
+  },
+  "SPXS": {
+   "dv20": 372911201.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "SPY"
+  },
+  "SPXU": {
+   "dv20": 452523822.0,
+   "issuer": "ProShares",
+   "lev": -3.0,
+   "name": null,
+   "u": "SPY"
+  },
+  "SPYQ": {
+   "dv20": 177982.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long SPY Quarterly ETF",
+   "u": "SPY"
+  },
+  "SPYU": {
+   "dv20": 38906078.0,
+   "issuer": null,
+   "lev": 4.0,
+   "name": "MAX S&P 500 4X Leveraged ETN",
+   "u": "SPY"
+  },
+  "SQQQ": {
+   "dv20": 2637847817.0,
+   "issuer": "ProShares",
+   "lev": -3.0,
+   "name": null,
+   "u": "QQQ"
+  },
+  "SRS": {
+   "dv20": 464553.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Real estate"
+  },
+  "SRTY": {
+   "dv20": 58814903.0,
+   "issuer": "ProShares",
+   "lev": -3.0,
+   "name": null,
+   "u": "IWM"
+  },
+  "SSG": {
+   "dv20": 15671608.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Semiconductors"
+  },
+  "SSO": {
+   "dv20": 368236942.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra S&P500",
+   "u": "SPY"
+  },
+  "SSPC": {
+   "dv20": 122793064.0,
+   "issuer": "Leverage Shares",
+   "lev": -2.0,
+   "name": null,
+   "u": "SPCX (SpaceX)"
+  },
+  "STLL": {
+   "dv20": 596732.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long STRL Da",
+   "u": "STRL"
+  },
+  "STLU": {
+   "dv20": 136741.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "2x Stellar ETF",
+   "u": "XLM"
+  },
+  "STMX": {
+   "dv20": 47806.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long STM Daily ETF",
+   "u": "STM"
+  },
+  "STXL": {
+   "dv20": 6720813.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long Stx ETF",
+   "u": "STX"
+  },
+  "STXU": {
+   "dv20": 2472169.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long STX Daily ETF",
+   "u": "STX"
+  },
+  "STXX": {
+   "dv20": 2282292.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long STX Daily ETF",
+   "u": "STX"
+  },
+  "SUIL": {
+   "dv20": 290342.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "2x Sui ETF",
+   "u": "SUI"
+  },
+  "SZK": {
+   "dv20": 153601.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Consumer staples"
+  },
+  "TAJX": {
+   "dv20": 2933.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi India 2x Daily ETF",
+   "u": "India"
+  },
+  "TARK": {
+   "dv20": 717781.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long Innovation ETF",
+   "u": "ARKK / Innovation"
+  },
+  "TAWN": {
+   "dv20": 7816.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectors 3x Long Taiwan Etns",
+   "u": "Taiwan"
+  },
+  "TBT": {
+   "dv20": 8007396.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "20+yr Treasury"
+  },
+  "TBXU": {
+   "dv20": 146732.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Biotech Top 5 Bull 2X ETF",
+   "u": "XBI"
+  },
+  "TDCL": {
+   "dv20": 10024.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long TDC Daily ETF",
+   "u": "TDC"
+  },
+  "TECL": {
+   "dv20": 172951340.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Technology Bull 3X Shares",
+   "u": "Technology"
+  },
+  "TECS": {
+   "dv20": 38420503.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "Technology"
+  },
+  "TELG": {
+   "dv20": 4456.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long TEL Daily ETF",
+   "u": "TEL"
+  },
+  "TEMC": {
+   "dv20": 16750.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi TEM 2x Daily ETF",
+   "u": "TEM"
+  },
+  "TEMT": {
+   "dv20": 5446523.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long TEM Daily ETF",
+   "u": "TEM"
+  },
+  "TERC": {
+   "dv20": 14408.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi TER 2x Daily ETF",
+   "u": "TER"
+  },
+  "TERG": {
+   "dv20": 817475.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long TER Daily ETF",
+   "u": "TER"
+  },
+  "TESC": {
+   "dv20": 7344.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi TSLA 2x Daily ETF",
+   "u": "TSLA"
+  },
+  "TEXU": {
+   "dv20": 156932.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Energy Top 5 Bull 2X ETF",
+   "u": "Energy"
+  },
+  "TMF": {
+   "dv20": 128413139.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily 20+ Year Treasury Bull 3X Shares",
+   "u": "20+yr Treasury"
+  },
+  "TMV": {
+   "dv20": 73965630.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "20+yr Treasury"
+  },
+  "TNA": {
+   "dv20": 301793698.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Small Cap Bull 3X Shares",
+   "u": "IWM"
+  },
+  "TPEI": {
+   "dv20": 20976.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Taiwan"
+  },
+  "TPLX": {
+   "dv20": 6892.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi TPL 2x Daily ETF",
+   "u": "TPL"
+  },
+  "TPOR": {
+   "dv20": 598790.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Transportation Bull 3X Shares",
+   "u": "Transportation"
+  },
+  "TQQQ": {
+   "dv20": 5319421111.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "ProShares UltraPro QQQ",
+   "u": "QQQ"
+  },
+  "TSDD": {
+   "dv20": 51039965.0,
+   "issuer": "GraniteShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "TSLA"
+  },
+  "TSEG": {
+   "dv20": 325848.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long TSEM Daily ETF",
+   "u": "TSEM"
+  },
+  "TSLG": {
+   "dv20": 260686413.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long TSLA Daily ETF",
+   "u": "TSLA"
+  },
+  "TSLL": {
+   "dv20": 445497036.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily TSLA Bull 2X Shares",
+   "u": "TSLA"
+  },
+  "TSLQ": {
+   "dv20": 119043700.0,
+   "issuer": "Tradr",
+   "lev": -2.0,
+   "name": null,
+   "u": "TSLA"
+  },
+  "TSLR": {
+   "dv20": 15730038.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Graniteshares 2x Long TSLA Daily ETF",
+   "u": "TSLA"
+  },
+  "TSLT": {
+   "dv20": 22878171.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-Rex 2X Long Tesla Daily Target ETF",
+   "u": "TSLA"
+  },
+  "TSLZ": {
+   "dv20": 27816462.0,
+   "issuer": "T-REX",
+   "lev": -2.0,
+   "name": null,
+   "u": "TSLA"
+  },
+  "TSMG": {
+   "dv20": 1736909.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long TSM Daily ETF",
+   "u": "TSM"
+  },
+  "TSMU": {
+   "dv20": 3607743.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long TSM Daily ETF",
+   "u": "TSM"
+  },
+  "TSMX": {
+   "dv20": 37600078.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily TSM Bull 2X Shares",
+   "u": "TSM"
+  },
+  "TTDU": {
+   "dv20": 1199325.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "T-REX 2X Long TTD Daily Target ETF",
+   "u": "TTD"
+  },
+  "TTMX": {
+   "dv20": 757442.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long TTMI Daily ETF",
+   "u": "TTMI"
+  },
+  "TTT": {
+   "dv20": 865069.0,
+   "issuer": "ProShares",
+   "lev": -3.0,
+   "name": null,
+   "u": "20+yr Treasury"
+  },
+  "TTXU": {
+   "dv20": 311974.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Technology Top 5 Bull 2X ETF",
+   "u": "Tech Top 5"
+  },
+  "TWM": {
+   "dv20": 28093394.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "IWM"
+  },
+  "TWSC": {
+   "dv20": 10969.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi TSM 2x Daily ETF",
+   "u": "TSM"
+  },
+  "TXNU": {
+   "dv20": 602091.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Txn Bull 2X ETF",
+   "u": "TXN"
+  },
+  "TXXD": {
+   "dv20": 180232.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "21Shares 2x Long Dogecoin ETF",
+   "u": "DOGE"
+  },
+  "TXXH": {
+   "dv20": 502475.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "21Shares 2x Long HYPE ETF",
+   "u": "HYPE"
+  },
+  "TXXS": {
+   "dv20": 144440.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "21Shares 2x Long Sui ETF",
+   "u": "SUI"
+  },
+  "TYD": {
+   "dv20": 667620.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily 7-10 Year Treasury Bull 3X Shares",
+   "u": "7-10yr Treasury"
+  },
+  "TYO": {
+   "dv20": 250533.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "7-10yr Treasury"
+  },
+  "TZA": {
+   "dv20": 244436199.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "IWM"
+  },
+  "UBR": {
+   "dv20": 162166.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra MSCI Brazil Capped",
+   "u": "Brazil"
+  },
+  "UBRL": {
+   "dv20": 1774929.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long UBER Daily ETF",
+   "u": "UBER"
+  },
+  "UBT": {
+   "dv20": 1061533.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra 20+ Year Treasury",
+   "u": "20+yr Treasury"
+  },
+  "UCC": {
+   "dv20": 132137.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Consumer Discretionary",
+   "u": "Consumer discretionary"
+  },
+  "UCO": {
+   "dv20": 105175593.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Bloomberg Crude Oil",
+   "u": "Crude oil"
+  },
+  "UCOP": {
+   "dv20": 53901.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Copper K-1 Free ETF",
+   "u": "Copper"
+  },
+  "UCTX": {
+   "dv20": 216085.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi UCTT 2x Daily ETF",
+   "u": "UCTT"
+  },
+  "UDOW": {
+   "dv20": 147864168.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "ProShares UltraPro Dow30",
+   "u": "DIA"
+  },
+  "UGE": {
+   "dv20": 2341781.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Consumer Staples",
+   "u": "Consumer staples"
+  },
+  "UGL": {
+   "dv20": 102780775.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Gold",
+   "u": "Gold"
+  },
+  "UGLD": {
+   "dv20": 1991177.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Gold Bull 2X ETF",
+   "u": "Gold"
+  },
+  "UJB": {
+   "dv20": 1834773.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra High Yield",
+   "u": "High yield"
+  },
+  "ULE": {
+   "dv20": 55497.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Euro",
+   "u": "EUR/USD"
+  },
+  "UMAL": {
+   "dv20": 396002.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long UMAC ETF",
+   "u": "UMAC"
+  },
+  "UMCU": {
+   "dv20": 6389.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long UMC Daily ETF",
+   "u": "UMC"
+  },
+  "UMCX": {
+   "dv20": 14595.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi UMC 2x Daily ETF",
+   "u": "UMC"
+  },
+  "UMDD": {
+   "dv20": 246283.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "ProShares UltraPro MidCap400",
+   "u": "Mid cap 400"
+  },
+  "UN": {
+   "dv20": 17372.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi UNH 2x Daily ETF",
+   "u": "UNH"
+  },
+  "UNHG": {
+   "dv20": 16469902.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long UNH Daily ETF",
+   "u": "UNH"
+  },
+  "UNHU": {
+   "dv20": 270765.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Unh Bull 2X ETF",
+   "u": "UNH"
+  },
+  "UNX": {
+   "dv20": 229292.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long U Daily ETF",
+   "u": "U"
+  },
+  "UPAL": {
+   "dv20": 53766.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Palladium K-1 Free ETF",
+   "u": "Palladium"
+  },
+  "UPLT": {
+   "dv20": 50311.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Platinum K-1 Free ETF",
+   "u": "Platinum"
+  },
+  "UPRO": {
+   "dv20": 407134333.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "ProShares UltraPro S&P500",
+   "u": "SPY"
+  },
+  "UPSC": {
+   "dv20": 1351.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi UPST 2x Daily ETF",
+   "u": "UPST"
+  },
+  "UPSX": {
+   "dv20": 813452.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long UPST Daily ETF",
+   "u": "UPST"
+  },
+  "UPV": {
+   "dv20": 113439.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra FTSE Europe",
+   "u": "Europe (VGK)"
+  },
+  "UPW": {
+   "dv20": 249344.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Utilities",
+   "u": "Utilities"
+  },
+  "URAA": {
+   "dv20": 1071327.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Uranium Bull 2X ETF",
+   "u": "Uranium"
+  },
+  "URE": {
+   "dv20": 180070.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Real Estate",
+   "u": "Real estate"
+  },
+  "URTY": {
+   "dv20": 33572671.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "ProShares UltraPro Russell2000",
+   "u": "IWM"
+  },
+  "USAX": {
+   "dv20": 1039606.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long USAR Daily ETF",
+   "u": "USAR"
+  },
+  "USD": {
+   "dv20": 73629897.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Semiconductors",
+   "u": "Semiconductors"
+  },
+  "USGG": {
+   "dv20": 1338443.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long USAR Daily ETF",
+   "u": "USAR"
+  },
+  "USGX": {
+   "dv20": 2296.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Growth 2x Daily ETF",
+   "u": "US growth"
+  },
+  "USLV": {
+   "dv20": 2164704.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily Silver Bull 2X ETF",
+   "u": "Silver"
+  },
+  "USLX": {
+   "dv20": 5047.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi ETF Trust I - Corgi U.S. Large-Cap 2x Daily ETF",
+   "u": "SPY"
+  },
+  "USMX": {
+   "dv20": 2479.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Mid-Cap 2x Daily ETF",
+   "u": "Mid cap 400"
+  },
+  "USSX": {
+   "dv20": 2373.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Small-Cap 2x Daily E",
+   "u": "IWM"
+  },
+  "UST": {
+   "dv20": 725974.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra 7-10 Year Treasury",
+   "u": "7-10yr Treasury"
+  },
+  "USX": {
+   "dv20": 8586.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi Total U.S. Market 2x Daily ETF",
+   "u": "Total US market"
+  },
+  "UTSL": {
+   "dv20": 6596090.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Utilities Bull 3X Shares",
+   "u": "Utilities"
+  },
+  "UUUC": {
+   "dv20": 7141.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi UUUU 2x Daily ETF",
+   "u": "UUUU"
+  },
+  "UUUG": {
+   "dv20": 544715.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long UUUU Daily ETF",
+   "u": "UUUU"
+  },
+  "UVIX": {
+   "dv20": 180024288.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "2x Long VIX Futures ETF",
+   "u": "VIX futures"
+  },
+  "UWM": {
+   "dv20": 27183172.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Russell2000",
+   "u": "IWM"
+  },
+  "UXI": {
+   "dv20": 134737.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Industrials",
+   "u": "Industrials"
+  },
+  "UXRP": {
+   "dv20": 1112978.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra XRP ETF",
+   "u": "XRP"
+  },
+  "UYG": {
+   "dv20": 1632584.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Financials",
+   "u": "Financials"
+  },
+  "UYM": {
+   "dv20": 167150.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Materials",
+   "u": "Materials"
+  },
+  "VELL": {
+   "dv20": 72980.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long VELO ETF",
+   "u": "VELO"
+  },
+  "VIAG": {
+   "dv20": 114239.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long VIAV Daily ETF",
+   "u": "VIAV"
+  },
+  "VRC": {
+   "dv20": 40117.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi VRT 2x Daily ETF",
+   "u": "VRT"
+  },
+  "VRTL": {
+   "dv20": 6117009.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "GraniteShares 2x Long VRT Daily ETF",
+   "u": "VRT"
+  },
+  "VSTL": {
+   "dv20": 2297988.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long VST ETF",
+   "u": "VST"
+  },
+  "WANT": {
+   "dv20": 1353627.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Cnsmr Discret Bull 3XShrs",
+   "u": "Consumer discretionary"
+  },
+  "WDCC": {
+   "dv20": 290739.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi WDC 2x Daily ETF",
+   "u": "WDC"
+  },
+  "WDCX": {
+   "dv20": 23325374.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long WDC Daily ETF",
+   "u": "WDC"
+  },
+  "WEBL": {
+   "dv20": 3067269.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily Dow Jones Internet Bull 3X Shares",
+   "u": "Internet (FDN)"
+  },
+  "WEBS": {
+   "dv20": 920321.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "Internet (FDN)"
+  },
+  "WEBX": {
+   "dv20": 1556.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi Chinese Internet 2x Daily ETF",
+   "u": "China internet"
+  },
+  "WLDU": {
+   "dv20": 71847.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2x Long World S",
+   "u": "World"
+  },
+  "WTID": {
+   "dv20": 318417.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Energy"
+  },
+  "WTIU": {
+   "dv20": 390981.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectors Energy 3X Leveraged ETN",
+   "u": "Energy"
+  },
+  "WULX": {
+   "dv20": 5342205.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long WULF Daily ETF",
+   "u": "WULF"
+  },
+  "WX": {
+   "dv20": 3274.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi All World 2x Daily ETF",
+   "u": "World"
+  },
+  "WXET": {
+   "dv20": 257936.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Teucrium 2x Daily Wheat ETF",
+   "u": "Wheat"
+  },
+  "WYFL": {
+   "dv20": 186811.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long Wyfi ETF",
+   "u": "WYFI"
+  },
+  "XAGI": {
+   "dv20": 8439.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi AGIX 2x Daily ETF",
+   "u": "AGIX"
+  },
+  "XBIX": {
+   "dv20": 148730.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Biotech 2x Daily ETF",
+   "u": "XBI"
+  },
+  "XCOM": {
+   "dv20": 18089.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi All Commodities 2x Daily ETF",
+   "u": "Broad commodities"
+  },
+  "XEUR": {
+   "dv20": 2364.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi Europe Equities 2x Daily ETF",
+   "u": "Europe (VGK)"
+  },
+  "XHOA": {
+   "dv20": 3564.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Real Estate 2x Daily ETF",
+   "u": "Real estate"
+  },
+  "XIWC": {
+   "dv20": 2521.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Micro-Cap 2x Daily ETF",
+   "u": "Micro cap"
+  },
+  "XKRE": {
+   "dv20": 36531.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Regional Banks 2x Daily ETF",
+   "u": "KRE"
+  },
+  "XLBX": {
+   "dv20": 16924.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Materials 2x Daily ETF",
+   "u": "Materials"
+  },
+  "XLCD": {
+   "dv20": 13307.0,
+   "issuer": "MicroSectors",
+   "lev": -3.0,
+   "name": null,
+   "u": "Communication services"
+  },
+  "XLCU": {
+   "dv20": 44399.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "MicroSectors 3x Long Communication Services (XLC) ETNs",
+   "u": "Communication services"
+  },
+  "XLEX": {
+   "dv20": 56421.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Energy 2x Daily ETF",
+   "u": "Energy"
+  },
+  "XLFX": {
+   "dv20": 12776.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Financials 2x Daily ETF",
+   "u": "Financials"
+  },
+  "XLIX": {
+   "dv20": 4626.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Industrials 2x Daily ETF",
+   "u": "Industrials"
+  },
+  "XLKX": {
+   "dv20": 14417.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Technology 2x Daily ETF",
+   "u": "Technology"
+  },
+  "XLPX": {
+   "dv20": 33619.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Consumer Staples 2x Daily ETF",
+   "u": "Consumer staples"
+  },
+  "XLUX": {
+   "dv20": 44382.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Utilities 2x Daily ETF",
+   "u": "Utilities"
+  },
+  "XLVX": {
+   "dv20": 129045.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Healthcare 2x Daily ETF",
+   "u": "Health care"
+  },
+  "XLYX": {
+   "dv20": 39138.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Consumer Discretionary 2x Daily ETF",
+   "u": "Consumer discretionary"
+  },
+  "XNDX": {
+   "dv20": 261118.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Tradr 2X Long XNDU Daily ETF",
+   "u": "XNDU"
+  },
+  "XOMX": {
+   "dv20": 834945.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Direxion Daily XOM Bull 2X Shares",
+   "u": "XOM"
+  },
+  "XOVL": {
+   "dv20": 34209.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Defiance Daily Target 2X Long XOVR ETF",
+   "u": "XOVR"
+  },
+  "XPAV": {
+   "dv20": 3334.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Infrastructure 2x Daily ETF",
+   "u": "Infrastructure"
+  },
+  "XPEG": {
+   "dv20": 188354.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long XPEV Daily ETF",
+   "u": "XPEV"
+  },
+  "XPP": {
+   "dv20": 70404.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra FTSE China 50",
+   "u": "China"
+  },
+  "XQTM": {
+   "dv20": 101267.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi Quantum Computing 2x Daily ETF",
+   "u": "Quantum computing"
+  },
+  "XRPT": {
+   "dv20": 4117294.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "2x XRP ETF",
+   "u": "XRP"
+  },
+  "XSEM": {
+   "dv20": 52325.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi U.S. Semiconductors 2x Daily ETF",
+   "u": "Semiconductors"
+  },
+  "XTAI": {
+   "dv20": 3351.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi Taiwan 2x Daily ETF",
+   "u": "Taiwan"
+  },
+  "XW": {
+   "dv20": 2112.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Corgi Ex-U.S. Equities 2x Daily ETF",
+   "u": "Ex-US"
+  },
+  "XXRP": {
+   "dv20": 6721752.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Teucrium 2x Long Daily XRP ETF",
+   "u": "XRP"
+  },
+  "XYZG": {
+   "dv20": 104969.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "Leverage Shares 2X Long XYZ Daily ETF",
+   "u": "XYZ"
+  },
+  "YANG": {
+   "dv20": 25887512.0,
+   "issuer": "Direxion",
+   "lev": -3.0,
+   "name": null,
+   "u": "China"
+  },
+  "YCL": {
+   "dv20": 445648.0,
+   "issuer": null,
+   "lev": 2.0,
+   "name": "ProShares Ultra Yen",
+   "u": "JPY/USD"
+  },
+  "YCS": {
+   "dv20": 400192.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "JPY/USD"
+  },
+  "YINN": {
+   "dv20": 46909744.0,
+   "issuer": null,
+   "lev": 3.0,
+   "name": "Direxion Daily FTSE China Bull 3X Shares",
+   "u": "China"
+  },
+  "ZSL": {
+   "dv20": 85750532.0,
+   "issuer": "ProShares",
+   "lev": -2.0,
+   "name": null,
+   "u": "Silver"
+  }
+ },
+ "groups": [
+  [
+   "index",
+   "Broad index"
+  ],
+  [
+   "sector",
+   "Sector"
+  ],
+  [
+   "single-stock",
+   "Single stock"
+  ],
+  [
+   "commodity",
+   "Commodity"
+  ],
+  [
+   "crypto",
+   "Crypto"
+  ],
+  [
+   "bond",
+   "Bonds"
+  ],
+  [
+   "country",
+   "Country / region"
+  ],
+  [
+   "currency",
+   "Currency"
+  ],
+  [
+   "volatility",
+   "Volatility"
+  ]
+ ],
+ "source": "mphinance/leveraged-etfs data/",
+ "underlyings": [
+  {
+   "chart": "QQQ",
+   "chart_kind": "self",
+   "group": "index",
+   "key": "QQQ",
+   "long": [
+    "TQQQ",
+    "QLD",
+    "QQUP",
+    "EQQQ",
+    "QQXL"
+   ],
+   "long_pick": "TQQQ",
+   "proxy_quality": null,
+   "short": [
+    "SQQQ",
+    "QID",
+    "QQDN"
+   ],
+   "short_pick": "SQQQ"
+  },
+  {
+   "chart": "SPY",
+   "chart_kind": "self",
+   "group": "index",
+   "key": "SPY",
+   "long": [
+    "SPXL",
+    "UPRO",
+    "SSO",
+    "SPYU",
+    "SPUU",
+    "SPYQ",
+    "USLX"
+   ],
+   "long_pick": "SPXL",
+   "proxy_quality": null,
+   "short": [
+    "SPXU",
+    "SPXS",
+    "SDS"
+   ],
+   "short_pick": "SPXU"
+  },
+  {
+   "chart": "IWM",
+   "chart_kind": "self",
+   "group": "index",
+   "key": "IWM",
+   "long": [
+    "TNA",
+    "URTY",
+    "UWM",
+    "USSX"
+   ],
+   "long_pick": "TNA",
+   "proxy_quality": null,
+   "short": [
+    "TZA",
+    "SRTY",
+    "TWM"
+   ],
+   "short_pick": "TZA"
+  },
+  {
+   "chart": "DIA",
+   "chart_kind": "self",
+   "group": "index",
+   "key": "DIA",
+   "long": [
+    "UDOW",
+    "DDM"
+   ],
+   "long_pick": "UDOW",
+   "proxy_quality": null,
+   "short": [
+    "SDOW",
+    "DXD"
+   ],
+   "short_pick": "SDOW"
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "index",
+   "key": "Innovation 100",
+   "long": [
+    "MQQQ",
+    "QQQP"
+   ],
+   "long_pick": "MQQQ",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SPHB",
+   "chart_kind": "proxy",
+   "group": "index",
+   "key": "S&P 500 High Beta",
+   "long": [
+    "HIBL"
+   ],
+   "long_pick": "HIBL",
+   "proxy_quality": "exact",
+   "short": [
+    "HIBS"
+   ],
+   "short_pick": "HIBS"
+  },
+  {
+   "chart": "MAGS",
+   "chart_kind": "proxy",
+   "group": "index",
+   "key": "Magnificent 7",
+   "long": [
+    "MAGX",
+    "QQQU"
+   ],
+   "long_pick": "MAGX",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "MDY",
+   "chart_kind": "proxy",
+   "group": "index",
+   "key": "Mid cap 400",
+   "long": [
+    "MIDU",
+    "MVV",
+    "UMDD",
+    "USMX"
+   ],
+   "long_pick": "MIDU",
+   "proxy_quality": "exact",
+   "short": [
+    "SMDD",
+    "MZZ"
+   ],
+   "short_pick": "SMDD"
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "index",
+   "key": "Tech Top 5",
+   "long": [
+    "TTXU"
+   ],
+   "long_pick": "TTXU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "IJR",
+   "chart_kind": "proxy",
+   "group": "index",
+   "key": "Small cap 600",
+   "long": [
+    "SAA"
+   ],
+   "long_pick": "SAA",
+   "proxy_quality": "exact",
+   "short": [
+    "SDD"
+   ],
+   "short_pick": "SDD"
+  },
+  {
+   "chart": "ACWI",
+   "chart_kind": "proxy",
+   "group": "index",
+   "key": "World",
+   "long": [
+    "WLDU",
+    "WX"
+   ],
+   "long_pick": "WLDU",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "VTI",
+   "chart_kind": "proxy",
+   "group": "index",
+   "key": "Total US market",
+   "long": [
+    "USX"
+   ],
+   "long_pick": "USX",
+   "proxy_quality": "exact",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "IWC",
+   "chart_kind": "proxy",
+   "group": "index",
+   "key": "Micro cap",
+   "long": [
+    "XIWC"
+   ],
+   "long_pick": "XIWC",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "IWF",
+   "chart_kind": "proxy",
+   "group": "index",
+   "key": "US growth",
+   "long": [
+    "USGX",
+    "MEGX"
+   ],
+   "long_pick": "USGX",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "VEU",
+   "chart_kind": "proxy",
+   "group": "index",
+   "key": "Ex-US",
+   "long": [
+    "XW"
+   ],
+   "long_pick": "XW",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SOXX",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Semiconductors",
+   "long": [
+    "SOXL",
+    "USD",
+    "SMHU",
+    "XSEM"
+   ],
+   "long_pick": "SOXL",
+   "proxy_quality": "approximate",
+   "short": [
+    "SOXS",
+    "SSG",
+    "SMHD"
+   ],
+   "short_pick": "SOXS"
+  },
+  {
+   "chart": "XBI",
+   "chart_kind": "self",
+   "group": "sector",
+   "key": "XBI",
+   "long": [
+    "LABU",
+    "XBIX",
+    "TBXU"
+   ],
+   "long_pick": "LABU",
+   "proxy_quality": null,
+   "short": [
+    "LABD"
+   ],
+   "short_pick": "LABD"
+  },
+  {
+   "chart": "XLE",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Energy",
+   "long": [
+    "ERX",
+    "NRGU",
+    "DIG",
+    "WTIU",
+    "TEXU",
+    "XLEX"
+   ],
+   "long_pick": "ERX",
+   "proxy_quality": "approximate",
+   "short": [
+    "ERY",
+    "DUG",
+    "NRGD",
+    "WTID"
+   ],
+   "short_pick": "ERY"
+  },
+  {
+   "chart": "GDX",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Gold miners",
+   "long": [
+    "GDXU",
+    "NUGT"
+   ],
+   "long_pick": "GDXU",
+   "proxy_quality": "exact",
+   "short": [
+    "GDXD",
+    "DUST"
+   ],
+   "short_pick": "GDXD"
+  },
+  {
+   "chart": "XLK",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Technology",
+   "long": [
+    "TECL",
+    "ROM",
+    "XLKX"
+   ],
+   "long_pick": "TECL",
+   "proxy_quality": "approximate",
+   "short": [
+    "TECS",
+    "REW"
+   ],
+   "short_pick": "TECS"
+  },
+  {
+   "chart": "DRAM",
+   "chart_kind": "self",
+   "group": "sector",
+   "key": "DRAM",
+   "long": [
+    "RAM",
+    "DRAL",
+    "RAML"
+   ],
+   "long_pick": "RAM",
+   "proxy_quality": null,
+   "short": [
+    "RAMZ"
+   ],
+   "short_pick": "RAMZ"
+  },
+  {
+   "chart": "XLF",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Financials",
+   "long": [
+    "FAS",
+    "UYG",
+    "XLFX"
+   ],
+   "long_pick": "FAS",
+   "proxy_quality": "approximate",
+   "short": [
+    "FAZ",
+    "SKF"
+   ],
+   "short_pick": "FAZ"
+  },
+  {
+   "chart": "FNGS",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "FANG+",
+   "long": [
+    "FNGU",
+    "BULZ",
+    "FNGG",
+    "FNGO"
+   ],
+   "long_pick": "FNGU",
+   "proxy_quality": "approximate",
+   "short": [
+    "FNGD",
+    "BERZ"
+   ],
+   "short_pick": "FNGD"
+  },
+  {
+   "chart": "XOP",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Oil & gas E&P",
+   "long": [
+    "GUSH",
+    "OILU"
+   ],
+   "long_pick": "GUSH",
+   "proxy_quality": "approximate",
+   "short": [
+    "DRIP",
+    "OILD"
+   ],
+   "short_pick": "DRIP"
+  },
+  {
+   "chart": "GDXJ",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Gold miners (junior)",
+   "long": [
+    "JNUG"
+   ],
+   "long_pick": "JNUG",
+   "proxy_quality": "exact",
+   "short": [
+    "JDST"
+   ],
+   "short_pick": "JDST"
+  },
+  {
+   "chart": "XHB",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Homebuilders",
+   "long": [
+    "NAIL"
+   ],
+   "long_pick": "NAIL",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "KRE",
+   "chart_kind": "self",
+   "group": "sector",
+   "key": "KRE",
+   "long": [
+    "DPST",
+    "XKRE"
+   ],
+   "long_pick": "DPST",
+   "proxy_quality": null,
+   "short": [
+    "SKRE"
+   ],
+   "short_pick": "SKRE"
+  },
+  {
+   "chart": "XLRE",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Real estate",
+   "long": [
+    "DRN",
+    "URE",
+    "XHOA"
+   ],
+   "long_pick": "DRN",
+   "proxy_quality": "approximate",
+   "short": [
+    "DRV",
+    "SRS"
+   ],
+   "short_pick": "DRV"
+  },
+  {
+   "chart": "ITA",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Defense",
+   "long": [
+    "DFEN"
+   ],
+   "long_pick": "DFEN",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "XLV",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Health care",
+   "long": [
+    "CURE",
+    "RXL",
+    "XLVX"
+   ],
+   "long_pick": "CURE",
+   "proxy_quality": "approximate",
+   "short": [
+    "RXD"
+   ],
+   "short_pick": "RXD"
+  },
+  {
+   "chart": "XLU",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Utilities",
+   "long": [
+    "UTSL",
+    "UPW",
+    "XLUX"
+   ],
+   "long_pick": "UTSL",
+   "proxy_quality": "approximate",
+   "short": [
+    "SDP"
+   ],
+   "short_pick": "SDP"
+  },
+  {
+   "chart": "MSOS",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Cannabis (MSOS)",
+   "long": [
+    "MSOX"
+   ],
+   "long_pick": "MSOX",
+   "proxy_quality": "exact",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "FDN",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Internet (FDN)",
+   "long": [
+    "WEBL"
+   ],
+   "long_pick": "WEBL",
+   "proxy_quality": "exact",
+   "short": [
+    "WEBS"
+   ],
+   "short_pick": "WEBS"
+  },
+  {
+   "chart": "XRT",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Retail",
+   "long": [
+    "RETL"
+   ],
+   "long_pick": "RETL",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "XLP",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Consumer staples",
+   "long": [
+    "UGE",
+    "XLPX"
+   ],
+   "long_pick": "UGE",
+   "proxy_quality": "approximate",
+   "short": [
+    "SZK"
+   ],
+   "short_pick": "SZK"
+  },
+  {
+   "chart": "QTUM",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Quantum computing",
+   "long": [
+    "QPUX",
+    "XQTM"
+   ],
+   "long_pick": "QPUX",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "XLY",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Consumer discretionary",
+   "long": [
+    "WANT",
+    "UCC",
+    "XLYX"
+   ],
+   "long_pick": "WANT",
+   "proxy_quality": "approximate",
+   "short": [
+    "SCC"
+   ],
+   "short_pick": "SCC"
+  },
+  {
+   "chart": "AIQ",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "AI & Big Data index",
+   "long": [
+    "AIBU"
+   ],
+   "long_pick": "AIBU",
+   "proxy_quality": "approximate",
+   "short": [
+    "AIBD"
+   ],
+   "short_pick": "AIBD"
+  },
+  {
+   "chart": "XLI",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Industrials",
+   "long": [
+    "DUSL",
+    "UXI",
+    "XLIX"
+   ],
+   "long_pick": "DUSL",
+   "proxy_quality": "approximate",
+   "short": [
+    "SIJ"
+   ],
+   "short_pick": "SIJ"
+  },
+  {
+   "chart": "XPH",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Pharma",
+   "long": [
+    "PILL"
+   ],
+   "long_pick": "PILL",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "IBB",
+   "chart_kind": "self",
+   "group": "sector",
+   "key": "IBB",
+   "long": [
+    "BIB"
+   ],
+   "long_pick": "BIB",
+   "proxy_quality": null,
+   "short": [
+    "BIS"
+   ],
+   "short_pick": "BIS"
+  },
+  {
+   "chart": "URA",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Uranium",
+   "long": [
+    "URAA"
+   ],
+   "long_pick": "URAA",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ARKK",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "ARKK / Innovation",
+   "long": [
+    "TARK"
+   ],
+   "long_pick": "TARK",
+   "proxy_quality": "exact",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "IYT",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Transportation",
+   "long": [
+    "TPOR"
+   ],
+   "long_pick": "TPOR",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "UFO",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Space",
+   "long": [
+    "SPCL"
+   ],
+   "long_pick": "SPCL",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "JETS",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Airlines (JETS)",
+   "long": [
+    "JETU"
+   ],
+   "long_pick": "JETU",
+   "proxy_quality": "exact",
+   "short": [
+    "JETD"
+   ],
+   "short_pick": "JETD"
+  },
+  {
+   "chart": "KBWB",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Big US Banks",
+   "long": [
+    "BNKU"
+   ],
+   "long_pick": "BNKU",
+   "proxy_quality": "approximate",
+   "short": [
+    "BNKD"
+   ],
+   "short_pick": "BNKD"
+  },
+  {
+   "chart": "XLB",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Materials",
+   "long": [
+    "UYM",
+    "XLBX"
+   ],
+   "long_pick": "UYM",
+   "proxy_quality": "approximate",
+   "short": [
+    "SMN"
+   ],
+   "short_pick": "SMN"
+  },
+  {
+   "chart": "SKYY",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Cloud computing",
+   "long": [
+    "SKYU"
+   ],
+   "long_pick": "SKYU",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "XLC",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Communication services",
+   "long": [
+    "LTL",
+    "XLCU"
+   ],
+   "long_pick": "LTL",
+   "proxy_quality": "approximate",
+   "short": [
+    "XLCD"
+   ],
+   "short_pick": "XLCD"
+  },
+  {
+   "chart": "COPX",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Copper miners",
+   "long": [
+    "COPZ"
+   ],
+   "long_pick": "COPZ",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "sector",
+   "key": "Travel",
+   "long": [
+    "FLYU"
+   ],
+   "long_pick": "FLYU",
+   "proxy_quality": null,
+   "short": [
+    "FLYD"
+   ],
+   "short_pick": "FLYD"
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "sector",
+   "key": "AI index",
+   "long": [],
+   "long_pick": null,
+   "proxy_quality": null,
+   "short": [
+    "AIQD"
+   ],
+   "short_pick": "AIQD"
+  },
+  {
+   "chart": "CARZ",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Auto industry",
+   "long": [
+    "CARU"
+   ],
+   "long_pick": "CARU",
+   "proxy_quality": "approximate",
+   "short": [
+    "CARD"
+   ],
+   "short_pick": "CARD"
+  },
+  {
+   "chart": "PAVE",
+   "chart_kind": "proxy",
+   "group": "sector",
+   "key": "Infrastructure",
+   "long": [
+    "XPAV"
+   ],
+   "long_pick": "XPAV",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "NVDA",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "NVDA",
+   "long": [
+    "NVDL",
+    "NVDX",
+    "NVDU",
+    "NVDG",
+    "NVC"
+   ],
+   "long_pick": "NVDL",
+   "proxy_quality": null,
+   "short": [
+    "NVD",
+    "NVDQ",
+    "NVDS"
+   ],
+   "short_pick": "NVD"
+  },
+  {
+   "chart": "SNDK",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "SNDK",
+   "long": [
+    "SNXX",
+    "SNDU",
+    "SNDG",
+    "SNDC"
+   ],
+   "long_pick": "SNXX",
+   "proxy_quality": null,
+   "short": [
+    "SNDQ"
+   ],
+   "short_pick": "SNDQ"
+  },
+  {
+   "chart": "MU",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MU",
+   "long": [
+    "MUU",
+    "MULL",
+    "MUG",
+    "MIC"
+   ],
+   "long_pick": "MUU",
+   "proxy_quality": null,
+   "short": [
+    "MUZ"
+   ],
+   "short_pick": "MUZ"
+  },
+  {
+   "chart": "TSLA",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "TSLA",
+   "long": [
+    "TSLL",
+    "TSLG",
+    "TSLT",
+    "TSLR",
+    "TESC"
+   ],
+   "long_pick": "TSLL",
+   "proxy_quality": null,
+   "short": [
+    "TSLQ",
+    "TSDD",
+    "TSLZ"
+   ],
+   "short_pick": "TSLQ"
+  },
+  {
+   "chart": "AMD",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AMD",
+   "long": [
+    "AMDL",
+    "AMUU",
+    "AMDG",
+    "AMDC"
+   ],
+   "long_pick": "AMDL",
+   "proxy_quality": null,
+   "short": [
+    "DAMD"
+   ],
+   "short_pick": "DAMD"
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "single-stock",
+   "key": "SPCX (SpaceX)",
+   "long": [
+    "SPCH",
+    "LOFF",
+    "SPCU",
+    "SPCF",
+    "SPAX",
+    "SPAL",
+    "SPCM"
+   ],
+   "long_pick": "SPCH",
+   "proxy_quality": null,
+   "short": [
+    "SSPC",
+    "SNK",
+    "SPCQ",
+    "SPCG",
+    "LOFD"
+   ],
+   "short_pick": "SSPC"
+  },
+  {
+   "chart": "MSTR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MSTR",
+   "long": [
+    "MSTU",
+    "MSTX",
+    "MSTP",
+    "MSTC"
+   ],
+   "long_pick": "MSTU",
+   "proxy_quality": null,
+   "short": [
+    "MSTZ",
+    "SMST"
+   ],
+   "short_pick": "MSTZ"
+  },
+  {
+   "chart": "CRWV",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CRWV",
+   "long": [
+    "CRWG",
+    "CWVX",
+    "CRWU",
+    "CRWX"
+   ],
+   "long_pick": "CRWG",
+   "proxy_quality": null,
+   "short": [
+    "CORD"
+   ],
+   "short_pick": "CORD"
+  },
+  {
+   "chart": "GOOGL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "GOOGL",
+   "long": [
+    "GGLL",
+    "GOOX",
+    "GOU",
+    "GOOL",
+    "GOGL"
+   ],
+   "long_pick": "GGLL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "NBIS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "NBIS",
+   "long": [
+    "NBIL",
+    "NBIG",
+    "NEBX",
+    "NBIC"
+   ],
+   "long_pick": "NBIL",
+   "proxy_quality": null,
+   "short": [
+    "NBIZ"
+   ],
+   "short_pick": "NBIZ"
+  },
+  {
+   "chart": "BE",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "BE",
+   "long": [
+    "BEX",
+    "BEG",
+    "BEC"
+   ],
+   "long_pick": "BEX",
+   "proxy_quality": null,
+   "short": [
+    "BEZ"
+   ],
+   "short_pick": "BEZ"
+  },
+  {
+   "chart": "INTC",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "INTC",
+   "long": [
+    "INTW",
+    "LINT",
+    "INT"
+   ],
+   "long_pick": "INTW",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "AAOI",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AAOI",
+   "long": [
+    "AAOX",
+    "AAOG"
+   ],
+   "long_pick": "AAOX",
+   "proxy_quality": null,
+   "short": [
+    "AAOZ"
+   ],
+   "short_pick": "AAOZ"
+  },
+  {
+   "chart": "MSFT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MSFT",
+   "long": [
+    "MSFU",
+    "MSFL",
+    "MSFX",
+    "MSFC"
+   ],
+   "long_pick": "MSFU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "LITE",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "LITE",
+   "long": [
+    "LITX",
+    "LITU",
+    "LITG",
+    "LITC"
+   ],
+   "long_pick": "LITX",
+   "proxy_quality": null,
+   "short": [
+    "LITZ"
+   ],
+   "short_pick": "LITZ"
+  },
+  {
+   "chart": "AXTI",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AXTI",
+   "long": [
+    "AXTX",
+    "AXTL",
+    "AXTU",
+    "AXTC"
+   ],
+   "long_pick": "AXTX",
+   "proxy_quality": null,
+   "short": [
+    "AXTQ"
+   ],
+   "short_pick": "AXTQ"
+  },
+  {
+   "chart": "IREN",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "IREN",
+   "long": [
+    "IRE",
+    "IREX",
+    "IREG",
+    "IREC"
+   ],
+   "long_pick": "IRE",
+   "proxy_quality": null,
+   "short": [
+    "IREZ"
+   ],
+   "short_pick": "IREZ"
+  },
+  {
+   "chart": "META",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "META",
+   "long": [
+    "METU",
+    "FBL",
+    "METG",
+    "FBX"
+   ],
+   "long_pick": "METU",
+   "proxy_quality": null,
+   "short": [
+    "METQ"
+   ],
+   "short_pick": "METQ"
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "single-stock",
+   "key": "SK Hynix",
+   "long": [
+    "SKUU",
+    "SKHX",
+    "SKHL",
+    "SK",
+    "HYNX"
+   ],
+   "long_pick": "SKUU",
+   "proxy_quality": null,
+   "short": [
+    "SKDD",
+    "SKHQ"
+   ],
+   "short_pick": "SKDD"
+  },
+  {
+   "chart": "BMNR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "BMNR",
+   "long": [
+    "BMNU",
+    "BMNG",
+    "BNMC"
+   ],
+   "long_pick": "BMNU",
+   "proxy_quality": null,
+   "short": [
+    "BMNZ"
+   ],
+   "short_pick": "BMNZ"
+  },
+  {
+   "chart": "AMZN",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AMZN",
+   "long": [
+    "AMZU",
+    "AMZZ",
+    "AMZG",
+    "AMAA"
+   ],
+   "long_pick": "AMZU",
+   "proxy_quality": null,
+   "short": [
+    "AMZO"
+   ],
+   "short_pick": "AMZO"
+  },
+  {
+   "chart": "PLTR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "PLTR",
+   "long": [
+    "PTIR",
+    "PLTU",
+    "PLTG",
+    "PLTL"
+   ],
+   "long_pick": "PTIR",
+   "proxy_quality": null,
+   "short": [
+    "PLTZ"
+   ],
+   "short_pick": "PLTZ"
+  },
+  {
+   "chart": "MRVL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MRVL",
+   "long": [
+    "MVLL",
+    "MRVU",
+    "MRVX"
+   ],
+   "long_pick": "MVLL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "COIN",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "COIN",
+   "long": [
+    "CONL",
+    "CONX",
+    "COIG",
+    "COIX"
+   ],
+   "long_pick": "CONL",
+   "proxy_quality": null,
+   "short": [
+    "CONI"
+   ],
+   "short_pick": "CONI"
+  },
+  {
+   "chart": "SMCI",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "SMCI",
+   "long": [
+    "SMCX",
+    "SMCL",
+    "SMCC"
+   ],
+   "long_pick": "SMCX",
+   "proxy_quality": null,
+   "short": [
+    "SMCZ"
+   ],
+   "short_pick": "SMCZ"
+  },
+  {
+   "chart": "NOW",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "NOW",
+   "long": [
+    "NOWL",
+    "NOWX"
+   ],
+   "long_pick": "NOWL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ORCL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ORCL",
+   "long": [
+    "ORCX",
+    "ORCU",
+    "ORAC"
+   ],
+   "long_pick": "ORCX",
+   "proxy_quality": null,
+   "short": [
+    "ORCZ"
+   ],
+   "short_pick": "ORCZ"
+  },
+  {
+   "chart": "TSM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "TSM",
+   "long": [
+    "TSMX",
+    "TSMU",
+    "TSMG",
+    "TWSC"
+   ],
+   "long_pick": "TSMX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "RKLB",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "RKLB",
+   "long": [
+    "RKLX",
+    "RKX"
+   ],
+   "long_pick": "RKLX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "AVGO",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AVGO",
+   "long": [
+    "AVL",
+    "AVGX",
+    "AVGG",
+    "AVGU",
+    "AVGC"
+   ],
+   "long_pick": "AVL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ASTS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ASTS",
+   "long": [
+    "ASTX",
+    "ASTY",
+    "ASTG",
+    "ASTT"
+   ],
+   "long_pick": "ASTX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "COHR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "COHR",
+   "long": [
+    "COHX",
+    "COHH",
+    "COHC"
+   ],
+   "long_pick": "COHX",
+   "proxy_quality": null,
+   "short": [
+    "COHQ"
+   ],
+   "short_pick": "COHQ"
+  },
+  {
+   "chart": "AAPL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AAPL",
+   "long": [
+    "AAPU",
+    "AAPX",
+    "AAPB",
+    "AAPE",
+    "IOSX"
+   ],
+   "long_pick": "AAPU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "DELL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "DELL",
+   "long": [
+    "DLLL"
+   ],
+   "long_pick": "DLLL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CRDO",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CRDO",
+   "long": [
+    "CRDU",
+    "CRD"
+   ],
+   "long_pick": "CRDU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "MRNA",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MRNA",
+   "long": [
+    "MRNX"
+   ],
+   "long_pick": "MRNX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "IONQ",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "IONQ",
+   "long": [
+    "IONX",
+    "IONL",
+    "IONC"
+   ],
+   "long_pick": "IONX",
+   "proxy_quality": null,
+   "short": [
+    "IONZ"
+   ],
+   "short_pick": "IONZ"
+  },
+  {
+   "chart": "APP",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "APP",
+   "long": [
+    "APPX",
+    "APPC"
+   ],
+   "long_pick": "APPX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "WDC",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "WDC",
+   "long": [
+    "WDCX",
+    "WDCC"
+   ],
+   "long_pick": "WDCX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CRCL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CRCL",
+   "long": [
+    "CRCG",
+    "CCUP",
+    "CIR"
+   ],
+   "long_pick": "CRCG",
+   "proxy_quality": null,
+   "short": [
+    "CRCD"
+   ],
+   "short_pick": "CRCD"
+  },
+  {
+   "chart": "APLD",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "APLD",
+   "long": [
+    "APLX"
+   ],
+   "long_pick": "APLX",
+   "proxy_quality": null,
+   "short": [
+    "APLZ"
+   ],
+   "short_pick": "APLZ"
+  },
+  {
+   "chart": "UNH",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "UNH",
+   "long": [
+    "UNHG",
+    "UNHU",
+    "UN"
+   ],
+   "long_pick": "UNHG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "NFLX",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "NFLX",
+   "long": [
+    "NFXL",
+    "NFLU",
+    "NFX"
+   ],
+   "long_pick": "NFXL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "RGTI",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "RGTI",
+   "long": [
+    "RGTX",
+    "RGTU",
+    "RGTC"
+   ],
+   "long_pick": "RGTX",
+   "proxy_quality": null,
+   "short": [
+    "RGTZ"
+   ],
+   "short_pick": "RGTZ"
+  },
+  {
+   "chart": "CBRS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CBRS",
+   "long": [
+    "CBRG",
+    "CBRX"
+   ],
+   "long_pick": "CBRG",
+   "proxy_quality": null,
+   "short": [
+    "CBRZ"
+   ],
+   "short_pick": "CBRZ"
+  },
+  {
+   "chart": "HOOD",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "HOOD",
+   "long": [
+    "ROBN",
+    "HOOG",
+    "HODU",
+    "HOOX",
+    "HOOC"
+   ],
+   "long_pick": "ROBN",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "OKLO",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "OKLO",
+   "long": [
+    "OKLL",
+    "OKLC"
+   ],
+   "long_pick": "OKLL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "BABA",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "BABA",
+   "long": [
+    "BABX",
+    "BABU",
+    "BABC"
+   ],
+   "long_pick": "BABX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ALAB",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ALAB",
+   "long": [
+    "LABX",
+    "ALA"
+   ],
+   "long_pick": "LABX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SOFI",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "SOFI",
+   "long": [
+    "SOFX",
+    "SOFA",
+    "SOFC"
+   ],
+   "long_pick": "SOFX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "AEHR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AEHR",
+   "long": [
+    "AEHG"
+   ],
+   "long_pick": "AEHG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CRWD",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CRWD",
+   "long": [
+    "CRWL",
+    "CRWC"
+   ],
+   "long_pick": "CRWL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "LLY",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "LLY",
+   "long": [
+    "LLYX",
+    "ELIL"
+   ],
+   "long_pick": "LLYX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CIFR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CIFR",
+   "long": [
+    "CIFU",
+    "CIFG",
+    "CIFC"
+   ],
+   "long_pick": "CIFU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ARM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ARM",
+   "long": [
+    "ARMG",
+    "ARMA"
+   ],
+   "long_pick": "ARMG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "QBTS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "QBTS",
+   "long": [
+    "QBTX",
+    "QUA"
+   ],
+   "long_pick": "QBTX",
+   "proxy_quality": null,
+   "short": [
+    "QBTZ"
+   ],
+   "short_pick": "QBTZ"
+  },
+  {
+   "chart": "HIMS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "HIMS",
+   "long": [
+    "HIMZ",
+    "HIMC"
+   ],
+   "long_pick": "HIMZ",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "RDDT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "RDDT",
+   "long": [
+    "RDTL",
+    "RDDC"
+   ],
+   "long_pick": "RDTL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ADBE",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ADBE",
+   "long": [
+    "ADBG",
+    "ADBU"
+   ],
+   "long_pick": "ADBG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "GLW",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "GLW",
+   "long": [
+    "GLWG"
+   ],
+   "long_pick": "GLWG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ONDS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ONDS",
+   "long": [
+    "ONDL",
+    "ONDG",
+    "ONDU",
+    "ONDC"
+   ],
+   "long_pick": "ONDL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "STX",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "STX",
+   "long": [
+    "STXL",
+    "STXU",
+    "STXX"
+   ],
+   "long_pick": "STXL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CIEN",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CIEN",
+   "long": [
+    "CIEG",
+    "CIEX"
+   ],
+   "long_pick": "CIEG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "VRT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "VRT",
+   "long": [
+    "VRTL",
+    "VRC"
+   ],
+   "long_pick": "VRTL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "QCOM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "QCOM",
+   "long": [
+    "QCML",
+    "QCMU"
+   ],
+   "long_pick": "QCML",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "GME",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "GME",
+   "long": [
+    "GMEU",
+    "GMEC"
+   ],
+   "long_pick": "GMEU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CRM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CRM",
+   "long": [
+    "CRMG"
+   ],
+   "long_pick": "CRMG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "TEM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "TEM",
+   "long": [
+    "TEMT",
+    "TEMC"
+   ],
+   "long_pick": "TEMT",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "WULF",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "WULF",
+   "long": [
+    "WULX"
+   ],
+   "long_pick": "WULX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "PANW",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "PANW",
+   "long": [
+    "PALU",
+    "PANG"
+   ],
+   "long_pick": "PALU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "LUNR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "LUNR",
+   "long": [
+    "LUNL"
+   ],
+   "long_pick": "LUNL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "RIOT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "RIOT",
+   "long": [
+    "RIOX"
+   ],
+   "long_pick": "RIOX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ASST",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ASST",
+   "long": [
+    "ASSX"
+   ],
+   "long_pick": "ASSX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "GEV",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "GEV",
+   "long": [
+    "GEVX",
+    "GEVG",
+    "GEVC"
+   ],
+   "long_pick": "GEVX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "NVTS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "NVTS",
+   "long": [
+    "NVTX",
+    "NVTC"
+   ],
+   "long_pick": "NVTX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "LRCX",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "LRCX",
+   "long": [
+    "LRCU",
+    "LRCC"
+   ],
+   "long_pick": "LRCU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CLS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CLS",
+   "long": [
+    "CSEX"
+   ],
+   "long_pick": "CSEX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "BRKB",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "BRKB",
+   "long": [
+    "BRKU",
+    "BRKL"
+   ],
+   "long_pick": "BRKU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "IBM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "IBM",
+   "long": [
+    "IBX"
+   ],
+   "long_pick": "IBX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "OKTA",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "OKTA",
+   "long": [
+    "OKTG"
+   ],
+   "long_pick": "OKTG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "VST",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "VST",
+   "long": [
+    "VSTL"
+   ],
+   "long_pick": "VSTL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "NVO",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "NVO",
+   "long": [
+    "NVOX",
+    "NVOC"
+   ],
+   "long_pick": "NVOX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "PURR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "PURR",
+   "long": [
+    "PUR",
+    "KATT"
+   ],
+   "long_pick": "PUR",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CLSK",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CLSK",
+   "long": [
+    "CLSX"
+   ],
+   "long_pick": "CLSX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "MARA",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MARA",
+   "long": [
+    "MRAL",
+    "MHX"
+   ],
+   "long_pick": "MRAL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "BA",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "BA",
+   "long": [
+    "BOEU",
+    "BOEG"
+   ],
+   "long_pick": "BOEU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "AMAT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AMAT",
+   "long": [
+    "AMAU",
+    "AMA",
+    "APMI"
+   ],
+   "long_pick": "AMAU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "HPE",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "HPE",
+   "long": [
+    "HPEL"
+   ],
+   "long_pick": "HPEL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "UBER",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "UBER",
+   "long": [
+    "UBRL"
+   ],
+   "long_pick": "UBRL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "RIVN",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "RIVN",
+   "long": [
+    "RVNL",
+    "RIVC"
+   ],
+   "long_pick": "RVNL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "NET",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "NET",
+   "long": [
+    "NETG"
+   ],
+   "long_pick": "NETG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "HUT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "HUT",
+   "long": [
+    "HUTG"
+   ],
+   "long_pick": "HUTG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "FUTU",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "FUTU",
+   "long": [
+    "FUTG"
+   ],
+   "long_pick": "FUTG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ANET",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ANET",
+   "long": [
+    "ANEL"
+   ],
+   "long_pick": "ANEL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "FPS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "FPS",
+   "long": [
+    "FPSX"
+   ],
+   "long_pick": "FPSX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "KTOS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "KTOS",
+   "long": [
+    "KTUP"
+   ],
+   "long_pick": "KTUP",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "RDW",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "RDW",
+   "long": [
+    "RDWU"
+   ],
+   "long_pick": "RDWU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "USAR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "USAR",
+   "long": [
+    "USGG",
+    "USAX"
+   ],
+   "long_pick": "USGG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "EOSE",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "EOSE",
+   "long": [
+    "EOSU",
+    "EO"
+   ],
+   "long_pick": "EOSU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SHOP",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "SHOP",
+   "long": [
+    "SHPU"
+   ],
+   "long_pick": "SHPU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SMR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "SMR",
+   "long": [
+    "SMU",
+    "SMUP",
+    "SMRX"
+   ],
+   "long_pick": "SMU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "RBLX",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "RBLX",
+   "long": [
+    "RBLU"
+   ],
+   "long_pick": "RBLU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "TTD",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "TTD",
+   "long": [
+    "TTDU"
+   ],
+   "long_pick": "TTDU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "FLY",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "FLY",
+   "long": [
+    "FLYT"
+   ],
+   "long_pick": "FLYT",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CSCO",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CSCO",
+   "long": [
+    "CSCL"
+   ],
+   "long_pick": "CSCL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CAT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CAT",
+   "long": [
+    "CATG"
+   ],
+   "long_pick": "CATG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CEG",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CEG",
+   "long": [
+    "CEGX"
+   ],
+   "long_pick": "CEGX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "GLXY",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "GLXY",
+   "long": [
+    "GLXU",
+    "GLX"
+   ],
+   "long_pick": "GLXU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "COST",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "COST",
+   "long": [
+    "COTG"
+   ],
+   "long_pick": "COTG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "LMT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "LMT",
+   "long": [
+    "LMTL"
+   ],
+   "long_pick": "LMTL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "POET",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "POET",
+   "long": [
+    "POEL"
+   ],
+   "long_pick": "POEL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ASML",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ASML",
+   "long": [
+    "ASMG",
+    "ASMU",
+    "ASMZ"
+   ],
+   "long_pick": "ASMG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SNOW",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "SNOW",
+   "long": [
+    "SNOU"
+   ],
+   "long_pick": "SNOU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "XOM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "XOM",
+   "long": [
+    "XOMX"
+   ],
+   "long_pick": "XOMX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "TER",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "TER",
+   "long": [
+    "TERG",
+    "TERC"
+   ],
+   "long_pick": "TERG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "UPST",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "UPST",
+   "long": [
+    "UPSX",
+    "UPSC"
+   ],
+   "long_pick": "UPSX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "QNT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "QNT",
+   "long": [
+    "QNTU"
+   ],
+   "long_pick": "QNTU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "LULU",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "LULU",
+   "long": [
+    "LULG"
+   ],
+   "long_pick": "LULG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "KLAC",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "KLAC",
+   "long": [
+    "KLAG"
+   ],
+   "long_pick": "KLAG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "AMKR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AMKR",
+   "long": [
+    "AMKL",
+    "AMKX"
+   ],
+   "long_pick": "AMKL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CRML",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CRML",
+   "long": [
+    "CRMX"
+   ],
+   "long_pick": "CRMX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "AVAV",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AVAV",
+   "long": [
+    "AVXX"
+   ],
+   "long_pick": "AVXX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "TTMI",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "TTMI",
+   "long": [
+    "TTMX"
+   ],
+   "long_pick": "TTMX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "FIG",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "FIG",
+   "long": [
+    "FIGG"
+   ],
+   "long_pick": "FIGG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "MP",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MP",
+   "long": [
+    "MPG"
+   ],
+   "long_pick": "MPG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "OUST",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "OUST",
+   "long": [
+    "OUSL"
+   ],
+   "long_pick": "OUSL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "NOK",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "NOK",
+   "long": [
+    "LNOK"
+   ],
+   "long_pick": "LNOK",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "JOBY",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "JOBY",
+   "long": [
+    "JOBX",
+    "JOBC"
+   ],
+   "long_pick": "JOBX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "BIDU",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "BIDU",
+   "long": [
+    "BIDG"
+   ],
+   "long_pick": "BIDG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "TXN",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "TXN",
+   "long": [
+    "TXNU"
+   ],
+   "long_pick": "TXNU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "STRL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "STRL",
+   "long": [
+    "STLL"
+   ],
+   "long_pick": "STLL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SOUN",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "SOUN",
+   "long": [
+    "SOUX"
+   ],
+   "long_pick": "SOUX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "OPEN",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "OPEN",
+   "long": [
+    "OPEX"
+   ],
+   "long_pick": "OPEX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "UUUU",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "UUUU",
+   "long": [
+    "UUUG",
+    "UUUC"
+   ],
+   "long_pick": "UUUG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "MXL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MXL",
+   "long": [
+    "MXLL"
+   ],
+   "long_pick": "MXLL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "INFQ",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "INFQ",
+   "long": [
+    "INFH"
+   ],
+   "long_pick": "INFH",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "FIGR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "FIGR",
+   "long": [
+    "FGRU"
+   ],
+   "long_pick": "FGRU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "KEEL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "KEEL",
+   "long": [
+    "KEEX"
+   ],
+   "long_pick": "KEEX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ISRG",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ISRG",
+   "long": [
+    "ISUL"
+   ],
+   "long_pick": "ISUL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "PDD",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "PDD",
+   "long": [
+    "PDDL"
+   ],
+   "long_pick": "PDDL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "LEU",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "LEU",
+   "long": [
+    "LEUX"
+   ],
+   "long_pick": "LEUX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "BTDR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "BTDR",
+   "long": [
+    "BTDL"
+   ],
+   "long_pick": "BTDL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "RCAT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "RCAT",
+   "long": [
+    "RCAX"
+   ],
+   "long_pick": "RCAX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ECHO",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ECHO",
+   "long": [
+    "ECHX"
+   ],
+   "long_pick": "ECHX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "PENG",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "PENG",
+   "long": [
+    "PENU"
+   ],
+   "long_pick": "PENU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SMTC",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "SMTC",
+   "long": [
+    "SMTG"
+   ],
+   "long_pick": "SMTG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "QUBT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "QUBT",
+   "long": [
+    "QUBX"
+   ],
+   "long_pick": "QUBX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "FN",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "FN",
+   "long": [
+    "FNG"
+   ],
+   "long_pick": "FNG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CORZ",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CORZ",
+   "long": [
+    "COZX"
+   ],
+   "long_pick": "COZX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "UMAC",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "UMAC",
+   "long": [
+    "UMAL"
+   ],
+   "long_pick": "UMAL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "BBAI",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "BBAI",
+   "long": [
+    "BAIG"
+   ],
+   "long_pick": "BAIG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "PYPL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "PYPL",
+   "long": [
+    "PYPG",
+    "PYPU"
+   ],
+   "long_pick": "PYPG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ACHR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ACHR",
+   "long": [
+    "ARCX",
+    "ACHX"
+   ],
+   "long_pick": "ARCX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "OSCR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "OSCR",
+   "long": [
+    "OSCX"
+   ],
+   "long_pick": "OSCX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SITM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "SITM",
+   "long": [
+    "SITX"
+   ],
+   "long_pick": "SITX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "TSEM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "TSEM",
+   "long": [
+    "TSEG"
+   ],
+   "long_pick": "TSEG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "PLUG",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "PLUG",
+   "long": [
+    "PLUL"
+   ],
+   "long_pick": "PLUL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SPOT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "SPOT",
+   "long": [
+    "SPOG"
+   ],
+   "long_pick": "SPOG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "RTX",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "RTX",
+   "long": [
+    "RTXG"
+   ],
+   "long_pick": "RTXG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "PL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "PL",
+   "long": [
+    "PLU"
+   ],
+   "long_pick": "PLU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "AAL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AAL",
+   "long": [
+    "AALG"
+   ],
+   "long_pick": "AALG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "DUOL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "DUOL",
+   "long": [
+    "DUOG"
+   ],
+   "long_pick": "DUOG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "DJT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "DJT",
+   "long": [
+    "DJTU"
+   ],
+   "long_pick": "DJTU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "AKAM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AKAM",
+   "long": [
+    "AKAL"
+   ],
+   "long_pick": "AKAL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "MPWR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MPWR",
+   "long": [
+    "MPWX",
+    "MPWC"
+   ],
+   "long_pick": "MPWX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "GFS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "GFS",
+   "long": [
+    "GFSG"
+   ],
+   "long_pick": "GFSG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "P",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "P",
+   "long": [
+    "PUL"
+   ],
+   "long_pick": "PUL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "QS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "QS",
+   "long": [
+    "QSU"
+   ],
+   "long_pick": "QSU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "XNDU",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "XNDU",
+   "long": [
+    "XNDX"
+   ],
+   "long_pick": "XNDX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ONTO",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ONTO",
+   "long": [
+    "ONTX"
+   ],
+   "long_pick": "ONTX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "NIO",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "NIO",
+   "long": [
+    "NIOG"
+   ],
+   "long_pick": "NIOG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SNAP",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "SNAP",
+   "long": [
+    "SNAG"
+   ],
+   "long_pick": "SNAG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "U",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "U",
+   "long": [
+    "UNX"
+   ],
+   "long_pick": "UNX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SIMO",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "SIMO",
+   "long": [
+    "SIMX"
+   ],
+   "long_pick": "SIMX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ON",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ON",
+   "long": [
+    "ONG",
+    "ONX"
+   ],
+   "long_pick": "ONG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "GRAB",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "GRAB",
+   "long": [
+    "GRAG"
+   ],
+   "long_pick": "GRAG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "UCTT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "UCTT",
+   "long": [
+    "UCTX"
+   ],
+   "long_pick": "UCTX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "XPEV",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "XPEV",
+   "long": [
+    "XPEG"
+   ],
+   "long_pick": "XPEG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "WYFI",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "WYFI",
+   "long": [
+    "WYFL"
+   ],
+   "long_pick": "WYFL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "FORM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "FORM",
+   "long": [
+    "FOMG"
+   ],
+   "long_pick": "FOMG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "DOCN",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "DOCN",
+   "long": [
+    "OCNL"
+   ],
+   "long_pick": "OCNL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "APH",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "APH",
+   "long": [
+    "APHU",
+    "APHG"
+   ],
+   "long_pick": "APHU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "PATH",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "PATH",
+   "long": [
+    "PATX"
+   ],
+   "long_pick": "PATX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "VIAV",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "VIAV",
+   "long": [
+    "VIAG"
+   ],
+   "long_pick": "VIAG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "RMBS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "RMBS",
+   "long": [
+    "RMBX",
+    "RMBC"
+   ],
+   "long_pick": "RMBX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "FIX",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "FIX",
+   "long": [
+    "FIXX"
+   ],
+   "long_pick": "FIXX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "XYZ",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "XYZ",
+   "long": [
+    "XYZG"
+   ],
+   "long_pick": "XYZG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "MTSI",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MTSI",
+   "long": [
+    "MTSG"
+   ],
+   "long_pick": "MTSG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "BULL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "BULL",
+   "long": [
+    "BULG"
+   ],
+   "long_pick": "BULG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CDNS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CDNS",
+   "long": [
+    "CDNG"
+   ],
+   "long_pick": "CDNG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "NXPI",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "NXPI",
+   "long": [
+    "NXPG"
+   ],
+   "long_pick": "NXPG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "NTAP",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "NTAP",
+   "long": [
+    "NTAL"
+   ],
+   "long_pick": "NTAL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "VELO",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "VELO",
+   "long": [
+    "VELL"
+   ],
+   "long_pick": "VELL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ADI",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ADI",
+   "long": [
+    "ADIU"
+   ],
+   "long_pick": "ADIU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ETN",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ETN",
+   "long": [
+    "ETNG"
+   ],
+   "long_pick": "ETNG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "BB",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "BB",
+   "long": [
+    "BBUL"
+   ],
+   "long_pick": "BBUL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ENTG",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ENTG",
+   "long": [
+    "ENTL"
+   ],
+   "long_pick": "ENTL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "MCHP",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MCHP",
+   "long": [
+    "MCHG",
+    "MCHU"
+   ],
+   "long_pick": "MCHG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "STM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "STM",
+   "long": [
+    "STMX"
+   ],
+   "long_pick": "STMX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "MRAM",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MRAM",
+   "long": [
+    "MRAX"
+   ],
+   "long_pick": "MRAX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "LWLG",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "LWLG",
+   "long": [
+    "LWLX"
+   ],
+   "long_pick": "LWLX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "XOVR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "XOVR",
+   "long": [
+    "XOVL"
+   ],
+   "long_pick": "XOVL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "FLEX",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "FLEX",
+   "long": [
+    "FLEL"
+   ],
+   "long_pick": "FLEL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ACMR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ACMR",
+   "long": [
+    "ACMM"
+   ],
+   "long_pick": "ACMM",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "OSS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "OSS",
+   "long": [
+    "OSSL"
+   ],
+   "long_pick": "OSSL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "MSI",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MSI",
+   "long": [
+    "MSIX"
+   ],
+   "long_pick": "MSIX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "LASR",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "LASR",
+   "long": [
+    "LASC"
+   ],
+   "long_pick": "LASC",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "JBL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "JBL",
+   "long": [
+    "JBLG"
+   ],
+   "long_pick": "JBLG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "UMC",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "UMC",
+   "long": [
+    "UMCX",
+    "UMCU"
+   ],
+   "long_pick": "UMCX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "MNST",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "MNST",
+   "long": [
+    "MNSX"
+   ],
+   "long_pick": "MNSX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "TDC",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "TDC",
+   "long": [
+    "TDCL"
+   ],
+   "long_pick": "TDCL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CART",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CART",
+   "long": [
+    "CARX"
+   ],
+   "long_pick": "CARX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "AGIX",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "AGIX",
+   "long": [
+    "XAGI"
+   ],
+   "long_pick": "XAGI",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "KEYS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "KEYS",
+   "long": [
+    "KEYG",
+    "KEYX"
+   ],
+   "long_pick": "KEYG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "TPL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "TPL",
+   "long": [
+    "TPLX"
+   ],
+   "long_pick": "TPLX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ACLS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "ACLS",
+   "long": [
+    "ACLZ"
+   ],
+   "long_pick": "ACLZ",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "TEL",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "TEL",
+   "long": [
+    "TELG"
+   ],
+   "long_pick": "TELG",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CAMT",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CAMT",
+   "long": [
+    "CAMC"
+   ],
+   "long_pick": "CAMC",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CRUS",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "CRUS",
+   "long": [
+    "CRUC"
+   ],
+   "long_pick": "CRUC",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "LRN",
+   "chart_kind": "self",
+   "group": "single-stock",
+   "key": "LRN",
+   "long": [
+    "LRNX"
+   ],
+   "long_pick": "LRNX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "SLV",
+   "chart_kind": "proxy",
+   "group": "commodity",
+   "key": "Silver",
+   "long": [
+    "AGQ",
+    "USLV"
+   ],
+   "long_pick": "AGQ",
+   "proxy_quality": "exact",
+   "short": [
+    "ZSL"
+   ],
+   "short_pick": "ZSL"
+  },
+  {
+   "chart": "USO",
+   "chart_kind": "proxy",
+   "group": "commodity",
+   "key": "Crude oil",
+   "long": [
+    "UCO"
+   ],
+   "long_pick": "UCO",
+   "proxy_quality": "approximate",
+   "short": [
+    "SCO"
+   ],
+   "short_pick": "SCO"
+  },
+  {
+   "chart": "UNG",
+   "chart_kind": "proxy",
+   "group": "commodity",
+   "key": "Natural gas",
+   "long": [
+    "BOIL"
+   ],
+   "long_pick": "BOIL",
+   "proxy_quality": "approximate",
+   "short": [
+    "KOLD"
+   ],
+   "short_pick": "KOLD"
+  },
+  {
+   "chart": "GLD",
+   "chart_kind": "proxy",
+   "group": "commodity",
+   "key": "Gold",
+   "long": [
+    "UGL",
+    "GLLD",
+    "UGLD"
+   ],
+   "long_pick": "UGL",
+   "proxy_quality": "exact",
+   "short": [
+    "GLL",
+    "DULL",
+    "DZZ"
+   ],
+   "short_pick": "GLL"
+  },
+  {
+   "chart": "CPER",
+   "chart_kind": "proxy",
+   "group": "commodity",
+   "key": "Copper",
+   "long": [
+    "CPXR",
+    "UCOP"
+   ],
+   "long_pick": "CPXR",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "WEAT",
+   "chart_kind": "proxy",
+   "group": "commodity",
+   "key": "Wheat",
+   "long": [
+    "WXET"
+   ],
+   "long_pick": "WXET",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "CORN",
+   "chart_kind": "proxy",
+   "group": "commodity",
+   "key": "Corn",
+   "long": [
+    "CXRN"
+   ],
+   "long_pick": "CXRN",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "PALL",
+   "chart_kind": "proxy",
+   "group": "commodity",
+   "key": "Palladium",
+   "long": [
+    "UPAL"
+   ],
+   "long_pick": "UPAL",
+   "proxy_quality": "exact",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "PPLT",
+   "chart_kind": "proxy",
+   "group": "commodity",
+   "key": "Platinum",
+   "long": [
+    "UPLT"
+   ],
+   "long_pick": "UPLT",
+   "proxy_quality": "exact",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "DBC",
+   "chart_kind": "proxy",
+   "group": "commodity",
+   "key": "Broad commodities",
+   "long": [
+    "XCOM"
+   ],
+   "long_pick": "XCOM",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "IBIT",
+   "chart_kind": "proxy",
+   "group": "crypto",
+   "key": "BTC",
+   "long": [
+    "BITX",
+    "BITU",
+    "BTCL",
+    "BTCU"
+   ],
+   "long_pick": "BITX",
+   "proxy_quality": "approximate",
+   "short": [
+    "BTCZ",
+    "SBIT"
+   ],
+   "short_pick": "BTCZ"
+  },
+  {
+   "chart": "ETHA",
+   "chart_kind": "proxy",
+   "group": "crypto",
+   "key": "ETH",
+   "long": [
+    "ETHU",
+    "ETHT",
+    "ETU",
+    "EVMU"
+   ],
+   "long_pick": "ETHU",
+   "proxy_quality": "approximate",
+   "short": [
+    "ETHD"
+   ],
+   "short_pick": "ETHD"
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "crypto",
+   "key": "SOL",
+   "long": [
+    "SOLT",
+    "SLON"
+   ],
+   "long_pick": "SOLT",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "crypto",
+   "key": "XRP",
+   "long": [
+    "XXRP",
+    "XRPT",
+    "UXRP"
+   ],
+   "long_pick": "XXRP",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "crypto",
+   "key": "HYPE",
+   "long": [
+    "TXXH"
+   ],
+   "long_pick": "TXXH",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "crypto",
+   "key": "SUI",
+   "long": [
+    "SUIL",
+    "TXXS"
+   ],
+   "long_pick": "SUIL",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "crypto",
+   "key": "DOGE",
+   "long": [
+    "TXXD"
+   ],
+   "long_pick": "TXXD",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "crypto",
+   "key": "XLM",
+   "long": [
+    "STLU"
+   ],
+   "long_pick": "STLU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "crypto",
+   "key": "LINK",
+   "long": [
+    "CHNU"
+   ],
+   "long_pick": "CHNU",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "crypto",
+   "key": "AVAX",
+   "long": [
+    "AVAZ"
+   ],
+   "long_pick": "AVAZ",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": null,
+   "chart_kind": "none",
+   "group": "crypto",
+   "key": "ADA",
+   "long": [
+    "CRDX"
+   ],
+   "long_pick": "CRDX",
+   "proxy_quality": null,
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "TLT",
+   "chart_kind": "proxy",
+   "group": "bond",
+   "key": "20+yr Treasury",
+   "long": [
+    "TMF",
+    "UBT"
+   ],
+   "long_pick": "TMF",
+   "proxy_quality": "exact",
+   "short": [
+    "TMV",
+    "TBT",
+    "TTT"
+   ],
+   "short_pick": "TMV"
+  },
+  {
+   "chart": "HYG",
+   "chart_kind": "proxy",
+   "group": "bond",
+   "key": "High yield",
+   "long": [
+    "UJB",
+    "HYGU"
+   ],
+   "long_pick": "UJB",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "IEF",
+   "chart_kind": "proxy",
+   "group": "bond",
+   "key": "7-10yr Treasury",
+   "long": [
+    "UST",
+    "TYD"
+   ],
+   "long_pick": "UST",
+   "proxy_quality": "exact",
+   "short": [
+    "TYO",
+    "PST"
+   ],
+   "short_pick": "TYO"
+  },
+  {
+   "chart": "LQD",
+   "chart_kind": "self",
+   "group": "bond",
+   "key": "LQD",
+   "long": [
+    "LQDU"
+   ],
+   "long_pick": "LQDU",
+   "proxy_quality": null,
+   "short": [
+    "LQDD"
+   ],
+   "short_pick": "LQDD"
+  },
+  {
+   "chart": "EWY",
+   "chart_kind": "proxy",
+   "group": "country",
+   "key": "South Korea",
+   "long": [
+    "KORU",
+    "KRWX"
+   ],
+   "long_pick": "KORU",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "FXI",
+   "chart_kind": "proxy",
+   "group": "country",
+   "key": "China",
+   "long": [
+    "YINN",
+    "XPP",
+    "CCPX"
+   ],
+   "long_pick": "YINN",
+   "proxy_quality": "approximate",
+   "short": [
+    "YANG",
+    "FXP"
+   ],
+   "short_pick": "YANG"
+  },
+  {
+   "chart": "EWZ",
+   "chart_kind": "proxy",
+   "group": "country",
+   "key": "Brazil",
+   "long": [
+    "BRZU",
+    "BRZL",
+    "UBR",
+    "BRZX"
+   ],
+   "long_pick": "BRZU",
+   "proxy_quality": "approximate",
+   "short": [
+    "BZQ",
+    "BRZD"
+   ],
+   "short_pick": "BZQ"
+  },
+  {
+   "chart": "KWEB",
+   "chart_kind": "proxy",
+   "group": "country",
+   "key": "China internet",
+   "long": [
+    "CWEB",
+    "WEBX"
+   ],
+   "long_pick": "CWEB",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "EEM",
+   "chart_kind": "self",
+   "group": "country",
+   "key": "EEM",
+   "long": [
+    "EDC",
+    "EET",
+    "EMXX"
+   ],
+   "long_pick": "EDC",
+   "proxy_quality": null,
+   "short": [
+    "EDZ",
+    "EEV"
+   ],
+   "short_pick": "EDZ"
+  },
+  {
+   "chart": "INDA",
+   "chart_kind": "proxy",
+   "group": "country",
+   "key": "India",
+   "long": [
+    "INDL",
+    "TAJX"
+   ],
+   "long_pick": "INDL",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "ASHR",
+   "chart_kind": "proxy",
+   "group": "country",
+   "key": "China A-shares",
+   "long": [
+    "CHAU"
+   ],
+   "long_pick": "CHAU",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "VGK",
+   "chart_kind": "proxy",
+   "group": "country",
+   "key": "Europe (VGK)",
+   "long": [
+    "EURL",
+    "UPV",
+    "XEUR"
+   ],
+   "long_pick": "EURL",
+   "proxy_quality": "exact",
+   "short": [
+    "EPV"
+   ],
+   "short_pick": "EPV"
+  },
+  {
+   "chart": "EFA",
+   "chart_kind": "self",
+   "group": "country",
+   "key": "EFA",
+   "long": [
+    "EFO"
+   ],
+   "long_pick": "EFO",
+   "proxy_quality": null,
+   "short": [
+    "EFU"
+   ],
+   "short_pick": "EFU"
+  },
+  {
+   "chart": "EWJ",
+   "chart_kind": "proxy",
+   "group": "country",
+   "key": "Japan",
+   "long": [
+    "EZJ",
+    "JPNU"
+   ],
+   "long_pick": "EZJ",
+   "proxy_quality": "approximate",
+   "short": [
+    "EWV",
+    "JPND"
+   ],
+   "short_pick": "EWV"
+  },
+  {
+   "chart": "EWW",
+   "chart_kind": "proxy",
+   "group": "country",
+   "key": "Mexico",
+   "long": [
+    "MEXX"
+   ],
+   "long_pick": "MEXX",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  },
+  {
+   "chart": "EWT",
+   "chart_kind": "proxy",
+   "group": "country",
+   "key": "Taiwan",
+   "long": [
+    "TAWN",
+    "XTAI"
+   ],
+   "long_pick": "TAWN",
+   "proxy_quality": "approximate",
+   "short": [
+    "TPEI"
+   ],
+   "short_pick": "TPEI"
+  },
+  {
+   "chart": "FXE",
+   "chart_kind": "proxy",
+   "group": "currency",
+   "key": "EUR/USD",
+   "long": [
+    "ULE"
+   ],
+   "long_pick": "ULE",
+   "proxy_quality": "approximate",
+   "short": [
+    "EUO"
+   ],
+   "short_pick": "EUO"
+  },
+  {
+   "chart": "FXY",
+   "chart_kind": "proxy",
+   "group": "currency",
+   "key": "JPY/USD",
+   "long": [
+    "YCL"
+   ],
+   "long_pick": "YCL",
+   "proxy_quality": "approximate",
+   "short": [
+    "YCS"
+   ],
+   "short_pick": "YCS"
+  },
+  {
+   "chart": "VIXY",
+   "chart_kind": "proxy",
+   "group": "volatility",
+   "key": "VIX futures",
+   "long": [
+    "UVIX"
+   ],
+   "long_pick": "UVIX",
+   "proxy_quality": "approximate",
+   "short": [],
+   "short_pick": null
+  }
+ ],
+ "version": 1
+}

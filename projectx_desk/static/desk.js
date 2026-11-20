@@ -1089,6 +1089,25 @@ klinecharts.registerOverlay({
       ...lines.map((t, i) => ({type: 'text', ignoreEvent: true, attrs: {x: (x0 + x1) / 2, y: Math.min(y1 + 16 + i * 22, y1 + 80), text: t, align: 'center', baseline: 'middle'}, styles: dimText})),
     ];
   }});
+/* The trader's own Fibonacci extension: three clicks (swing start, swing end, retracement end); the levels come from
+   PXFibExt.fibExtLevels (fibext.js, pure). Registered under a unique name so the global overlay registry never has a bare
+   `fibonacciExtension` shadowed. Not in NONUSER: it is saved and restored with the other drawings. Display only, no levels of
+   its own and no request. */
+klinecharts.registerOverlay({
+  name: 'userFibExt', totalStep: 4, needDefaultPointFigure: true, needDefaultXAxisFigure: true, needDefaultYAxisFigure: true,
+  createPointFigures: ({coordinates: cs, overlay, bounding}) => {
+    const out = [{type: 'line', attrs: {coordinates: cs}, styles: {style: 'dashed'}}];
+    if(cs.length < 3) return out;
+    const pts = overlay.points, lv = PXFibExt.fibExtLevels(pts[0]?.value, pts[1]?.value, pts[2]?.value);
+    if(!lv.length) return out;
+    const yDif = cs[1].y - cs[0].y, x0 = Math.min(cs[0].x, cs[1].x, cs[2].x), lines = [], texts = [];
+    for(const {ratio, price} of lv){
+      const y = cs[2].y + yDif * ratio;
+      lines.push({coordinates: [{x: x0, y}, {x: bounding.width, y}]});
+      texts.push({x: x0 + 4, y, text: PXFibExt.fibExtLabel(price, ratio, cur.dec), baseline: 'bottom'});
+    }
+    return [...out, {type: 'line', attrs: lines}, {type: 'text', ignoreEvent: true, attrs: texts}];
+  }});
 /* horizontal level line with a label at the right edge; used for GEX levels and the staged ticket */
 klinecharts.registerOverlay({
   name: 'deskLevel', totalStep: 2, lock: true, needDefaultPointFigure: false, needDefaultXAxisFigure: false, needDefaultYAxisFigure: true,
@@ -2188,7 +2207,7 @@ const tkAll = () => {for(const n of TK.sizes) tkFetch(n)};
 
 /* ---- drawing toolbar ---- */
 const TOOLS = [['Trend', 'segment'], ['Ray', 'rayLine'], ['H-line', 'horizontalStraightLine'], ['V-line', 'verticalStraightLine'],
-  ['Chan', 'parallelStraightLine'], ['Fib', 'fibonacciLine'], ['Zone', 'zoneBand'], ['Meas', 'measure'], ['Note', 'simpleAnnotation']];
+  ['Chan', 'parallelStraightLine'], ['Fib', 'fibonacciLine'], ['Zone', 'zoneBand'], ['FibX', 'userFibExt'], ['Meas', 'measure'], ['Note', 'simpleAnnotation']];
 const NONUSER = ['desk', 'react', 'respect', 'autolvl', 'orb', 'tmap', 'trend'];   // overlay groups that are never saved as user drawings
 let magnet = LS.get('px.magnet', 0), locked = false, hidden = false;
 const MODES = ['normal', 'weak_magnet', 'strong_magnet'];
@@ -2245,7 +2264,7 @@ const magLabel = () => {$('mag').textContent = ['Mag', 'Mag~', 'Mag!'][magnet]; 
 addEventListener('keydown', e => {
   if(e.target.matches('input,select,button,textarea')) return;
   if(e.key === 'Escape'){if(active){chart.removeOverlay({id: chart.getOverlays().slice(-1)[0]?.id}); setActive(null)} return}
-  const hot = {t: 'segment', h: 'horizontalStraightLine', v: 'verticalStraightLine', f: 'fibonacciLine', z: 'zoneBand', m: 'measure'}[e.key];
+  const hot = {t: 'segment', h: 'horizontalStraightLine', v: 'verticalStraightLine', f: 'fibonacciLine', z: 'zoneBand', x: 'userFibExt', m: 'measure'}[e.key];
   if(hot && !e.ctrlKey && !e.metaKey && !e.altKey) setActive(hot);
 });
 

@@ -130,7 +130,9 @@ def test_payoff_behavior_and_size_lock_reach_the_ai_surface(tmp_path):
         app.state.client.bars = bars
         g._contracts.clear()
         now = datetime.now(timezone.utc)
-        iso = lambda m: (now - timedelta(minutes=m)).isoformat()
+        from projectx_desk import tradeday
+        start = tradeday.session_start(now)         # the trading day rolls at 17:00 CT: right after it, 'minutes ago' is the PREVIOUS day
+        iso = lambda m: ((now - timedelta(minutes=m)) if now - timedelta(minutes=50) > start else (start + timedelta(seconds=51 - m))).isoformat()
         live.quotes["CON.F.US.MNQ.Z26"] = {"bestAsk": 17500.5, "bestBid": 17500.25, "lastPrice": 17500.25, "_rx": g.clock()}
         live.seed_trades([{"id": 1, "accountId": 7, "creationTimestamp": iso(50), "profitAndLoss": 10.0, "fees": 0},
                           {"id": 2, "accountId": 7, "creationTimestamp": iso(40), "profitAndLoss": 10.0, "fees": 0},

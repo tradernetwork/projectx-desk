@@ -655,7 +655,7 @@ runs at boot: a pool that disappears while the desk is running is not detected h
 
 **Where.** `datacheck.py`, `app.py` (`main`, `_deadline_loop`, `_deadline_age`, `/state.json`), `docs/DEPLOY.md`, `tests/test_boot_safety.py`.
 
-## Round 31: issuer name and a Fibonacci extension tool, and what was left out (2026-11-20)
+## Round 32: issuer name and a Fibonacci extension tool, and what was left out (2026-11-20)
 
 **What.** Two display-only additions. (1) Every vendored LETF fund now carries an `issuer` (`letf_data.json` version 2). The inverse
 CSV has an `issuer` column; the long CSV has none, so `scripts/letf_sync.py` reads it from the start of `fund_name` against a small
@@ -681,7 +681,7 @@ arithmetic is `static/fibext.js`, pure and node-tested.
 from the fund names already in the previous committed file (the network CSVs were not re-fetched), with the sync script's own
 `issuer_from_name`; a test pins that every long issuer equals what that function gives for its name.
 
-## Round 31: Ask-box hardening (2026-11-20)
+## Round 33: Ask-box hardening (2026-11-20)
 
 Four changes from a critiqued design, all on the text-only Ask path or its secrets. None touches the guard.
 
@@ -705,7 +705,7 @@ Four changes from a critiqued design, all on the text-only Ask path or its secre
 `static/llmsetup.js`, `scripts/deskagent.py`. Tests: `test_llm_chat.py`, `test_reply_guard.py`, `test_secretcheck.py`, `test_deskagent_budget.py`,
 additions to `test_px_chat.py`, `test_px_gex.py`, `test_px_recorder_merge.py`.
 
-## Round 31: small reliability changes, and what a critique talked us out of (2026-11-20)
+## Round 34: small reliability changes, and what a critique talked us out of (2026-11-20)
 
 **Problem.** A transient push failure (429, 5xx, network) dropped a fill alert for good: the trade id and the limiter slot were spent before the
 send, and `Pusher.broadcast` discarded the `retry` result. Separately, the GEX client had no 429 branch, the paper journal could open a

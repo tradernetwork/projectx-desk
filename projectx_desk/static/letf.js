@@ -1,6 +1,6 @@
 'use strict';
 // Leveraged ETF desk: the picker, two charts (underlying and fund) and the analytics strip inside the Robinhood panel.
-// DISPLAY ONLY. This file reads three GET routes (/api/rh/letf, /api/rh/bars, /api/rh/quotes) and draws. It makes no POST, asks for no
+// DISPLAY ONLY. This file reads five GET routes (/api/rh/letf, bars, quotes, movers and gex) and draws. It makes no POST, asks for no
 // CSRF token, never previews or places anything, and has no way to: a click only hands a ticker to `hooks.prefill`, and rh.js decides
 // what to do with it. Every dynamic string is drawn with textContent; nothing is stored in the browser (the URL hash carries the
 // selection); no console. It never registers a klinecharts indicator or overlay: that registry is global and desk.js owns `VWAP`.
@@ -120,11 +120,11 @@
     return out;
   }
   // Up/Down: the adjacent row, on the same side when it has one, else the other. dir is +1 or -1. Wraps nowhere: the ends stay put.
-  function neighbor(rows, sym, dir){
+  function neighbor(rows, sym, dir, prefer){
     if(!rows.length) return null;
     let i = rows.findIndex((r) => r.funds.some((f) => f.sym === sym));
     const cur = i >= 0 ? rows[i].funds.find((f) => f.sym === sym) : null;
-    const side = cur ? cur.side : 'long';
+    const side = prefer === 'long' || prefer === 'short' ? prefer : (cur ? cur.side : 'long');
     if(i < 0) i = dir > 0 ? -1 : rows.length;
     const j = Math.max(0, Math.min(rows.length - 1, i + (dir > 0 ? 1 : -1)));
     const r = rows[j];
@@ -136,6 +136,20 @@
     if(!f) return null;
     const u = universe.underlyings.find((x) => x.key === f.u);
     return u ? (u[want + '_pick'] || null) : null;
+  }
+  // The side a fund is on, and the fund a row shows when the trader's side is sticky: on AMZN's bear fund, a click on META lands on META's
+  // bear fund. A row with no fund on that side falls back to the other one and says so (`fellBack`); the side preference itself stays.
+  function sideOf(universe, sym){
+    const f = universe && universe.funds && universe.funds[sym];
+    return f && isNum(f.lev) ? (f.lev > 0 ? 'long' : 'short') : null;
+  }
+  function pickForRow(row, side){
+    if(!row) return null;
+    const want = side === 'short' ? 'short' : 'long', other = want === 'long' ? 'short' : 'long';
+    const a = rowPick(row, want);
+    if(a) return {sym: a, side: want, fellBack: false};
+    const b = rowPick(row, other);
+    return b ? {sym: b, side: other, fellBack: true} : null;
   }
   function underlyingOf(universe, sym){
     const f = universe && universe.funds && universe.funds[sym];
@@ -260,8 +274,134 @@
     return Math.max(15000, boundary - nowMs + 4000);
   }
 
+  // ---- the ladder: every fund on one underlying, side by side ----------------------------------------------------------------------
+  // The funds of an underlying (both sides), the most liquid `max` of them, bulls first. Quotes are read four symbols a call, so the
+  // page asks for at most 8 funds plus the underlying.
+  function ladderFunds(universe, key, max){
+    const u = universe && universe.underlyings && universe.underlyings.find((x) => x.key === key);
+    if(!u) return [];
+    const all = [];
+    for(const side of ['long', 'short']) for(const sym of u[side] || []){
+      const f = universe.funds[sym];
+      if(f) all.push({sym, side, lev: f.lev, dv20: f.dv20, name: f.name});
+    }
+    const keep = all.slice().sort((a, b) => dvKey(b) - dvKey(a) || (a.sym < b.sym ? -1 : 1)).slice(0, max || 8).map((f) => f.sym);
+    return all.filter((f) => keep.indexOf(f.sym) >= 0)
+      .sort((a, b) => (a.side === b.side ? 0 : a.side === 'long' ? -1 : 1) || dvKey(b) - dvKey(a) || (a.sym < b.sym ? -1 : 1));
+  }
+  // Rows for the table. `quotes` is {SYM: {bid, ask, last, prev_close}}, `uLast`/`uPrev` the underlying's price now and its prior close.
+  // A missing number is null (NA on screen), never 0; the gap uses the same rule as the strip (todayMove).
+  function ladderRows(funds, quotes, uLast, uPrev){
+    return (funds || []).map((f) => {
+      const q = (quotes && quotes[f.sym]) || {};
+      const mv = todayMove(uLast, uPrev, q.last, q.prev_close, f.lev);
+      return {sym: f.sym, side: f.side, lev: f.lev, dv20: f.dv20, thin: isNum(f.dv20) && f.dv20 < THIN, last: isNum(q.last) ? q.last : null,
+        spread_bps: spreadBps(q.bid, q.ask), move: mv.e, expected: mv.expected, gap_bps: mv.gap_bps, suspect: mv.suspect};
+    });
+  }
+
+  // ---- what holding it really did --------------------------------------------------------------------------------------------------
+  // Over the last `w` paired sessions (alignDaily rows {u, e}): the underlying's move, L x that move, the daily-reset ideal (compound
+  // 1 + L x each day's move, a fund cannot go below zero), and what the fund actually returned. path = ideal - L x move is the compounding
+  // arithmetic; fees_tracking = fund - ideal is everything else (expense ratio, financing, tracking, a late rebalance). Price return only:
+  // a distribution is not added back. Fewer than `w` sessions is NA with the count, never a shorter window passed off as the long one.
+  function holdWindows(rets, lev, wins){
+    const list = wins || [21, 63, 126, 252], n = rets ? rets.length : 0;
+    return list.map((w) => {
+      if(!isNum(lev) || n < w) return {w, n, na: true};
+      const r = rets.slice(-w);
+      let U = 1, E = 1, I = 1;
+      for(const x of r){ U *= 1 + x.u; E *= 1 + x.e; I *= Math.max(0, 1 + lev * x.u); }
+      const u = U - 1, simple = lev * u, ideal = I - 1, fund = E - 1;
+      return {w, n: w, na: false, u, simple, ideal, fund, path: ideal - simple, fees_tracking: fund - ideal};
+    });
+  }
+  // The same window as three running lines (index 0 is the start, 0 return): the fund, L x the underlying, the daily-reset ideal.
+  function holdSeries(rets, lev, w){
+    if(!rets || rets.length < w || !isNum(lev)) return null;
+    const r = rets.slice(-w), out = {fund: [0], simple: [0], ideal: [0]};
+    let U = 1, E = 1, I = 1;
+    for(const x of r){
+      U *= 1 + x.u; E *= 1 + x.e; I *= Math.max(0, 1 + lev * x.u);
+      out.fund.push(E - 1); out.simple.push(lev * (U - 1)); out.ideal.push(I - 1);
+    }
+    return out;
+  }
+
+  // ---- the rebalance window ---------------------------------------------------------------------------------------------------------
+  // Daily-reset funds rebalance into the close, and the buying or selling that follows a big move lands in the last half hour. This marks
+  // the bars that START between 15:30 and 16:00 ET, one run per session, so the chart can shade them. A fact about the clock, not a call.
+  const ETM = typeof Intl !== 'undefined' ? new Intl.DateTimeFormat('en-US', {timeZone: 'America/New_York', hourCycle: 'h23', hour: '2-digit', minute: '2-digit'}) : null;
+  function etMinutes(ms){
+    if(!ETM || !isNum(ms)) return null;
+    let h = null, m = null;
+    for(const p of ETM.formatToParts(new Date(ms))){ if(p.type === 'hour') h = +p.value; else if(p.type === 'minute') m = +p.value; }
+    return h == null || m == null ? null : h * 60 + m;
+  }
+  function rebalanceRuns(bars, tf){
+    if(tf === '1D' || !bars) return [];
+    const runs = [];
+    let cur = null;
+    for(const b of bars){
+      const m = etMinutes(b[0]), d = etDate(b[0]);
+      const inside = m != null && m >= 930 && m < 960;
+      if(inside && cur && cur.d === d) cur.to = b[0];
+      else if(inside) { cur = {d, from: b[0], to: b[0]}; runs.push(cur); }
+      else cur = null;
+    }
+    return runs.map((r) => ({from: r.from, to: r.to}));
+  }
+
+  // ---- dealer levels on the underlying chart ------------------------------------------------------------------------------------------
+  // /api/rh/gex answers in the underlying's own price space. Shown: the flip, the pin and the two nearest walls on each side of the last
+  // price, all within `maxDist` (5%) of it. Positioning, not a target: the label says what the level is, never what to do.
+  function gexLines(g, last, maxDist){
+    if(!g || !g.ok || !isNum(last) || last <= 0) return [];
+    const lim = isNum(maxDist) ? maxDist : 0.05, near = (p) => isNum(p) && Math.abs(p / last - 1) <= lim;
+    const out = [];
+    if(near(g.flip)) out.push({label: 'GAMMA FLIP', price: g.flip, kind: 'flip'});
+    if(near(g.pin)) out.push({label: 'PIN', price: g.pin, kind: 'pin'});
+    const ws = (g.walls || []).filter((w) => near(w.strike) && w.strike !== g.pin);
+    const name = (w) => (w.kind === 'PUT' ? 'PUT WALL' : w.kind === 'CALL' ? 'CALL WALL' : String(w.type || 'WALL'));
+    for(const above of [true, false]){
+      ws.filter((w) => (w.strike > last) === above).sort((a, b) => Math.abs(a.strike - last) - Math.abs(b.strike - last)).slice(0, 2)
+        .forEach((w) => out.push({label: name(w), price: w.strike, kind: w.kind === 'PUT' ? 'put' : w.kind === 'CALL' ? 'call' : 'wall'}));
+    }
+    return out.sort((a, b) => b.price - a.price);
+  }
+
+  // ---- the movers list ---------------------------------------------------------------------------------------------------------------
+  // rows: /api/rh/movers `rows`. sort 'gain' | 'loss' | 'gap' (biggest absolute gap against L x the underlying). A fund with no number to
+  // sort by is left out of that list rather than ranked as zero.
+  function moversRows(rows, opts){
+    const o = opts || {}, sort = o.sort || 'gain', side = o.side || 'both';
+    let r = (rows || []).filter((x) => side === 'both' || (side === 'long') === (x.lev > 0));
+    if(o.hideThin) r = r.filter((x) => !(isNum(x.dv20) && x.dv20 < THIN));
+    const key = sort === 'gap' ? 'gap_bps' : 'move';
+    r = r.filter((x) => isNum(x[key]));
+    if(sort === 'gain') r.sort((a, b) => b.move - a.move || (a.s < b.s ? -1 : 1));
+    else if(sort === 'loss') r.sort((a, b) => a.move - b.move || (a.s < b.s ? -1 : 1));
+    else r.sort((a, b) => Math.abs(b.gap_bps) - Math.abs(a.gap_bps) || (a.s < b.s ? -1 : 1));
+    return r.slice(0, o.limit || 40);
+  }
+
+  // ---- the snapshot ------------------------------------------------------------------------------------------------------------------
+  function snapshotName(sym, tf, nowMs){
+    const d = new Date(isNum(nowMs) ? nowMs : 0), p = (n) => String(n).padStart(2, '0');
+    return 'letf-' + sym + '-' + tf + '-' + d.getUTCFullYear() + p(d.getUTCMonth() + 1) + p(d.getUTCDate()) + '-' + p(d.getUTCHours()) + p(d.getUTCMinutes()) + '.png';
+  }
+  // The text under the two charts: one "label  value" line per strip figure, then the footer. Only market data and fund statistics: no
+  // account, balance or order ever reaches it.
+  function snapshotLines(items, uniAsOf, nowMs){
+    const lines = (items || []).map((kv) => kv[0] + ':  ' + kv[1]);
+    const t = isNum(nowMs) ? new Date(nowMs).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : '';
+    lines.push('', 'Fund list as of ' + (uniAsOf || '?') + (t ? '. Snapshot ' + t : '') + '. Display only, not advice. ProjectX Desk.');
+    return lines;
+  }
+
   const api = {MIN_N, THIN, TFS, TF_MS, STYLES, fmtPct, fmtBps, fmtDollarVol, levLabel, fmtPrice, chartTitle, fundTitle, ageNote,
-    filterRows, grouped, rowPick, displayRows, neighbor, flipSide, underlyingOf, parseHash, hashString,
+    filterRows, grouped, rowPick, displayRows, neighbor, flipSide, underlyingOf, sideOf, pickForRow, parseHash, hashString,
+    ladderFunds, ladderRows, holdWindows, holdSeries, etMinutes, rebalanceRuns, gexLines, moversRows, snapshotName, snapshotLines,
     etDate, sessionPrevClose, todayMove, alignDaily, realizedLeverage, volDecay, spreadBps, quoteAge,
     updateForming, withForming, nextPollDelay};
   if(typeof module !== 'undefined' && module.exports) module.exports = api;
@@ -294,7 +434,8 @@
     rate_limited: 'Robinhood is rate limiting the desk. Retrying.', unreachable: 'Could not reach Robinhood.', timeout: 'Robinhood timed out.',
     bad_reply: 'Robinhood sent a reply the desk could not read.', too_big: 'That range was too large for one reply.',
     letf_unavailable: 'The fund list file is missing or damaged. Run scripts/letf_sync.py.', not_in_universe: 'That symbol is not in the fund list.',
-    read_failed: 'A Robinhood read failed.', bad_tf: 'Unknown timeframe.', bad_symbol: 'Unknown symbol.', too_many: 'Too many symbols.',
+    gex_off: 'Dealer levels need a GEX key (PX_GEX_KEY).', gex_auth: 'The GEX key was refused.', gex_stale: 'The dealer levels are too old to show.',
+    gex_unavailable: 'Dealer levels are not available for this one.', read_failed: 'A Robinhood read failed.', bad_tf: 'Unknown timeframe.', bad_symbol: 'Unknown symbol.', too_many: 'Too many symbols.',
   };
   const codeText = (c) => (Object.prototype.hasOwnProperty.call(CODE_TEXT, c) ? CODE_TEXT[c] : 'Could not load.');
 
@@ -352,30 +493,60 @@
     C.data = bars;
   }
 
+  const mkLayer = () => el('div', 'lx-ov');
+  const GEX_COLOR = {flip: '#ffb000', pin: '#B49AE0', call: STYLES.up, put: STYLES.down, wall: '#8b97a8'};
+  const loadImage = (url) => new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = url; });
+
   function mount(host, hooks){
     const H = hooks || {};
-    const L = {uni: null, rows: [], opts: {q: '', groups: [], side: 'both', lev: 'all', hideThin: false, sort: 'dv'}, sym: null, tf: '5m',
+    const L = {uni: null, rows: [], opts: {q: '', groups: [], side: 'both', lev: 'all', hideThin: false, sort: 'dv'}, sym: null, tf: '5m', side: 'long', link: true,
       visible: false, loaded: false, ch: {u: null, e: null}, tk: {u: '', e: ''}, series: {}, forming: {u: null, e: null}, quotes: {}, quotesAt: 0,
-      daily: null, dailyKey: '', seq: 0, sessionOpen: false, barMs: TF_MS['5m'], expanded: {}, msg: '', msg2: '', timers: {bars: 0, quotes: 0}, err: ''};
+      daily: null, dailyKey: '', seq: 0, sessionOpen: false, barMs: TF_MS['5m'], expanded: {}, msg: '', msg2: '', snapNote: '', err: '',
+      timers: {bars: 0, quotes: 0, ladder: 0, movers: 0, gex: 0}, layerPending: {u: false, e: false}, ladder: null, gex: null, gexNote: '',
+      tab: 'funds', movers: null, moversErr: '', mv: {sort: 'gain', side: 'both', hideThin: true}, holdW: 63, syncUntil: 0, snapBusy: false};
     host.classList.add('lx');
-    // rail
-    const rail = el('div', 'lx-rail'), search = el('input', 'lx-search'), chips = el('div', 'lx-chips'), seg = el('div', 'lx-seg'),
+    // rail: two boxes (funds, movers) under a tab row
+    const rail = el('div', 'lx-rail'), tabs = el('div', 'lx-seg lx-tabs'), fundsBox = el('div', 'lx-rbox'), movBox = el('div', 'lx-rbox'),
+      search = el('input', 'lx-search'), chips = el('div', 'lx-chips'), seg = el('div', 'lx-seg'),
       levs = el('div', 'lx-seg'), thin = el('label', 'lx-thin'), thinBox = el('input'), sortSel = el('select'), list = el('div', 'lx-list'), foot = el('div', 'lx-foot');
     search.type = 'search'; search.placeholder = 'Search underlying, ticker or name  ( / )'; search.autocomplete = 'off'; search.setAttribute('aria-label', 'Search funds');
     thinBox.type = 'checkbox';
     thin.append(thinBox, el('span', '', 'Hide thin (under $5M/day)'));
     [['dv', 'Sort: $ volume'], ['az', 'Sort: A to Z'], ['lev', 'Sort: leverage']].forEach((o) => { const op = el('option', '', o[1]); op.value = o[0]; sortSel.append(op); });
     sortSel.setAttribute('aria-label', 'Sort');
-    rail.append(search, chips, seg, levs, thin, sortSel, list, foot);
-    // main
+    fundsBox.append(search, chips, seg, levs, thin, sortSel, list);
+    const mvHead = el('div', 'lx-seg'), mvSide = el('div', 'lx-seg'), mvThin = el('label', 'lx-thin'), mvThinBox = el('input'), mvList = el('div', 'lx-list'), mvNote = el('p', 'lx-mvnote');
+    mvThinBox.type = 'checkbox'; mvThinBox.checked = true;
+    mvThin.append(mvThinBox, el('span', '', 'Hide thin (under $5M/day)'));
+    movBox.append(mvHead, mvSide, mvThin, mvNote, mvList);
+    movBox.hidden = true;
+    const tabBtns = {};
+    [['funds', 'Funds'], ['movers', 'Movers']].forEach((t) => { const b = btn(t[0] === L.tab ? 'on' : '', t[1]); b.onclick = () => setTab(t[0]); tabBtns[t[0]] = b; tabs.append(b); });
+    rail.append(tabs, fundsBox, movBox, foot);
+    // main: ribbon, two charts, the ladder and the hold replay, the strip
     const main = el('div', 'lx-main'), ribbon = el('div', 'lx-ribbon'), status = el('div', 'lx-status'), charts = el('div', 'lx-charts'), strip = el('div', 'lx-strip');
-    const mkPane = (cls) => { const p = el('div', 'lx-chart ' + cls), t = el('div', 'lx-ct'), cv = el('div', 'lx-cv'), msg = el('div', 'lx-cmsg'); msg.hidden = true; p.append(t, cv, msg); return {p, t, cv, msg}; };
+    const mkPane = (cls) => {
+      const p = el('div', 'lx-chart ' + cls), t = el('div', 'lx-ct'), wrap = el('div', 'lx-cw'), cv = el('div', 'lx-cv'), ov = mkLayer(), msg = el('div', 'lx-cmsg');
+      msg.hidden = true; wrap.append(cv, ov); p.append(t, wrap, msg);
+      return {p, t, wrap, cv, ov, msg};
+    };
     const pu = mkPane('lx-chart-u'), pe = mkPane('lx-chart-e');
     charts.append(pu.p, pe.p);
     const tfBtns = {};
     TFS.forEach((tf, i) => { const b = btn('', tf, 'Timeframe (key ' + (i + 1) + ')'); b.onclick = () => setTf(tf); tfBtns[tf] = b; ribbon.append(b); });
-    ribbon.append(status);
-    main.append(ribbon, charts, strip);
+    const sideSeg = el('div', 'lx-seg lx-sidesw'), bullB = btn('lx-bull', 'Bull', 'Show the long fund of each underlying you pick (key L)'),
+      bearB = btn('lx-bear', 'Bear', 'Show the short fund of each underlying you pick (key S)'),
+      linkB = btn('', 'Linked', 'The two charts scroll, zoom and share one crosshair. Click to unlink.'),
+      snapB = btn('', 'PNG', 'Save both charts and the numbers as one picture');
+    bullB.onclick = () => setSide('long'); bearB.onclick = () => setSide('short');
+    linkB.onclick = () => { L.link = !L.link; linkB.classList.toggle('on', L.link); linkB.textContent = L.link ? 'Linked' : 'Unlinked'; };
+    linkB.classList.add('on');
+    snapB.onclick = () => snapshot();
+    sideSeg.append(bullB, bearB);
+    ribbon.append(sideSeg, linkB, snapB, status);
+    const panels = el('div', 'lx-panels'), ladderBox = el('div', 'lx-card lx-ladder'), holdBox = el('div', 'lx-card lx-hold');
+    panels.append(ladderBox, holdBox);
+    main.append(ribbon, charts, panels, strip);
     // side
     const side = el('div', 'lx-side'), qbox = el('div', 'lx-quotes'), actions = el('div', 'lx-actions'), ticketSlot = el('div', 'lx-ticket');
     side.append(qbox, actions, ticketSlot);
@@ -410,8 +581,9 @@
       groups.forEach((g) => {
         list.append(el('div', 'lx-grp', g.label + '  ' + g.rows.length));
         g.rows.forEach((r) => {
-          const row = el('div', 'lx-row'), u = el('div', 'lx-u', r.key);
-          if(r.u.chart_kind === 'proxy') u.title = 'Charted via ' + r.u.chart + (r.u.proxy_quality === 'approximate' ? ' (approximate)' : '');
+          const row = el('div', 'lx-row'), u = btn('lx-u', r.key, 'Show this underlying and keep ' + (L.side === 'short' ? 'Bear' : 'Bull') + ' selected');
+          u.onclick = () => selectRow(r);
+          if(r.u.chart_kind === 'proxy') u.title = 'Charted via ' + r.u.chart + (r.u.proxy_quality === 'approximate' ? ' (approximate)' : '') + '. Click keeps ' + (L.side === 'short' ? 'Bear' : 'Bull') + ' selected.';
           row.append(u);
           const lp = rowPick(r, 'long'), sp = rowPick(r, 'short');
           const cell = (sym, sd) => { const f = sym && r.funds.find((x) => x.sym === sym); return f ? fundBtn(f) : el('span', 'lx-nofund', sd === 'short' ? 'no short fund' : 'no long fund'); };
@@ -449,12 +621,37 @@
     const chartSym = () => { const u = curU(); return u && u.chart ? u.chart : null; };
     const symsOf = () => { const a = [chartSym(), L.sym].filter(Boolean); return a.filter((x, i) => a.indexOf(x) === i); };
 
-    function select(sym){
+    // `o.keepSide`: a move between underlyings (the list, the arrow keys, the Bull/Bear switch) keeps the trader's Bull or Bear choice even
+    // when this underlying has no fund on that side. Picking a fund by name (a click on it, the movers list, the ladder) sets the side.
+    function select(sym, o){
       if(!L.uni || !L.uni.funds[sym]) return;
-      L.sym = sym; L.series = {}; L.forming = {u: null, e: null}; L.quotes = {}; L.daily = null; L.dailyKey = ''; L.err = ''; L.msg2 = '';
+      const opt = o || {}, prevU = curU() ? curU().key : null;
+      L.sym = sym;
+      if(!opt.keepSide) L.side = sideOf(L.uni, sym) || L.side;
+      L.snapNote = opt.note || '';
+      L.series = {}; L.forming = {u: null, e: null}; L.quotes = {}; L.daily = null; L.dailyKey = ''; L.err = ''; L.msg2 = '';
+      if(!curU() || curU().key !== prevU){ L.ladder = null; L.gex = null; L.gexNote = ''; }
       try{ history.replaceState(null, '', hashString(sym, L.tf)); }catch(_){ /* a sandboxed frame: the hash is a convenience */ }
-      renderList(); renderHead(); renderStrip(); renderQuotes(); renderActions();
-      loadBars(); loadDaily(); pollQuotes(true);
+      renderList(); renderHead(); renderStrip(); renderQuotes(); renderActions(); renderSide(); renderLadder(); renderHold(); clearLayers();
+      loadBars(); loadDaily(); pollQuotes(true); loadLadder(); loadGex();
+    }
+    function selectRow(row){
+      const p = pickForRow(row, L.side);
+      if(!p) return;
+      select(p.sym, {keepSide: true, note: p.fellBack ? row.key + ' has no ' + (L.side === 'short' ? 'bear' : 'bull') + ' fund, so the ' + (p.side === 'short' ? 'bear' : 'bull') + ' fund is shown. ' + (L.side === 'short' ? 'Bear' : 'Bull') + ' stays selected for the next one.' : ''});
+    }
+    function setSide(want){
+      if(want !== 'long' && want !== 'short') return;
+      L.side = want;
+      if(!L.sym){ renderSide(); return; }
+      const f = flipSide(L.uni, L.sym, want), u = curU();
+      if(f) select(f, {keepSide: true});
+      else { L.snapNote = (u ? u.key : 'This underlying') + ' has no ' + (want === 'short' ? 'bear' : 'bull') + ' fund.'; renderSide(); renderStrip(); }
+    }
+    function renderSide(){
+      bullB.classList.toggle('on', L.side === 'long'); bearB.classList.toggle('on', L.side === 'short');
+      const cur = sideOf(L.uni, L.sym);
+      bullB.classList.toggle('lx-off', !!cur && cur !== 'long' && L.side === 'long'); bearB.classList.toggle('lx-off', !!cur && cur !== 'short' && L.side === 'short');
     }
     function setTf(tf){
       if(TFS.indexOf(tf) < 0 || tf === L.tf) return;
@@ -464,10 +661,10 @@
     }
     function renderHead(){
       const f = curFund(), u = curU();
-      pu.t.textContent = u ? chartTitle(u) : '';
+      pu.t.textContent = (u ? chartTitle(u) : '') + (L.gexNote ? '   |   ' + L.gexNote : '');
       pe.t.textContent = f ? fundTitle(L.sym, f) : '';
       const none = !!u && !chartSym();
-      pu.cv.hidden = none; pu.msg.hidden = !none;
+      pu.wrap.hidden = none; pu.msg.hidden = !none;
       if(none) pu.msg.textContent = 'No clean chart of ' + u.key + ' to show next to the fund. The fund chart and its own numbers are on the right.';
       charts.classList.toggle('lx-solo', none);
     }
@@ -478,8 +675,9 @@
     }
     function ensureCharts(){
       if(!root.klinecharts) { L.err = 'The chart library did not load.'; return false; }
-      if(!L.ch.u && pu.cv.clientWidth > 0 && !pu.cv.hidden) L.ch.u = makeChart(pu.cv);
+      if(!L.ch.u && pu.cv.clientWidth > 0 && !pu.wrap.hidden) L.ch.u = makeChart(pu.cv);
       if(!L.ch.e && pe.cv.clientWidth > 0) L.ch.e = makeChart(pe.cv);
+      ['u', 'e'].forEach(hookChart);
       return true;
     }
     function paint(which, full){
@@ -488,7 +686,105 @@
       const tk = (which === 'u' ? chartSym() : L.sym) + '|' + L.tf;
       if(full || L.tk[which] !== tk){ L.tk[which] = tk; resetChart(C, tk.split('|')[0], L.tf, bars); }
       else patchChart(C, tk.split('|')[0], L.tf, bars);
+      scheduleLayer(which);
     }
+
+    // ---- the two charts as one: scroll, zoom and the crosshair follow each other ----
+    const other = (w) => (w === 'u' ? 'e' : 'u');
+    const PANE = {paneId: 'candle_pane'};
+    function hookChart(w){
+      const C = L.ch[w];
+      if(!C || C.hooked) return;
+      C.hooked = true;
+      try{
+        C.chart.subscribeAction('onVisibleRangeChange', (r) => onRange(w, r));
+        C.chart.subscribeAction('onCrosshairChange', (c) => onCross(w, c));
+      }catch(_){ C.hooked = false; return; }
+      C.div.addEventListener('mouseleave', () => { const D = L.ch[other(w)]; if(L.link && D){ try{ D.chart.executeAction('onCrosshairChange', null); }catch(_e){ /* mid-teardown */ } } });
+    }
+    function onRange(w, r){
+      scheduleLayer(w);
+      const C = L.ch[w], D = L.ch[other(w)];
+      if(!L.link || !C || !D || !r || Date.now() < L.syncUntil || pu.wrap.hidden) return;
+      L.syncUntil = Date.now() + 120;                         // what we do to the other chart must not echo back
+      try{
+        const bs = C.chart.getBarSpace(), ds = D.chart.getBarSpace();
+        if(bs && ds && isNum(bs.bar) && Math.abs(ds.bar - bs.bar) > 0.01) D.chart.setBarSpace(bs.bar);
+        const dl = C.chart.getDataList();
+        if(!dl.length) return;
+        const edge = dl[Math.max(0, Math.min(dl.length - 1, (isNum(r.realTo) ? r.realTo : dl.length) - 1))].timestamp;
+        const xs = C.chart.convertToPixel({timestamp: edge}, PANE), xd = D.chart.convertToPixel({timestamp: edge}, PANE);
+        if(xs && xd && isNum(xs.x) && isNum(xd.x) && Math.abs(xs.x - xd.x) > 0.5) D.chart.scrollByDistance(xs.x - xd.x);
+      }catch(_){ /* an older build without one of these calls: the charts just stay independent */ }
+    }
+    function onCross(w, c){
+      const D = L.ch[other(w)];
+      if(!L.link || !D || !c || c.timestamp == null || pu.wrap.hidden) return;
+      try{
+        const dl = D.chart.getDataList();
+        let bar = null;
+        for(let i = dl.length - 1; i >= 0; i--){ if(dl[i].timestamp <= c.timestamp){ bar = dl[i]; break; } }
+        if(!bar) return;
+        const p = D.chart.convertToPixel({timestamp: bar.timestamp, value: bar.close}, PANE);
+        if(p && isNum(p.x) && isNum(p.y)) D.chart.executeAction('onCrosshairChange', {x: p.x, y: p.y, paneId: 'candle_pane'});
+      }catch(_){ /* the mirrored crosshair is a courtesy */ }
+    }
+
+    // ---- what is drawn over a chart: dealer levels (underlying) and the last-half-hour band (both) ----
+    // One model, two renderers: the page draws it as positioned divs, the PNG draws it onto the canvas.
+    function layerModel(w){
+      const C = L.ch[w], out = {lines: [], bands: [], w: 0, h: 0};
+      if(!C) return out;
+      const bars = barsFor(w) || [];
+      let box = null;
+      try{ box = C.chart.getSize('candle_pane', 'main'); }catch(_){ box = null; }
+      out.w = box && isNum(box.width) ? box.width : C.div.clientWidth;
+      out.h = box && isNum(box.height) ? box.height : C.div.clientHeight;
+      if(!bars.length) return out;
+      try{
+        if(w === 'u' && L.gex && L.gex.sym === chartSym() && L.gex.r && L.gex.r.ok){
+          for(const g of gexLines(L.gex.r, bars[bars.length - 1][4])){
+            const p = C.chart.convertToPixel({value: g.price}, PANE);
+            if(p && isNum(p.y) && p.y >= 0 && p.y <= out.h) out.lines.push({label: g.label + ' ' + fmtPrice(g.price), y: p.y, color: GEX_COLOR[g.kind] || GEX_COLOR.wall});
+          }
+        }
+        if(L.tf !== '1D'){
+          const key = bars.length + ':' + bars[0][0] + ':' + bars[bars.length - 1][0] + ':' + L.tf;
+          if(C.runsKey !== key){ C.runsKey = key; C.runs = rebalanceRuns(bars, L.tf); }
+          const half = (C.chart.getBarSpace().bar || 0) / 2;
+          (C.runs || []).slice(-12).forEach((r, i, all) => {
+            const a = C.chart.convertToPixel({timestamp: r.from}, PANE), b = C.chart.convertToPixel({timestamp: r.to}, PANE);
+            if(!a || !b || !isNum(a.x) || !isNum(b.x)) return;
+            const x1 = Math.max(0, a.x - half), x2 = Math.min(out.w, b.x + half);
+            if(x2 > x1) out.bands.push({x1, x2, last: i === all.length - 1});
+          });
+        }
+      }catch(_){ /* the chart is between loads: draw nothing */ }
+      return out;
+    }
+    function renderLayer(w){
+      const lay = w === 'u' ? pu.ov : pe.ov, m = layerModel(w);
+      lay.replaceChildren();
+      m.bands.forEach((b) => {
+        const d = el('div', 'lx-band');
+        d.style.left = b.x1 + 'px'; d.style.width = (b.x2 - b.x1) + 'px'; d.style.height = m.h + 'px';
+        if(b.last) d.append(el('span', '', 'last 30 min: funds rebalance'));
+        lay.append(d);
+      });
+      m.lines.forEach((l) => {
+        const d = el('div', 'lx-gl');
+        d.style.top = l.y + 'px'; d.style.borderTopColor = l.color;
+        const c = el('span', '', l.label); c.style.color = l.color;
+        d.append(c); lay.append(d);
+      });
+    }
+    function scheduleLayer(w){
+      if(L.layerPending[w]) return;
+      L.layerPending[w] = true;
+      (root.requestAnimationFrame || ((f) => setTimeout(f, 16)))(() => { L.layerPending[w] = false; renderLayer(w); });
+    }
+    function clearLayers(){ pu.ov.replaceChildren(); pe.ov.replaceChildren(); }
+
     async function loadBars(){
       if(!L.visible || !L.sym) return;
       const my = ++L.seq, tf = L.tf, syms = symsOf();
@@ -512,20 +808,20 @@
       status.textContent = (n ? n + ' bars' : 'No bars for ' + L.sym + ' (closed or renamed?)') + (dr ? ', ' + dr + ' gap-fill dropped' : '') + (L.sessionOpen ? ', market open' : ', market closed')
         + (tf !== '1D' && L.sessionOpen ? '. The bar in progress is built from 2 s quote samples.' : '');
       if(L.sessionOpen) L.timers.bars = setTimeout(loadBars, nextPollDelay(tf, Date.now()));
-      renderStrip();
+      renderStrip(); renderHold();
       if(L.sessionOpen) pollQuotes(true);
     }
     async function loadDaily(){
       if(!L.visible || !L.sym) return;
       const key = symsOf().join(','), now = Date.now();
       if(L.daily && L.dailyKey === key && now - L.daily.at < 1800000) return;
-      if(L.tf === '1D' && L.series[chartSym()] && L.series[L.sym]){ L.daily = {at: now, series: L.series}; L.dailyKey = key; renderStrip(); return; }
+      if(L.tf === '1D' && L.series[chartSym()] && L.series[L.sym]){ L.daily = {at: now, series: L.series}; L.dailyKey = key; renderStrip(); renderHold(); renderLadder(); return; }
       const my = L.seq;
       let r;
       try{ r = await getJson('/api/rh/bars', {symbols: key, tf: '1D'}); }catch(_){ return; }
       if(!r.ok || my !== L.seq || !L.visible) { if(!r.ok && r.code === 'busy') setTimeout(loadDaily, 5000); return; }
       L.daily = {at: now, series: r.series}; L.dailyKey = key;
-      renderStrip();
+      renderStrip(); renderHold(); renderLadder();
     }
     async function pollQuotes(){
       clearTimeout(L.timers.quotes);
@@ -548,6 +844,167 @@
         renderQuotes(); renderStrip();
       }
       if(L.sessionOpen) L.timers.quotes = setTimeout(pollQuotes, 2000);       // closed market: one read per selection, no loop
+    }
+
+    // ---- dealer levels for the underlying ----
+    async function loadGex(){
+      clearTimeout(L.timers.gex);
+      const s = chartSym();
+      if(!L.visible || !s) return;
+      if(L.gex && L.gex.sym === s && Date.now() - L.gex.at < 290000) { renderLayer('u'); return; }
+      const my = L.seq;
+      let r;
+      try{ r = await getJson('/api/rh/gex', {symbol: s}); }catch(_){ r = {ok: false, code: 'unreachable'}; }
+      if(my !== L.seq || !L.visible || chartSym() !== s) return;
+      L.gex = {sym: s, at: Date.now(), r};
+      L.gexNote = r.ok ? 'dealer levels (GEX, ' + Math.round(r.age_s / 60) + ' min old): positioning, not targets' : (r.code === 'gex_off' ? '' : 'dealer levels: ' + codeText(r.code));
+      pu.t.textContent = chartTitle(curU()) + (L.gexNote ? '   |   ' + L.gexNote : '');
+      renderLayer('u');
+      L.timers.gex = setTimeout(loadGex, 300000);
+    }
+
+    // ---- the ladder: the other funds on this underlying ----
+    async function loadLadder(){
+      clearTimeout(L.timers.ladder);
+      const u = curU();
+      if(!L.visible || !u || document.hidden){ if(L.visible && L.sessionOpen) L.timers.ladder = setTimeout(loadLadder, 8000); return; }
+      const my = L.seq, funds = ladderFunds(L.uni, u.key, 8), us = chartSym();
+      const syms = (us ? [us] : []).concat(funds.map((f) => f.sym));
+      const quotes = {};
+      for(let i = 0; i < syms.length; i += 4){
+        let r;
+        try{ r = await getJson('/api/rh/quotes', {symbols: syms.slice(i, i + 4).join(',')}); }catch(_){ r = {ok: false, code: 'unreachable'}; }
+        if(my !== L.seq || !L.visible) return;
+        if(!r.ok){
+          L.ladderErr = codeText(r.code); renderLadder();
+          L.timers.ladder = setTimeout(loadLadder, r.code === 'busy' ? 3000 : 15000);
+          return;
+        }
+        Object.assign(quotes, r.quotes);
+      }
+      L.ladderErr = ''; L.ladder = {quotes, at: Date.now(), key: u.key, funds};
+      renderLadder();
+      if(L.sessionOpen) L.timers.ladder = setTimeout(loadLadder, 8000);
+    }
+    const dailyPair = () => {
+      const us = chartSym(), dser = L.daily ? L.daily.series : {};
+      return {du: us && dser[us] ? dser[us].bars : [], de: dser[L.sym] ? dser[L.sym].bars : [], us};
+    };
+    function table(cols, rows, onRow, selSym){
+      const t = el('table', 'lx-tbl'), hd = el('tr');
+      cols.forEach((c) => hd.append(el('th', c[1] || '', c[0])));
+      t.append(hd);
+      rows.forEach((r) => {
+        const tr = el('tr', r.cls || '');
+        r.cells.forEach((c, i) => tr.append(el('td', (cols[i][1] || '') + (c.cls ? ' ' + c.cls : ''), c.t)));
+        if(onRow){ tr.onclick = () => onRow(r); tr.className += ' lx-click' + (selSym && r.sym === selSym ? ' on' : ''); }
+        t.append(tr);
+      });
+      return t;
+    }
+    function renderLadder(){
+      ladderBox.replaceChildren();
+      const u = curU();
+      ladderBox.append(el('h3', '', u ? 'Every fund on ' + u.key : 'Every fund on this underlying'));
+      if(!u || !L.ladder || L.ladder.key !== u.key){
+        ladderBox.append(el('p', 'lx-none', L.ladderErr || (u ? 'Loading quotes...' : 'Pick a fund on the left.')));
+        return;
+      }
+      const us = chartSym(), uq = us && L.ladder.quotes[us], du = dailyPair().du;
+      const uPrev = uq ? sessionPrevClose(du, uq) : null;
+      const rows = ladderRows(L.ladder.funds, L.ladder.quotes, uq && isNum(uq.last) ? uq.last : null, uPrev);
+      const cols = [['Fund'], ['Lev', 'n'], ['$ vol 20d', 'n'], ['Last', 'n'], ['Spread', 'n'], ['Today', 'n'], ['Gap vs L x', 'n']];
+      const body = rows.map((r) => ({sym: r.sym, cls: r.side === 'short' ? 'lx-rshort' : 'lx-rlong', cells: [
+        {t: r.sym + (r.thin ? ' (thin)' : ''), cls: r.thin ? 'lx-dim' : ''}, {t: levLabel(r.lev)}, {t: fmtDollarVol(r.dv20)}, {t: fmtPrice(r.last)},
+        {t: r.spread_bps == null ? 'NA' : r.spread_bps.toFixed(1) + ' bps'}, {t: r.suspect ? 'NA' : fmtPct(r.move)}, {t: r.suspect ? 'NA' : fmtBps(r.gap_bps)}]}));
+      ladderBox.append(table(cols, body, (r) => select(r.sym), L.sym));
+      ladderBox.append(el('p', 'lx-note', 'Same underlying' + (us ? ' (' + (uq && isNum(uq.last) ? us + ' ' + fmtPrice(uq.last) + ', ' + fmtPct(uPrev ? uq.last / uPrev - 1 : null) : us) + ')' : ', no underlying quote') +
+        '. Gap = fund move minus L x the underlying move: the part leverage does not explain. Top ' + rows.length + ' funds by dollar volume. Click a row to chart it.'));
+    }
+
+    // ---- what holding it really did ----
+    function renderHold(){
+      holdBox.replaceChildren();
+      holdBox.append(el('h3', '', 'What holding it did'));
+      const f = curFund(), dp = dailyPair();
+      if(!f || !dp.us){ holdBox.append(el('p', 'lx-none', f ? 'Needs an underlying chart to compare against.' : 'Pick a fund on the left.')); return; }
+      const rets = alignDaily(dp.du, dp.de), wins = holdWindows(rets, f.lev, [21, 63, 126, 252]);
+      if(!rets.length){ holdBox.append(el('p', 'lx-none', L.daily ? 'No paired daily history yet.' : 'Loading daily history...')); return; }
+      const names = {21: '1 mo', 63: '3 mo', 126: '6 mo', 252: '1 yr'};
+      const cols = [['Held'], ['Underlying', 'n'], ['L x it', 'n'], ['Ideal', 'n'], ['Fund', 'n'], ['Path', 'n'], ['Fees', 'n']];
+      const body = wins.map((x) => ({w: x.w, cls: x.w === L.holdW ? 'on' : '', cells: x.na
+        ? [{t: names[x.w] + ' (' + x.w + ')'}, {t: 'NA (' + x.n + ' of ' + x.w + ' sessions)'}, {t: ''}, {t: ''}, {t: ''}, {t: ''}, {t: ''}]
+        : [{t: names[x.w] + ' (' + x.w + ')'}, {t: fmtPct(x.u, 1)}, {t: fmtPct(x.simple, 1)}, {t: fmtPct(x.ideal, 1)}, {t: fmtPct(x.fund, 1)}, {t: fmtPct(x.path, 1)}, {t: fmtPct(x.fees_tracking, 1)}]}));
+      holdBox.append(table(cols, body, (r) => { L.holdW = r.w; renderHold(); }, null));
+      const cv = el('canvas', 'lx-hcv');
+      holdBox.append(cv);
+      const ser = holdSeries(rets, f.lev, L.holdW);
+      holdBox.append(el('p', 'lx-note', 'Sessions ending on the last paired daily bar, price return only (a distribution is not added back). Ideal = compounding L x each day\'s move. Path = ideal minus L x the underlying move: arithmetic. Fees = fund minus ideal: expense ratio, financing, tracking. A negative figure is a cost of holding, not a forecast.'));
+      drawHold(cv, ser);
+    }
+    function drawHold(cv, ser){
+      const W = Math.max(240, Math.floor(cv.parentNode && cv.parentNode.clientWidth ? cv.parentNode.clientWidth - 16 : 360)), Hh = 150, dpr = root.devicePixelRatio || 1;
+      cv.width = Math.round(W * dpr); cv.height = Math.round(Hh * dpr); cv.style.width = W + 'px'; cv.style.height = Hh + 'px';
+      const g = cv.getContext('2d');
+      if(!g) return;
+      g.scale(dpr, dpr); g.clearRect(0, 0, W, Hh);
+      if(!ser){ g.fillStyle = '#8b97a8'; g.font = '11px ' + MONO; g.fillText('Not enough paired sessions for this window.', 8, 20); return; }
+      const all = ser.fund.concat(ser.simple, ser.ideal, [0]), lo = Math.min.apply(null, all), hi = Math.max.apply(null, all), pad = {l: 44, r: 8, t: 10, b: 18};
+      const span = hi - lo || 1, X = (i) => pad.l + (W - pad.l - pad.r) * i / Math.max(1, ser.fund.length - 1), Y = (v) => pad.t + (Hh - pad.t - pad.b) * (1 - (v - lo) / span);
+      g.strokeStyle = '#2a3140'; g.lineWidth = 1; g.beginPath(); g.moveTo(pad.l, Y(0)); g.lineTo(W - pad.r, Y(0)); g.stroke();
+      g.fillStyle = '#8b97a8'; g.font = '10px ' + MONO;
+      [lo, 0, hi].forEach((v) => g.fillText(fmtPct(v, 0), 2, Y(v) + 3));
+      g.fillText(L.holdW + ' sessions', pad.l, Hh - 4);
+      const line = (arr, color, dash) => { g.strokeStyle = color; g.lineWidth = 1.6; g.setLineDash(dash || []); g.beginPath(); arr.forEach((v, i) => { if(i) g.lineTo(X(i), Y(v)); else g.moveTo(X(i), Y(v)); }); g.stroke(); g.setLineDash([]); };
+      line(ser.simple, '#8b97a8', [4, 3]); line(ser.ideal, '#5FB3D9', [2, 2]); line(ser.fund, STYLES.up);
+      const lg = [['Fund', STYLES.up], ['Daily-reset ideal', '#5FB3D9'], ['L x underlying', '#8b97a8']];
+      let x = W - pad.r;
+      lg.slice().reverse().forEach((e) => { const w = g.measureText(e[0]).width + 16; x -= w; g.fillStyle = e[1]; g.fillRect(x, 6, 8, 3); g.fillStyle = '#8b97a8'; g.fillText(e[0], x + 11, 11); });
+    }
+
+    // ---- the movers tab ----
+    function setTab(t){
+      L.tab = t === 'movers' ? 'movers' : 'funds';
+      Object.keys(tabBtns).forEach((k) => tabBtns[k].classList.toggle('on', k === L.tab));
+      fundsBox.hidden = L.tab !== 'funds'; movBox.hidden = L.tab !== 'movers';
+      if(L.tab === 'movers') { renderMovBar(); renderMovers(); loadMovers(); } else { clearTimeout(L.timers.movers); renderList(); }
+    }
+    function renderMovBar(){
+      mvHead.replaceChildren(); mvSide.replaceChildren();
+      [['gain', 'Gainers'], ['loss', 'Losers'], ['gap', 'Biggest gap']].forEach((o) => { const b = btn(L.mv.sort === o[0] ? 'on' : '', o[1]); b.onclick = () => { L.mv.sort = o[0]; renderMovBar(); renderMovers(); }; mvHead.append(b); });
+      [['both', 'Both'], ['long', 'Bull'], ['short', 'Bear']].forEach((o) => { const b = btn(L.mv.side === o[0] ? 'on' : '', o[1]); b.onclick = () => { L.mv.side = o[0]; renderMovBar(); renderMovers(); }; mvSide.append(b); });
+    }
+    mvThinBox.onchange = () => { L.mv.hideThin = mvThinBox.checked; renderMovers(); };
+    function renderMovers(){
+      mvList.replaceChildren();
+      const m = L.movers;
+      if(!m){ mvNote.textContent = L.moversErr || 'Scanning the most traded funds...'; return; }
+      const when = isNum(m.quotes_ms) ? new Date(m.quotes_ms).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : 'unknown time';
+      mvNote.textContent = 'Top ' + m.scan_n + ' funds by 20-day dollar volume (list as of ' + m.list_as_of + '), ' + m.n_quoted + ' quoted, as of ' + when + (m.session_open ? '' : ' (market closed: the last session)') + '. Not all ' + (L.uni ? Object.keys(L.uni.funds).length : '') + ' funds: the Robinhood call budget.';
+      const rows = moversRows(m.rows, {sort: L.mv.sort, side: L.mv.side, hideThin: L.mv.hideThin, limit: 40});
+      if(!rows.length) mvList.append(el('p', 'lx-none', 'Nothing to rank with these filters.'));
+      rows.forEach((r) => {
+        const b = btn('lx-mv ' + (r.lev > 0 ? 'lx-long' : 'lx-short') + (r.s === L.sym ? ' on' : ''), '', r.u + ': ' + (r.dv20 == null ? 'volume NA' : fmtDollarVol(r.dv20) + ' a day'));
+        b.append(el('span', 'a', r.s + ' ' + levLabel(r.lev)), el('span', 'b', fmtPct(r.move)), el('span', 'c', fmtBps(r.gap_bps)));
+        b.onclick = () => select(r.s);
+        mvList.append(b);
+      });
+    }
+    async function loadMovers(){
+      clearTimeout(L.timers.movers);
+      if(!L.visible || L.tab !== 'movers') return;
+      let r;
+      try{ r = await getJson('/api/rh/movers'); }catch(_){ r = {ok: false, code: 'unreachable'}; }
+      if(!L.visible || L.tab !== 'movers') return;
+      if(!r.ok){
+        L.moversErr = codeText(r.code);
+        if(!L.movers) mvNote.textContent = L.moversErr;
+        L.timers.movers = setTimeout(loadMovers, r.code === 'busy' ? 3000 : 20000);
+        return;
+      }
+      L.movers = r; L.moversErr = '';
+      renderMovers();
+      L.timers.movers = setTimeout(loadMovers, r.session_open ? 30000 : 600000);
     }
 
     // ---- the quote box, the actions and the analytics strip ----
@@ -575,34 +1032,86 @@
       actions.append(fill, ask);
       if(L.msg2) actions.append(el('p', 'lx-msg', L.msg2));
     }
+    // The figures of the strip as [label, value, class] triples: the page draws them and the PNG prints them.
+    function stripItems(){
+      const f = curFund(), us = chartSym();
+      if(!f) return [];
+      const qu = us && L.quotes[us], qe = L.quotes[L.sym], dp = dailyPair();
+      const uPrev = qu ? sessionPrevClose(dp.du, qu) : null, ePrev = qe ? sessionPrevClose(dp.de, qe) : null;
+      const mv = todayMove(qu ? qu.last : null, uPrev, qe ? qe.last : null, ePrev, f.lev);
+      const rets = us ? alignDaily(dp.du, dp.de) : [];
+      const rl = realizedLeverage(rets), vd = volDecay(f.lev, rets.map((x) => x.u));
+      const sp = qe ? spreadBps(qe.bid, qe.ask) : null;
+      return [
+        ['Underlying today', us ? fmtPct(mv.u) : 'NA', ''],
+        ['Fund today', mv.suspect ? 'NA (corporate action?)' : fmtPct(mv.e), ''],
+        ['Expected ' + levLabel(f.lev), fmtPct(mv.expected), ''],
+        ['Gap', fmtBps(mv.gap_bps), ''],
+        ['Realized leverage', rl.beta == null ? 'NA (' + rl.n + ' of ' + MIN_N + ' sessions)' : rl.beta.toFixed(2) + 'x  (R2 ' + (rl.r2 == null ? 'NA' : rl.r2.toFixed(2)) + ', n=' + rl.n + ')', ''],
+        ['Volatility decay', vd.decay_ann == null ? 'NA (' + vd.n + ' of ' + MIN_N + ' sessions)' : fmtPct(vd.decay_ann, 1) + ' a year at sigma ' + fmtPct(vd.sigma_ann, 0).replace('+', '') + '  (n=' + vd.n + ')', ''],
+        ['20d $ volume', fmtDollarVol(f.dv20) + '  (as of ' + (L.uni ? L.uni.as_of : '?') + ')', isNum(f.dv20) && f.dv20 < THIN ? 'warn' : ''],
+        ['Spread', sp == null ? 'NA' : sp.toFixed(1) + ' bps', '']];
+    }
     function renderStrip(){
       strip.replaceChildren();
       const f = curFund(), u = curU();
       if(!f){ strip.append(el('p', 'lx-none', 'Pick a fund on the left.')); return; }
       if(L.err) strip.append(el('p', 'lx-bad', L.err));
-      const us = chartSym(), qu = us && L.quotes[us], qe = L.quotes[L.sym];
-      const dser = L.daily ? L.daily.series : {};
-      const du = us && dser[us] ? dser[us].bars : [], de = dser[L.sym] ? dser[L.sym].bars : [];
-      const uPrev = qu ? sessionPrevClose(du, qu) : null, ePrev = qe ? sessionPrevClose(de, qe) : null;
-      const mv = todayMove(qu ? qu.last : null, uPrev, qe ? qe.last : null, ePrev, f.lev);
-      const rets = us ? alignDaily(du, de) : [];
-      const rl = realizedLeverage(rets), vd = volDecay(f.lev, rets.map((x) => x.u));
-      const items = el('div', 'lx-items');
-      items.append(
-        kv('Underlying today', us ? fmtPct(mv.u) : 'NA'),
-        kv('Fund today', mv.suspect ? 'NA (corporate action?)' : fmtPct(mv.e)),
-        kv('Expected ' + levLabel(f.lev), fmtPct(mv.expected)),
-        kv('Gap', fmtBps(mv.gap_bps)),
-        kv('Realized leverage', rl.beta == null ? 'NA (' + rl.n + ' of ' + MIN_N + ' sessions)' : rl.beta.toFixed(2) + 'x  (R2 ' + (rl.r2 == null ? 'NA' : rl.r2.toFixed(2)) + ', n=' + rl.n + ')'),
-        kv('Volatility decay', vd.decay_ann == null ? 'NA (' + vd.n + ' of ' + MIN_N + ' sessions)' : fmtPct(vd.decay_ann, 1) + ' a year at sigma ' + fmtPct(vd.sigma_ann, 0).replace('+', '') + '  (n=' + vd.n + ')'),
-        kv('20d $ volume', fmtDollarVol(f.dv20) + '  (as of ' + (L.uni ? L.uni.as_of : '?') + ')', isNum(f.dv20) && f.dv20 < THIN ? 'warn' : ''),
-        kv('Spread', (() => { const sp = qe ? spreadBps(qe.bid, qe.ask) : null; return sp == null ? 'NA' : sp.toFixed(1) + ' bps'; })()));
+      const items = el('div', 'lx-items'), us = chartSym();
+      stripItems().forEach((t) => items.append(kv(t[0], t[1], t[2])));
       strip.append(items);
       const notes = el('div', 'lx-notes');
+      if(L.snapNote) notes.append(el('p', 'lx-warn', L.snapNote));
       if(u && u.chart_kind === 'proxy') notes.append(el('p', 'lx-warn', 'Underlying charted via ' + u.chart + (u.proxy_quality === 'approximate' ? ' (approximate)' : '') + ': expected move, gap, beta and decay are approximate.' + (u.group === 'crypto' ? ' Regular-hours closes against a 24/7 asset.' : '')));
       if(u && !us) notes.append(el('p', 'lx-warn', 'No underlying chart for ' + u.key + ', so beta, decay and the expected move are NA.'));
       notes.append(el('p', '', 'Volatility decay = -L(L-1)/2 x sigma^2 per day, x252 a year, from the underlying\'s last ' + MIN_N + ' daily returns. No fees, financing or tracking error. A daily-reset fund drifts from L x the multi-day move; this is the part that is arithmetic, not a forecast.'));
       strip.append(notes);
+    }
+
+    // ---- the picture: both charts, the dealer levels and band, and the numbers, as one PNG ----
+    async function snapshot(){
+      if(L.snapBusy || !L.sym) return;
+      L.snapBusy = true; snapB.disabled = true;
+      try{
+        const which = ['u', 'e'].filter((w) => L.ch[w] && !(w === 'u' && pu.wrap.hidden));
+        const shots = [];
+        for(const w of which){
+          const C = L.ch[w], img = await loadImage(C.chart.getConvertPictureUrl(true, 'png', '#0b0f17'));
+          if(img) shots.push({w, img, m: layerModel(w), title: (w === 'u' ? pu.t : pe.t).textContent, css: C.div.clientWidth || img.width});
+        }
+        if(!shots.length) { status.textContent = 'Nothing to save yet.'; return; }
+        const lines = snapshotLines(stripItems().map((t) => [t[0], t[1]]), L.uni ? L.uni.as_of : null, Date.now());
+        const pad = 16, lh = 17, gap = 10, titleH = 22, W = shots.reduce((s, x) => s + x.img.width, 0) + pad * (shots.length + 1) + gap * (shots.length - 1) * 0;
+        const imgH = Math.max.apply(null, shots.map((x) => x.img.height));
+        const cv = document.createElement('canvas');
+        cv.width = W; cv.height = pad + 26 + titleH + imgH + pad + lines.length * lh + pad;
+        const g = cv.getContext('2d');
+        g.fillStyle = '#0b0f17'; g.fillRect(0, 0, cv.width, cv.height);
+        g.fillStyle = '#e7edf5'; g.font = '600 15px ' + MONO; g.fillText(L.sym + '  ' + L.tf + '  ' + (curU() ? curU().key : ''), pad, pad + 14);
+        let x = pad;
+        shots.forEach((s) => {
+          g.fillStyle = '#8b97a8'; g.font = '11px ' + MONO; g.fillText(s.title.slice(0, Math.floor(s.img.width / 7)), x, pad + 26 + 14);
+          const y0 = pad + 26 + titleH;
+          g.drawImage(s.img, x, y0);
+          const k = s.img.width / s.css;
+          s.m.bands.forEach((b) => { g.fillStyle = 'rgba(180,154,224,0.12)'; g.fillRect(x + b.x1 * k, y0, (b.x2 - b.x1) * k, s.m.h * k); });
+          s.m.lines.forEach((l) => {
+            g.strokeStyle = l.color; g.lineWidth = 1; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(x, y0 + l.y * k); g.lineTo(x + s.m.w * k, y0 + l.y * k); g.stroke(); g.setLineDash([]);
+            g.fillStyle = l.color; g.font = '11px ' + MONO; g.fillText(l.label, x + 6, y0 + l.y * k - 3);
+          });
+          x += s.img.width + pad;
+        });
+        g.font = '12px ' + MONO;
+        lines.forEach((t, i) => { g.fillStyle = i >= lines.length - 1 ? '#6C7A92' : '#c9d3e0'; g.fillText(t, pad, pad + 26 + titleH + imgH + pad + (i + 1) * lh - 4); });
+        const blob = await new Promise((res) => cv.toBlob(res, 'image/png'));
+        if(!blob) { status.textContent = 'Could not make the picture.'; return; }
+        const a = document.createElement('a'), url = URL.createObjectURL(blob);
+        a.href = url; a.download = snapshotName(L.sym, L.tf, Date.now());
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        status.textContent = 'Saved ' + a.download;
+      }catch(_){ status.textContent = 'Could not make the picture.'; }
+      finally{ L.snapBusy = false; snapB.disabled = false; }
     }
 
     // ---- keys: only while this view is on screen, and every key handled is stopped before desk.js sees it ----
@@ -613,23 +1122,20 @@
       const stop = () => { e.preventDefault(); e.stopPropagation(); };
       if(typing(t) && !inSearch) return;
       if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
-        const next = neighbor(displayRows(L.rows, groupNames()), L.sym, e.key === 'ArrowDown' ? 1 : -1);
-        if(next) select(next);
+        if(L.tab !== 'funds') return;
+        const next = neighbor(displayRows(L.rows, groupNames()), L.sym, e.key === 'ArrowDown' ? 1 : -1, L.side);
+        if(next){ const sd = sideOf(L.uni, next); select(next, {keepSide: true, note: sd !== L.side ? 'This underlying has no ' + (L.side === 'short' ? 'bear' : 'bull') + ' fund, so the ' + (sd === 'short' ? 'bear' : 'bull') + ' fund is shown. ' + (L.side === 'short' ? 'Bear' : 'Bull') + ' stays selected.' : ''}); }
         stop(); return;
       }
       if(inSearch){ if(e.key === 'Escape'){ search.blur(); stop(); } else if(e.key === 'Enter' && L.sym){ if(H.prefill) L.msg2 = H.prefill(L.sym); renderActions(); stop(); } return; }
-      if(e.key === '/'){ search.focus(); stop(); return; }
+      if(e.key === '/'){ if(L.tab !== 'funds') setTab('funds'); search.focus(); stop(); return; }
       if(e.key === 'Enter' && L.sym){ L.msg2 = H.prefill ? H.prefill(L.sym) : ''; renderActions(); stop(); return; }
       const k = e.key.toLowerCase();
-      if((k === 'l' || k === 's') && L.sym){
-        const f = flipSide(L.uni, L.sym, k === 'l' ? 'long' : 'short');
-        if(f) select(f);
-        stop(); return;
-      }
+      if(k === 'l' || k === 's'){ setSide(k === 'l' ? 'long' : 'short'); stop(); return; }
       if(/^[1-6]$/.test(k)){ setTf(TFS[+k - 1]); stop(); }
     }
     document.addEventListener('keydown', onKey, true);
-    const resize = () => { ['u', 'e'].forEach((w) => { try{ if(L.ch[w]) L.ch[w].resize(); }catch(_){ /* mid-teardown */ } }); };
+    const resize = () => { ['u', 'e'].forEach((w) => { try{ if(L.ch[w]) L.ch[w].resize(); }catch(_){ /* mid-teardown */ } scheduleLayer(w); }); };
     if(typeof ResizeObserver !== 'undefined') new ResizeObserver(resize).observe(charts);
 
     async function init(){
@@ -645,18 +1151,18 @@
       if(start) select(start);
     }
     TFS.forEach((t) => tfBtns[t].classList.toggle('on', t === L.tf));
-    renderQuotes(); renderStrip();
+    renderQuotes(); renderStrip(); renderSide(); renderLadder(); renderHold();
 
     const ctl = {
       ticketSlot,
       show(){
         L.visible = true;
         if(!L.loaded) init();
-        else if(L.sym){ ensureCharts(); resize(); loadBars(); loadDaily(); pollQuotes(true); }
+        else if(L.sym){ ensureCharts(); resize(); loadBars(); loadDaily(); pollQuotes(true); loadLadder(); loadGex(); if(L.tab === 'movers') loadMovers(); }
       },
-      hide(){ L.visible = false; clearTimeout(L.timers.bars); clearTimeout(L.timers.quotes); L.seq += 1; },
+      hide(){ L.visible = false; ['bars', 'quotes', 'ladder', 'movers', 'gex'].forEach((k) => clearTimeout(L.timers[k])); L.seq += 1; },
       select,
-      state: () => ({sym: L.sym, tf: L.tf}),
+      state: () => ({sym: L.sym, tf: L.tf, side: L.side}),
     };
     return ctl;
   }

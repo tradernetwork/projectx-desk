@@ -32,10 +32,11 @@ def test_no_dynamic_html_eval_storage_console_or_post():
         assert bad not in CODE, bad                                  # display only: it cannot send anything
 
 
-def test_fetches_only_the_three_read_routes_and_no_external_host():
+def test_fetches_only_the_five_read_routes_and_no_external_host():
     routes = set(re.findall(r"['\"`](/api/[^'\"`?]*)", CODE))
-    assert routes <= {"/api/rh/letf", "/api/rh/bars", "/api/rh/quotes"}, routes
-    assert "/api/rh/letf" in routes and "/api/rh/bars" in routes and "/api/rh/quotes" in routes
+    reads = {"/api/rh/letf", "/api/rh/bars", "/api/rh/quotes", "/api/rh/movers", "/api/rh/gex"}
+    assert routes <= reads, routes
+    assert routes == reads                                                  # every one is used
     assert not re.search(r"https?://", CODE)
     for bad in ("/api/rh/preview", "/api/rh/place", "/api/rh/cancel", "/api/rh/release", "/api/rh/halt", "/api/csrf"):
         assert bad not in CODE
@@ -299,3 +300,139 @@ def test_et_date():
     assert run("r.etDate(ms)", ms=T0) == "2026-11-19"
     assert run("r.etDate(ms)", ms=FRI + 3 * 3600_000) == "2026-11-19"           # 03:00Z on the 20th is still the 19th in New York
     assert run("r.etDate(null)") is None
+
+
+# ---- sticky side ("snap"): the bear stays the bear when the underlying changes -------------------------------------------------------------
+@needs_node
+def test_side_of_and_pick_for_row_keep_the_side_and_say_when_they_cannot():
+    u = _mini()
+    assert run("[r.sideOf(u,'AY'), r.sideOf(u,'AS'), r.sideOf(u,'NOPE')]", u=u) == ["long", "short", None]
+    rows = run("r.filterRows(u, {})", u=u)
+    a, b = rows[0], rows[1]
+    assert run("r.pickForRow(row,'short')", row=a) == {"sym": "AS", "side": "short", "fellBack": False}
+    assert run("r.pickForRow(row,'long')", row=a)["side"] == "long"
+    assert run("r.pickForRow(row,'short')", row=b) == {"sym": "BX", "side": "long", "fellBack": True}     # B has no bear fund: bull, and it says so
+    assert run("r.pickForRow(null,'short')") is None
+
+
+@needs_node
+def test_neighbor_honours_a_preferred_side_even_after_a_fallback():
+    u = _mini()
+    rows = run("r.displayRows(r.filterRows(u, {}), [['index','Broad index'],['sector','Sector']])", u=u)
+    # standing on B's bull fund because B has no bear, with bear as the preference: the next row up is A and lands on its bear fund
+    assert run("r.neighbor(rows, 'BX', -1, 'short')", rows=rows) == "AS"
+    assert run("r.neighbor(rows, 'BX', -1)", rows=rows) in ("AY", "AX")        # without a preference the fund's own side decides
+
+
+# ---- the ladder ------------------------------------------------------------------------------------------------------------------------
+@needs_node
+def test_ladder_funds_orders_bulls_then_bears_and_caps():
+    u = _mini()
+    lf = run("r.ladderFunds(u,'A')", u=u)
+    assert [f["side"] for f in lf] == ["long", "long", "short"] and {f["sym"] for f in lf} == {"AX", "AY", "AS"}
+    assert [f["sym"] for f in lf if f["side"] == "long"] == ["AY", "AX"]       # dollar volume order within a side, unknown last
+    assert [f["sym"] for f in run("r.ladderFunds(u,'A',1)", u=u)] == ["AS"]    # the single most liquid fund
+    assert run("r.ladderFunds(u,'NOPE')", u=u) == [] and run("r.ladderFunds(null,'A')") == []
+
+
+@needs_node
+def test_ladder_rows_gap_spread_and_na():
+    funds = [{"sym": "T", "side": "long", "lev": 3, "dv20": 1e9}, {"sym": "S", "side": "short", "lev": -3, "dv20": 2e6}, {"sym": "X", "side": "long", "lev": 2, "dv20": None}]
+    qs = {"T": {"bid": 99.9, "ask": 100.1, "last": 106, "prev_close": 100}, "S": {"last": 94.0, "prev_close": 100}}
+    rows = run("r.ladderRows(funds, qs, 98, 100)", funds=funds, qs=qs)
+    t, s, x = rows
+    assert t["move"] == pytest.approx(0.06) and t["expected"] == pytest.approx(-0.06) and t["gap_bps"] == pytest.approx(1200.0)   # +6% on a -2% day
+    assert t["spread_bps"] == pytest.approx(20.0, abs=0.1) and t["thin"] is False
+    assert s["thin"] is True and s["spread_bps"] is None and s["move"] == pytest.approx(-0.06)
+    assert x["last"] is None and x["move"] is None and x["gap_bps"] is None and x["thin"] is False     # no quote: NA, never 0
+    assert run("r.ladderRows(funds, qs, null, null)[0].gap_bps", funds=funds, qs=qs) is None
+
+
+# ---- hold replay -------------------------------------------------------------------------------------------------------------------------
+def _rets(n, u=0.01, e=None):
+    return [{"d": f"d{i}", "u": u if i % 2 == 0 else -u, "e": (3 * (u if i % 2 == 0 else -u)) if e is None else e} for i in range(n)]
+
+
+@needs_node
+def test_hold_windows_decompose_path_and_fees():
+    rets = _rets(130)
+    w = run("r.holdWindows(rets, 3, [21, 63, 126, 252])", rets=rets)
+    assert [x["na"] for x in w] == [False, False, False, True] and w[3]["n"] == 130          # 252 sessions asked, 130 held: NA with the count
+    x = w[0]
+    assert x["n"] == 21 and x["simple"] == pytest.approx(3 * x["u"]) and x["path"] == pytest.approx(x["ideal"] - x["simple"])
+    assert x["fund"] == pytest.approx(x["ideal"]) and x["fees_tracking"] == pytest.approx(0.0, abs=1e-12)    # the fund here IS the ideal daily reset
+    assert x["path"] < 0                                                                      # choppy up/down days: compounding costs
+    # a fund that loses 2 bps a day to fees sits below the ideal by about that much compounded
+    fee = [{"u": r["u"], "e": (1 + 3 * r["u"]) * (1 - 0.0002) - 1} for r in rets]
+    y = run("r.holdWindows(rets, 3, [63])[0]", rets=fee)
+    assert y["fees_tracking"] < -0.01 and y["path"] == pytest.approx(run("r.holdWindows(rets, 3, [63])[0].path", rets=rets))
+    assert run("r.holdWindows(rets, null, [21])[0].na", rets=rets) is True and run("r.holdWindows(null, 3)[0].na") is True
+
+
+@needs_node
+def test_hold_windows_ideal_cannot_go_below_zero_and_series_matches():
+    crash = [{"u": -0.4, "e": -1.0}] + _rets(25)
+    x = run("r.holdWindows(rets, 3, [26])[0]", rets=crash)
+    assert x["ideal"] == -1.0 and x["fund"] == pytest.approx(-1.0)                            # a 3x fund cannot lose more than everything
+    rets = _rets(30)
+    ser = run("r.holdSeries(rets, 3, 21)", rets=rets)
+    w = run("r.holdWindows(rets, 3, [21])[0]", rets=rets)
+    assert len(ser["fund"]) == 22 and ser["fund"][0] == 0 and ser["fund"][-1] == pytest.approx(w["fund"])
+    assert ser["ideal"][-1] == pytest.approx(w["ideal"]) and ser["simple"][-1] == pytest.approx(w["simple"])
+    assert run("r.holdSeries(rets, 3, 99)", rets=rets) is None
+
+
+# ---- the rebalance window --------------------------------------------------------------------------------------------------------------------
+@needs_node
+def test_rebalance_runs_mark_bars_starting_1530_to_1600_et_per_session():
+    est = 1_795_120_200_000                       # 2026-11-19 15:30 ET (EST: 20:30Z)
+    bars = [[est - 300_000 * 2 + 300_000 * i, 1, 1, 1, 1, 1] for i in range(10)]   # 15:20 .. 16:05 at 5 minutes
+    runs = run("r.rebalanceRuns(bars,'5m')", bars=bars)
+    assert runs == [{"from": est, "to": est + 5 * 300_000}]                          # 15:30 through 15:55; 16:00 and later are outside
+    nxt = [[est + DAY + 300_000 * i, 1, 1, 1, 1, 1] for i in range(3)]
+    assert len(run("r.rebalanceRuns(bars.concat(nxt),'5m')", bars=bars, nxt=nxt)) == 2   # a second session is a second run
+    assert run("r.rebalanceRuns(bars,'1D')", bars=bars) == [] and run("r.rebalanceRuns(null,'5m')") == []
+    hourly = [[est - 3_600_000, 1, 1, 1, 1, 1], [est, 1, 1, 1, 1, 1]]                # 14:30 and 15:30 hourly bars
+    assert run("r.rebalanceRuns(h,'1h')", h=hourly) == [{"from": est, "to": est}]
+    summer = 1781897400000                                                        # 2026-06-19 15:30 ET (EDT: 19:30Z)
+    assert run("r.etMinutes(t)", t=summer) == 930 and run("r.etMinutes(t)", t=est) == 930 and run("r.etMinutes(null)") is None
+
+
+# ---- dealer levels ---------------------------------------------------------------------------------------------------------------------------
+@needs_node
+def test_gex_lines_pick_flip_pin_and_two_nearest_walls_each_side_within_range():
+    g = {"ok": True, "flip": 596.0, "pin": 600.0, "walls": [
+        {"strike": 605.0, "type": "RESISTANCE", "kind": "CALL", "rel": 1.0}, {"strike": 610.0, "type": "RESISTANCE", "kind": "CALL"},
+        {"strike": 615.0, "type": "RESISTANCE", "kind": "CALL"}, {"strike": 590.0, "type": "SUPPORT", "kind": "PUT"},
+        {"strike": 585.0, "type": "SUPPORT", "kind": "PUT"}, {"strike": 580.0, "type": "SUPPORT"}, {"strike": 700.0, "type": "RESISTANCE", "kind": "CALL"},
+        {"strike": 600.0, "type": "PIN"}]}
+    ls = run("r.gexLines(g, 601)", g=g)
+    assert [x["price"] for x in ls] == [610.0, 605.0, 600.0, 596.0, 590.0, 585.0]       # 615 and 580 are third nearest, 700 is out of range, the pin strike is not a wall too
+    assert [x["label"] for x in ls] == ["CALL WALL", "CALL WALL", "PIN", "GAMMA FLIP", "PUT WALL", "PUT WALL"]
+    assert [x["kind"] for x in run("r.gexLines(g, 601, 0.002)", g=g)] == ["pin"]                      # a 0.2% range keeps only the pin (0.17% away)
+    assert run("r.gexLines(null, 601)") == [] and run("r.gexLines({ok:false}, 601)") == [] and run("r.gexLines(g, null)", g=g) == []
+    assert run("r.gexLines({ok:true, walls:[{strike:600,type:'SUPPORT'}]}, 601)")[0]["label"] == "SUPPORT"      # no gamma sign: the source's own type
+
+
+# ---- movers ----------------------------------------------------------------------------------------------------------------------------------
+@needs_node
+def test_movers_rows_rank_filter_and_never_rank_unknown_as_zero():
+    rows = [{"s": "A", "lev": 3, "dv20": 1e9, "move": 0.05, "gap_bps": 10}, {"s": "B", "lev": -3, "dv20": 1e9, "move": -0.05, "gap_bps": -250},
+            {"s": "C", "lev": 2, "dv20": 1e6, "move": 0.07, "gap_bps": 5}, {"s": "D", "lev": 2, "dv20": 1e9, "move": None, "gap_bps": None},
+            {"s": "E", "lev": -2, "dv20": None, "move": 0.0, "gap_bps": None}]
+    f = lambda o: [x["s"] for x in run(f"r.moversRows(rows, {json.dumps(o)})", rows=rows)]       # noqa: E731
+    assert f({"sort": "gain"}) == ["C", "A", "E", "B"] and f({"sort": "loss"}) == ["B", "E", "A", "C"]          # D (unknown) is left out, E (a real 0) is kept
+    assert f({"sort": "gap"}) == ["B", "A", "C"]                                                 # by absolute gap; the unknown gaps are left out
+    assert f({"sort": "gain", "side": "short"}) == ["E", "B"] and f({"sort": "gain", "side": "long"}) == ["C", "A"]
+    assert f({"sort": "gain", "hideThin": True}) == ["A", "E", "B"]                              # C is $1M a day; E's unknown volume is not hidden
+    assert f({"sort": "gain", "limit": 2}) == ["C", "A"]
+
+
+# ---- the snapshot ----------------------------------------------------------------------------------------------------------------------------
+@needs_node
+def test_snapshot_name_and_lines_carry_no_account_text():
+    assert run("r.snapshotName('TQQQ','5m',t)", t=1_795_120_200_000) == "letf-TQQQ-5m-20261119-2030.png"
+    lines = run("r.snapshotLines([['Gap','+12 bps'],['Spread','1.2 bps']], '2026-11-19', t)", t=1_795_120_200_000)
+    assert lines[0] == "Gap:  +12 bps" and lines[1] == "Spread:  1.2 bps" and lines[2] == ""
+    assert "Fund list as of 2026-11-19" in lines[3] and "Display only, not advice" in lines[3] and "UTC" in lines[3]
+    assert run("r.snapshotLines([], null, null)")[-1].startswith("Fund list as of ?")

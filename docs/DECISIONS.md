@@ -603,3 +603,27 @@ order surface (`rh.js`) small.
 `scripts/letf_sync.py`, `dev_robinhood.py` (deterministic bars and quotes where a daily-reset fund tracks L x its underlying).
 Tests: `test_letf_sync.py`, `test_letf.py`, `test_letf_routes.py`, `test_letf_ui.py`, and additions to `test_rh_reads.py`,
 `test_rh_mcp.py`, `test_rh_ui.py`.
+
+## Round 31: boot safety for a late or missing data mount (2026-11-20)
+
+**Problem.** `main()` took the lock first, and `lock.acquire()` does `mkdir(parents=True, exist_ok=True)`, so a data directory that
+was not mounted yet (a mergerfs pool can appear about 26 s after boot) was silently created empty on the root filesystem. The halt
+file it hid then read as "not halted", the day counters restarted and the audit and journal began empty.
+
+**Decision.** `datacheck.problem(env, root)` runs in `main()` before the lock and refuses, with the directory, the flag name and the
+exact fix command, when a configured state path's parent is missing or the data path is a dangling symlink. The default `ROOT/data`
+is exempt from the missing test (its parent, the checkout, is tested), so a fresh checkout still starts. An OSError never refuses
+(Windows junctions, permissions). `PX_DATA_SENTINEL=1` (opt-in) additionally needs `data/.desk_data`, written by `--init-data`, so a
+mount that is present but empty is also caught. `/state.json` gains `loops.deadline_age_s` (a number or None) from a heartbeat at
+the top of every `_deadline_loop` iteration, for an outside watcher; a slow broker call can make it 5 s or more stale, so the
+documented threshold is 15 s.
+
+**Why `Guard.halted()` was not changed.** Making a missing halt file read as halted (or requiring a sentinel inside `halted()`)
+would brick every fresh checkout, which has no `data/` until its first run, and a large share of the tests, which build guards on
+temporary paths. The boot check covers the same failure at the one place it matters, before anything is created, and stays opt-in
+where it needs a marker.
+
+**Limits.** An in-process field cannot see a wedged guest kernel; a headless box needs a host-side watchdog or ping. The check only
+runs at boot: a pool that disappears while the desk is running is not detected here.
+
+**Where.** `datacheck.py`, `app.py` (`main`, `_deadline_loop`, `_deadline_age`, `/state.json`), `docs/DEPLOY.md`, `tests/test_boot_safety.py`.

@@ -259,3 +259,22 @@ Alerts are a trading-desk feature. The recorder has no POST routes by design, so
 (off loopback), iOS Home Screen apps are known to handle HTTP Basic poorly and may re-prompt or fail to load the manifest: use the Tailscale route above instead.
 Not verified on real hardware: delivery through Google or Apple, and iOS standalone behaviour.
 
+
+## A desk on a late mount (data on a pool that appears after boot)
+
+The desk refuses to start when a configured state path's directory is missing or a dangling symlink (`projectx_desk/datacheck.py`),
+instead of creating an empty one. To make systemd wait for the mount rather than fail, add a drop-in
+(`systemctl --user edit projectx-desk` or `sudo systemctl edit projectx-desk`):
+
+```
+[Unit]
+RequiresMountsFor=/absolute/path/to/checkout /absolute/path/to/checkout/data
+```
+
+Also set `PX_DATA_SENTINEL=1` there. It makes the desk refuse unless `data/.desk_data` exists, which catches a mount that is
+present but empty. Create the marker once, on the right disk, with `python -m projectx_desk --init-data`.
+
+Watch it from outside: poll `/state.json` and treat a timeout, an error or `loops.deadline_age_s` over 15 as stuck. The number is the
+seconds since the once-a-second deadline loop last began a pass; a slow broker call can delay it for 5 s or more, hence 15. It is
+`null` before the first pass. In-process fields cannot see a wedged guest kernel: a headless box needs a host-side watchdog or a ping
+from another machine.

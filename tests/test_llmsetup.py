@@ -88,9 +88,9 @@ def test_form_validation_and_request_body():
 
 @needs_node
 def test_error_words_login_link_and_route_text():
-    codes = ["unauthorized", "rate_limited", "model_blocked", "unreachable", "timeout", "bad_reply", "not_configured", "weird<script>"]
+    codes = ["unauthorized", "rate_limited", "model_blocked", "unreachable", "timeout", "bad_reply", "empty", "not_configured", "weird<script>"]
     w = run("(L,d)=>d.map(c=>L.testWords(c))", codes)
-    assert all(w) and "workspace blocks this model" in w[2] and "<" not in w[7]
+    assert all(w) and "workspace blocks this model" in w[2] and "<" not in w[8]
     assert all(run("(L,d)=>d.map(c=>L.saveWords(c))", ["bad_url", "bad_key", "x y"]))
     ok = run("(L,d)=>d.map(u=>L.isOpenRouterUrl(u))", ["https://openrouter.ai/auth?x=1", "http://openrouter.ai/auth", "https://openrouter.ai.evil.com/auth",
                                                         "https://evil.com/https://openrouter.ai/", "javascript:alert(1)", None, "https://openrouter.ai@evil.com/"])

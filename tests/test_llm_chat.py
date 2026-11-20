@@ -169,8 +169,7 @@ async def test_network_errors():
 
 
 @pytest.mark.parametrize("resp", [httpx.Response(200, text="not json"), httpx.Response(200, json=[1]), httpx.Response(200, json={}),
-                                  httpx.Response(200, json={"choices": []}), httpx.Response(200, json={"choices": [{"message": {"content": 5}}]}),
-                                  httpx.Response(200, json={"choices": [{"message": {"content": "   "}}]})])
+                                  httpx.Response(200, json={"choices": []}), httpx.Response(200, json={"choices": [{"message": {"content": 5}}]})])
 async def test_bad_reply(resp):
     assert await code_of(cfg(), lambda req: resp) == "bad_reply"
     assert await code_of(cfg("anthropic", key="sk-ant-x1"), lambda req: resp) == "bad_reply"
@@ -228,3 +227,120 @@ def test_system_prompt():
     assert "NA" in s and "never" in s.lower() and s.endswith("MES 5000")
     assert len(ch.build_system("x" * 100000)) < len(ch.RULES) + ch.MAX_DIGEST + 50
     assert ch.build_system(None).startswith(ch.RULES)
+
+
+def oai_f(text, finish=None, extra=None):
+    ch0 = {"message": {"content": text, **(extra or {})}}
+    if finish:
+        ch0["finish_reason"] = finish
+    return httpx.Response(200, json={"choices": [ch0]})
+
+
+async def test_whitespace_only_is_empty():
+    assert await code_of(cfg(), lambda req: oai("   ")) == "empty"
+    assert await code_of(cfg("anthropic", key="sk-ant-x1"), lambda req: httpx.Response(200, json={"content": [{"type": "text", "text": "  "}]})) == "empty"
+    assert "empty" in ch.CODES
+
+
+def test_max_tokens_room_for_reasoning():
+    assert ch.MAX_TOKENS >= 2500
+
+
+async def test_empty_openrouter_retries_once_with_reasoning_off():
+    bodies = []
+
+    def h(req):
+        bodies.append(json.loads(req.content))
+        return oai_f("", "stop") if len(bodies) == 1 else oai("second")
+
+    r = await run(cfg(), h)
+    assert r.text == "second" and len(bodies) == 2
+    assert "reasoning" not in bodies[0] and bodies[1]["reasoning"] == {"enabled": False}
+    assert ch._busy is False
+
+
+async def test_two_empties_is_empty_and_lock_released():
+    n = []
+
+    def h(req):
+        n.append(1)
+        return oai_f("", "stop")
+
+    assert await code_of(cfg(), h) == "empty"
+    assert len(n) == 2 and ch._busy is False
+
+
+async def test_concurrent_call_is_rate_limited_during_retry():
+    gate = asyncio.Event()
+    n = []
+
+    class T(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, req):
+            n.append(1)
+            if len(n) == 2:
+                gate.set()
+                await asyncio.sleep(0.2)
+                return oai("ok")
+            return oai_f("", "stop")
+
+    t = asyncio.create_task(ch.ask(cfg(), "s", TURNS, transport=T()))
+    await gate.wait()
+    with pytest.raises(ch.LlmError) as e:
+        await ch.ask(cfg(), "s", TURNS, transport=transport(lambda req: oai()))
+    assert e.value.code == "rate_limited"
+    assert (await t).text == "ok" and ch._busy is False
+
+
+@pytest.mark.parametrize("st", [500, 429])
+async def test_no_retry_on_http_error(st):
+    n = []
+
+    def h(req):
+        n.append(1)
+        return httpx.Response(st, text="x")
+
+    await code_of(cfg(), h)
+    assert len(n) == 1
+
+
+async def test_no_retry_when_finish_length():
+    n = []
+
+    def h(req):
+        n.append(1)
+        return oai_f("", "length")
+
+    assert await code_of(cfg(), h) == "empty" and len(n) == 1
+
+
+@pytest.mark.parametrize("prov", ["openai", "venice", "anthropic"])
+async def test_no_retry_other_profiles(prov):
+    n = []
+    c = cfg(prov, key="sk-ant-x1" if prov == "anthropic" else KEY)
+
+    def h(req):
+        n.append(json.loads(req.content))
+        return oai("") if prov != "anthropic" else httpx.Response(200, json={"content": []})
+
+    assert await code_of(c, h) == "empty" and len(n) == 1 and "reasoning" not in n[0]
+
+
+async def test_reasoning_text_never_returned():
+    secret = "HIDDEN-CHAIN-OF-THOUGHT"
+    r = await run(cfg(), lambda req: oai_f("visible", "stop", {"reasoning": secret, "reasoning_content": secret}))
+    assert secret not in r.text and r.text == "visible"
+    assert await code_of(cfg(), lambda req: oai_f("", "stop", {"reasoning": secret})) == "empty"
+
+
+async def test_probe_single_attempt_ok_when_empty():
+    n = []
+
+    def h(req):
+        n.append(1)
+        return oai_f("", "length")
+
+    r = await ch.test(cfg(), transport=transport(h))
+    assert r["ok"] is True and len(n) == 1
+    n.clear()
+    r = await ch.test(cfg(), transport=transport(lambda req: (n.append(1), oai_f("", "stop"))[1]))
+    assert r["ok"] is True and len(n) == 1

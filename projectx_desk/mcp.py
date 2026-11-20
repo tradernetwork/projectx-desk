@@ -12,7 +12,7 @@ import re
 import time
 from typing import Optional
 
-from projectx_desk import sizing
+from projectx_desk import secretcheck, sizing
 from fastmcp import FastMCP
 from fastmcp.server.auth import AccessToken, TokenVerifier
 
@@ -22,21 +22,12 @@ from projectx_desk.state import order_view, position_view
 from projectx_desk.tradeday import parse_ts
 
 CONTRACT_RE = re.compile(r"^CON\.[A-Za-z0-9._]{1,40}$")
-PLACEHOLDERS = ("your_", "changeme", "change_me", "example", "placeholder", "secret", "token", "password")
+PLACEHOLDERS = secretcheck.PLACEHOLDERS
 
 
 def weak_token_reason(token: Optional[str]) -> Optional[str]:
-    """Why a token must not be used, or None. Never quotes the value (this work is streamed)."""
-    if not token:
-        return "no token set"
-    if len(token) < 32:
-        return "token shorter than 32 characters"
-    low = token.lower()
-    if any(p in low for p in PLACEHOLDERS):
-        return "token looks like a placeholder"
-    if len(set(token)) < 12:
-        return "token has too little variety (generate one with: openssl rand -hex 32)"
-    return None
+    """Why a token must not be used, or None. Never quotes the value (this work is streamed). Logic lives in secretcheck."""
+    return secretcheck.weak_secret_reason(token, strict=True)
 
 
 class BearerVerifier(TokenVerifier):

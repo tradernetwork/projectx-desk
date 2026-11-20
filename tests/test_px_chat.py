@@ -13,7 +13,7 @@ from test_px_app import FakeClient
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STATIC = ROOT / "projectx_desk" / "static"
-TOKEN = "a" * 64
+TOKEN = "0123456789abcdef" * 4
 
 
 def agent(handler):
@@ -35,6 +35,18 @@ def hpost(c, tok, body, **hdr):
 
 
 # ---- config -------------------------------------------------------------------------------------------------------------
+
+def test_placeholder_token_turns_relay_off_and_logs_the_name_not_the_value(tmp_path, capsys):
+    weak = "your_agent_token_goes_here_xxxxxxxxxxxxxxxx"
+    assert chat.config({"PX_CHAT_URL": "http://127.0.0.1:9315", "PX_CHAT_TOKEN": weak}) is None
+    out = capsys.readouterr().out
+    assert "PX_CHAT_TOKEN" in out and "placeholder" in out and weak not in out
+    f = tmp_path / "tok"
+    f.write_text(weak + "\n")
+    assert chat.config({"PX_CHAT_URL": "http://127.0.0.1:9315", "PX_CHAT_TOKEN_FILE": str(f)}) is None
+    out = capsys.readouterr().out
+    assert "PX_CHAT_TOKEN_FILE" in out and weak not in out
+    assert chat.config({"PX_CHAT_URL": "http://127.0.0.1:9315", "PX_CHAT_TOKEN": "a" * 64}) is None      # no variety
 
 def test_off_unless_a_loopback_url_and_a_real_token_are_set(tmp_path):
     assert chat.config({}) is None

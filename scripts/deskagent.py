@@ -14,6 +14,7 @@ import base64
 import hmac
 import io
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -183,26 +184,78 @@ def load_sessions() -> dict:
         return {}
 
 
+def save_sessions(sessions: dict) -> None:
+    """Atomic and private: a 0600 temp file in the same directory, then os.replace (the file maps session names to resumable ids)."""
+    DATA.mkdir(exist_ok=True)
+    tmp = SESSIONS.with_name(SESSIONS.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)                      # a stale temp file keeps its old mode through O_TRUNC
+    except (AttributeError, OSError):
+        pass
+    with os.fdopen(fd, "w") as f:
+        print(json.dumps(sessions), file=f)
+    os.replace(tmp, SESSIONS)
+
+
+DEFAULT_BUDGET_USD = 1.0
+MAX_RESULT = 20_000
+MSG_BUDGET = "The agent stopped at its cost limit for one question (PX_AGENT_BUDGET_USD). Ask a narrower question."
+MSG_EMPTY = "The agent returned no text. Try the question again."
+MSG_FAILED = "agent failed (no usable reply from claude -p; see the agent host's own terminal)"
+
+
+def budget_usd() -> float:
+    """Per-question cost cap for `claude -p`, from PX_AGENT_BUDGET_USD: 0 = off, blank, garbled, negative or non-finite = the default (a rail)."""
+    raw = env_value("PX_AGENT_BUDGET_USD")
+    if not raw:
+        return DEFAULT_BUDGET_USD
+    try:
+        v = float(raw)
+    except ValueError:
+        return DEFAULT_BUDGET_USD
+    return v if math.isfinite(v) and v >= 0 else DEFAULT_BUDGET_USD
+
+
+def build_cmd(prompt: str, resume: str = "") -> list:
+    cmd = ["claude", "-p", prompt, "--output-format", "json", "--append-system-prompt", SYSTEM,
+           "--mcp-config", mcp_config(), "--strict-mcp-config", "--permission-mode", "dontAsk",
+           "--allowedTools", *ALLOWED, *(TRAIL_TOOLS if trail_on() else []), "--disallowedTools", *DENIED]
+    b = budget_usd()
+    if b > 0:
+        cmd += ["--max-budget-usd", f"{b:.4f}".rstrip("0").rstrip(".")]
+    if resume:
+        cmd += ["--resume", resume]
+    return cmd
+
+
+def reply_text(out) -> str:
+    """The text to return for a parsed `claude -p` JSON result: capped, and a fixed message (never raw output) when there is none."""
+    if not isinstance(out, dict):
+        return MSG_FAILED
+    r = out.get("result")
+    if isinstance(r, str) and r.strip():
+        return r[:MAX_RESULT]
+    if str(out.get("subtype", "")) == "error_max_budget_usd":
+        return MSG_BUDGET
+    return MSG_EMPTY
+
+
 def ask(prompt: str, session: str = "default", timeout: int = 280) -> str:   # under the desk relay's 300 s, so a 504 never leaves a run going
     with LOCK:  # one browser profile, one run at a time
         sessions = load_sessions()
-        cmd = ["claude", "-p", prompt, "--output-format", "json", "--append-system-prompt", SYSTEM,
-               "--mcp-config", mcp_config(), "--strict-mcp-config", "--permission-mode", "dontAsk",
-               "--allowedTools", *ALLOWED, *(TRAIL_TOOLS if trail_on() else []), "--disallowedTools", *DENIED]
-        if session in sessions:
-            cmd += ["--resume", sessions[session]]
+        cmd = build_cmd(prompt, sessions.get(session, ""))
         try:
             run = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
             out = json.loads(run.stdout)
         except subprocess.TimeoutExpired:
             return "timed out"
         except ValueError:
-            return "agent failed: " + (run.stderr or run.stdout)[-400:]
-        if out.get("session_id"):
+            return MSG_FAILED            # never echo stderr/stdout: they can carry request headers or tokens
+        if isinstance(out, dict) and out.get("session_id"):
             sessions[session] = out["session_id"]
-            DATA.mkdir(exist_ok=True)
-            SESSIONS.write_text(json.dumps(sessions))
-        return str(out.get("result", ""))
+            save_sessions(sessions)
+        return reply_text(out)
 
 
 PAGE = """<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><title>Desk agent</title>

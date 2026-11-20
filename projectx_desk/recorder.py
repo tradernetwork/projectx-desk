@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 import httpx
 
 from projectx_desk import flow as px_flow
+from projectx_desk import secretcheck
 from projectx_desk import ticks as px_ticks
 
 MIN_MS = px_flow.MIN_MS
@@ -65,7 +66,10 @@ def recorder_config(environ=None):
     if not host or u.scheme not in ("https", "http") or (u.scheme == "http" and not loop) \
             or u.username or u.password or u.query or u.fragment:
         raise RecorderError("CONFIG")
-    return url.rstrip("/"), (env.get("PX_RECORDER_TOKEN") or "").strip()
+    token = (env.get("PX_RECORDER_TOKEN") or "").strip()
+    if token and secretcheck.weak_secret_reason(token):      # an empty token stays allowed (a loopback recorder with no login)
+        raise RecorderError("CONFIG")
+    return url.rstrip("/"), token
 
 
 # ---- untrusted input -> allowlisted numbers ---------------------------------------------------

@@ -27,7 +27,7 @@ from urllib.parse import urlparse
 import httpx
 
 from projectx_desk import gex_futures
-from projectx_desk import sizing
+from projectx_desk import secretcheck, sizing
 DEFAULT_URL = "https://api.traderdaddy.pro/api/v1"
 DEFAULT_MAX_AGE_S = 900.0
 TTL_S = 300.0              # successful fetch cache, per source symbol
@@ -59,6 +59,9 @@ def gex_config(environ=None):
         raise GexError("CONFIG")                         # never send the key in cleartext off-box
     key = (env.get("PX_GEX_KEY") or env.get("TD_API_KEY") or "").strip()
     if not key:
+        return None
+    if secretcheck.weak_secret_reason(key, strict=False):       # a template value: no key at all, never a request that is sure to 401
+        print("GEX off: PX_GEX_KEY is not usable (key looks like a placeholder)", flush=True)
         return None
     try:
         age = float(env.get("PX_GEX_MAX_AGE_S") or DEFAULT_MAX_AGE_S)

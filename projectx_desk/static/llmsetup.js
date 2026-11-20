@@ -108,6 +108,7 @@
     unreachable: 'Could not reach the provider. Check the address and this computer\'s network.',
     timeout: 'The provider took too long to answer.',
     bad_reply: 'The provider answered in a shape the desk does not understand. Check the model name and address.',
+    empty: 'The model answered with no visible text. Try again, or pick a model that does not spend its whole budget thinking.',
     not_configured: 'Nothing is saved yet. Save a provider first.',
   };
   const SAVE_WORDS = {

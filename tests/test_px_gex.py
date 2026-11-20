@@ -241,3 +241,13 @@ def test_pin_typed_key_levels_are_walls_with_kind_and_size():
     assert any(x.startswith("GEX_NEAR_BELOW: PUT wall") and "(SPY 760)" in x for x in L)
     assert any(x.startswith("GEX_NEAR_ABOVE: ") for x in L)
     assert px_gex.near_lines(None) == [] and px_gex.near_lines({"levels": [{"name": "wall_below", "pts": "x"}]}) == []
+
+
+def test_gex_key_placeholder_refused_vendor_style_key_passes(capsys):
+    base = {"PX_GEX_URL": "https://x.test/api/v1"}
+    assert px_gex.gex_config({**base, "PX_GEX_KEY": "your_key_here"}) is None
+    assert "PX_GEX_KEY" in capsys.readouterr().out
+    for bad in ("changeme", "CHANGE_ME", "an-example-key", "placeholder1"):
+        assert px_gex.gex_config({**base, "PX_GEX_KEY": bad}) is None
+    for ok in ("td_token_ab12", "secret-k3y", "k", "pk_live_0123"):
+        assert px_gex.gex_config({**base, "PX_GEX_KEY": ok}) is not None

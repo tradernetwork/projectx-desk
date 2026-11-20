@@ -140,6 +140,65 @@ The Ask box agent cannot read `data/rh_*` or the Robinhood halt file, and cannot
 Both are the offline mock (`./run_dev.sh`) with invented symbols (AAA, BBB, CCC); no real account was involved. `python scripts/screenshots.py`
 (offline mock only, needs Playwright) also has a Robinhood scene for regenerating them.
 
+## Leveraged ETF desk
+
+The panel opens on a **LETF desk** view (the **Account** tab is the tables above). It lists about 700 leveraged ETFs, picks one, and
+draws two charts side by side: the underlying on the left and the fund on the right, with a strip of numbers under them. It is
+display only. A click on a fund only fills the ticker box of the order ticket (buy to open, no limit, no size); the ticket flow
+(preview, ticket code, hold to place, your tap in the Robinhood app) is exactly the one described above and nothing in the LETF
+view can start it. Inverse funds are bought like any other stock: you buy the fund.
+
+**The fund list.** `projectx_desk/rh/letf_data.json` is a vendored copy of github.com/mphinance/leveraged-etfs (574 long and 120
+short funds with leverage of 1.5x or more either way, across 315 underlyings, ranked by 20-day average dollar volume). The date it
+is "as of" is shown under the list; it turns amber after 14 days and reads stale after 45. The desk never downloads it. To refresh:
+
+```
+.venv/bin/python scripts/letf_sync.py            # download, validate, rewrite the JSON (add --as-of YYYY-MM-DD for a new date)
+.venv/bin/python scripts/letf_sync.py --check    # exit 1 when the committed file differs from the source
+.venv/bin/python scripts/letf_sync.py --strict   # exit 1 when a new underlying label has no proxy decision
+```
+
+The three CSVs are untrusted text: they are read into memory, size capped, redirects refused, every field checked against a strict
+pattern, and any failure rejects the whole run and leaves the old file in place. Dollar volume and leverage are the source's; the
+desk does not recompute them.
+
+**Which chart is the underlying.** A real ticker (QQQ, NVDA) charts itself. A label that is not a ticker is charted through a proxy
+ETF from `projectx_desk/rh/letf_proxies.py`, and the chart header says so: "Gold, charted via GLD" is exact; "Crude oil, charted via
+USO (approximate)" says the proxy holds futures while the fund tracks an index. A crypto, commodity, currency or volatility label
+never charts itself even when it looks like a ticker. Where there is no clean proxy the fund chart is shown alone and the beta,
+decay and expected-move figures read NA. Every figure that compares the fund with a proxied underlying is approximate; the screen
+says so.
+
+**The numbers under the charts** (every one shows its sample size; unknown is NA, never 0):
+
+| Figure | What it is |
+|---|---|
+| Underlying today, Fund today | last price against yesterday's close. Yesterday's close is the quote's own previous close, else the last completed daily bar (skipping a bar that is the quote's own session, so a weekend reads right) |
+| Expected Lx, Gap | L times the underlying's move, and the fund's move minus that, in bps. A fund move over 50% that L times the underlying does not explain reads NA ("corporate action?") instead of a fake gap |
+| Realized leverage | slope of the fund's daily returns on the underlying's over the last 20 sessions, with R2. NA under 20 paired sessions |
+| Volatility decay | `-L(L-1)/2 x sigma^2` per day, times 252 a year, from the underlying's last 20 daily returns. Arithmetic, not a forecast, and it leaves out fees, financing and tracking error. An inverse fund decays faster (L = -3 gives 6 sigma^2, L = 3 gives 3) |
+| 20d $ volume | the source's figure. Under $5M a day is "thin": faded in the list, wide spreads, watch only |
+| Spread | live (ask - bid) over the mid, in bps, with the quote's age |
+
+**Live data.** Bars come from `get_equity_historicals` (regular hours, split adjusted; only completed bars are returned, so the bar
+in progress is built from 2 second quote samples and replaced when the real one arrives; the screen says so). Daily bars are fetched
+once per selection for the analytics. When the market is closed the desk reads once and stops polling. The reads are market data:
+no account is resolved and none of it reaches the digest, the desk MCP or the Ask agent.
+
+**Routes** (GET only; present only when `PX_RH` is on and never in a recorder; a refusal is `{"ok": false, "code": ...}` and nothing
+else): `/api/rh/letf` (the list, no outbound call), `/api/rh/bars?symbols=QQQ,TQQQ&tf=5m` (up to 2 symbols; `tf` is 1m, 5m, 15m, 30m,
+1h or 1D), `/api/rh/quotes?symbols=QQQ,TQQQ` (up to 4). Only symbols in the vendored list (funds and their chart symbols) are
+accepted. Chart reads share the Robinhood client's 4 calls a second with the order guard, so they are held to 2 a second (a burst of
+4); past that the route answers `busy` and the page retries. Replies are cached for 15 to 1800 seconds by timeframe (quotes 2).
+
+**Keys** (only while the LETF view is on screen): Up and Down move through the list on the side you are on, `L` and `S` jump to the
+long or short pick of the same underlying, `1` to `6` pick the timeframe, `/` searches, Enter fills the ticker box. The URL hash
+`#letf=TQQQ&tf=5m` is the only memory: share it and the desk opens straight to that fund.
+
+**Not verified yet.** The live shape of `get_equity_historicals` was captured once (2026-11-20, QQQ and TQQQ, 5 minute bars) and the
+bar view matches it, but the mock is still invented data. `previous_close` inside a live quote is UNVERIFIED (the desk falls back to
+the daily bars when it is absent); run `scripts/rh_shapes.py` against the live service to capture both.
+
 ## Verified against the live Trading MCP (2026-11-17)
 
 Signed in with this desk's own OAuth code (`scripts/rh_capture.py`, localhost) and read the real server. Checked:

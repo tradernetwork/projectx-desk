@@ -573,3 +573,33 @@ Two outside reviews (GPT-6 and DeepSeek V4.1 Flash) and the in-house risk lens c
 **Why this and not the alternatives.** A flat "raise the caps" would have widened every ticket, including multi-contract and callout ones. Keeping the branch to one shape means the relaxation cannot leak. The room check is the one ceiling that actually ends a combine.
 
 **Where.** `limits.py` (`one_lot`, `one_lot_slip_ticks`, `ONE_LOT_ROOTS`), `guard.py` (`_evaluate`, `Ticket.one_lot`, `_arm_stop`, audit key `one_lot`), `digest.py` (`size.stop_max` becomes the room-derived ceiling, `mode.one_lot`, `MODE: ... 1LOT`), `desk.js` label. Tests: `tests/test_px_one_lot.py`.
+
+## Round 29: the leveraged ETF desk, display only (2026-11-20)
+
+**Problem.** The Robinhood side needed a real use to test against, and leveraged ETFs are the natural one: hundreds of funds, each
+tied to an underlying that moves a known multiple. A trader needs the fund and its underlying side by side and a few honest numbers
+about how well the fund is doing its job.
+
+**Decision.** A LETF desk view inside the Robinhood panel: a picker over a vendored list of 694 funds, two charts (underlying, fund),
+live quotes and an analytics strip. It adds no order path: `rh/guard.py` is untouched and a fund click only sets the ticker box.
+
+- The list is vendored (`rh/letf_data.json`, built by `scripts/letf_sync.py`), not fetched at runtime. The desk makes no GitHub
+  request, an offline desk works, and the third-party CSV is validated once at sync time and again at load.
+- A label that is not a ticker is charted through a hand-curated proxy, labelled exact or approximate on screen. A crypto,
+  commodity, currency or volatility label never charts itself, because a ticker-shaped label there (BTC, HYPE) can be an unrelated
+  equity.
+- The routes accept only symbols in the vendored list, so they are a LETF desk and not a market-data proxy.
+- Chart reads are held to 2 calls a second so they cannot starve the order guard's commit-point reads on the shared 4 a second limiter.
+- Every analytic is display only, shows its sample size, and reads NA when unknown or under 20 sessions. A fund move over 50% that
+  L times the underlying does not explain is NA, not a gap.
+
+**Why this and not the alternatives.** Fetching the CSVs at runtime would add an outbound dependency and an untrusted-input parser to
+the desk process. Charting only real tickers would have left a third of the underlyings (gold, oil, semis, VIX) without a chart.
+Putting the picker in `desk.js` would have mixed it into the futures chart; a separate `letf.js` with its own pins keeps the
+order surface (`rh.js`) small.
+
+**Where.** `rh/letf.py`, `rh/letf_proxies.py`, `rh/letf_data.json`, `rh/views.py` (`bar_view`), `rh/reads.py` (`bars`, `quotes`),
+`rh/mcp.py` (`get_equity_historicals` in `READ_TOOLS`), `app.py` (three GET routes), `static/letf.js`, `static/rh.js`, `static/rh.css`,
+`scripts/letf_sync.py`, `dev_robinhood.py` (deterministic bars and quotes where a daily-reset fund tracks L x its underlying).
+Tests: `test_letf_sync.py`, `test_letf.py`, `test_letf_routes.py`, `test_letf_ui.py`, and additions to `test_rh_reads.py`,
+`test_rh_mcp.py`, `test_rh_ui.py`.

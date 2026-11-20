@@ -77,7 +77,10 @@ def main(argv=None):
             return sizing.spec_for(cid).tick_size
         except Exception:  # noqa: BLE001
             return None
-    new = paper.open_new(journal, bias, callouts, cons.get, tick_for, now_ms)
+    skipped = []
+    new = paper.open_new(journal, bias, callouts, cons.get, tick_for, now_ms, skipped)
+    if skipped:
+        print(f"skipped {len(skipped)} ENTRY callout(s): no_side")         # a real ENTRY carries its side; it is never inferred from the stop
     journal += new
 
     def bars_for(cid):

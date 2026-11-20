@@ -96,7 +96,9 @@ def from_callout(item, contract, tick, now_ms, open_contracts=()):
     e, s, t1, age = item.get("entry"), item.get("stop"), item.get("tp1"), item.get("age_s")
     if not (_fin(e) and _fin(s) and _fin(t1) and _fin(age) and _fin(tick) and tick > 0) or e == s:
         return None
-    side = item.get("side") if item.get("side") in ("LONG", "SHORT") else ("SHORT" if s > e else "LONG")
+    side = item.get("side")
+    if side not in ("LONG", "SHORT"):          # a real ENTRY carries its side (TraderDiscord-v2 afcdc8c); it is never inferred from the stop
+        return None
     if (side == "LONG") != (s < e) or (side == "LONG") != (t1 > e):          # a stop or target on the wrong side of entry is a garbled post
         return None
     posted = int(now_ms - age * 1000)
@@ -196,9 +198,10 @@ def state(journal):
     return [t for i, t in opened.items() if i not in closed], set(opened)
 
 
-def open_new(journal, bias_rows, callouts, contract_for_symbol, tick_for, now_ms):
+def open_new(journal, bias_rows, callouts, contract_for_symbol, tick_for, now_ms, skipped=None):
     """New `open` journal rows for fresh B-or-better bias leans and fresh analyst ENTRY callouts. Idempotent: an id that was ever opened is never
-    opened again, and a contract with an open paper trade takes no second one."""
+    opened again, and a contract with an open paper trade takes no second one. An ENTRY callout with no side is skipped, and `skipped` (a list,
+    when given) gets the fixed word `no_side` for each, so the caller can say so."""
     open_tr, seen = state(journal)
     busy = {t["contract"] for t in open_tr}
     rows = []
@@ -215,6 +218,8 @@ def open_new(journal, bias_rows, callouts, contract_for_symbol, tick_for, now_ms
         cid = contract_for_symbol(TO_MICRO.get(it["symbol"], it["symbol"]))
         if not cid or not _fin(it.get("age_s")) or it["age_s"] * 1000 > MAX_CALLOUT_AGE_MS:
             continue
+        if it.get("event") == "ENTRY" and it.get("side") not in ("LONG", "SHORT") and skipped is not None:
+            skipped.append("no_side")
         t = from_callout(it, cid, tick_for(cid), now_ms, busy)
         if t and t["id"] not in seen:
             seen.add(t["id"]); busy.add(t["contract"]); rows.append({"kind_row": "open", **t, "opened_at": int(now_ms)})

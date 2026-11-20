@@ -29,6 +29,7 @@ MAX_ITEMS = 12
 MAX_BODY = 1_000_000
 SYMBOLS = frozenset("MNQ MES NQ ES MGC GC MCL CL YM MYM RTY M2K".split())
 SIDES = frozenset(("LONG", "SHORT"))
+_SIDE_WORDS = {"LONG": "LONG", "LONGS": "LONG", "SHORT": "SHORT", "SHORTS": "SHORT"}      # upstream now emits the plural as the explicit side
 EVENTS = frozenset("ENTRY ADD TRIM TP_HIT STOP_HIT CLOSE EVALUATION COMMENT".split())
 _NAME_RE = re.compile(r"^@?[A-Za-z0-9_.\-]{1,32}$")
 _CHAN_RE = re.compile(r"^[a-z0-9\-]{1,40}$")
@@ -100,7 +101,7 @@ def sanitize_feed(rows, now=None, channels=("futures",)):
             "channel": tag,
             "analyst": r["author_name"] if isinstance(r.get("author_name"), str) and _NAME_RE.fullmatch(r["author_name"]) else None,
             "symbol": r["symbol"] if isinstance(r.get("symbol"), str) and r["symbol"] in SYMBOLS else None,
-            "side": r["side"] if isinstance(r.get("side"), str) and r["side"] in SIDES else None,
+            "side": _SIDE_WORDS.get(r["side"].upper()) if isinstance(r.get("side"), str) else None,
             "event": r["event"] if isinstance(r.get("event"), str) and r["event"] in EVENTS else "COMMENT",
             "points": _points(r.get("result_points")),
             "has_image": bool(r.get("has_image")),

@@ -94,7 +94,8 @@ def test_a_callout_trade_waits_for_its_entry_and_a_garbled_post_opens_nothing():
     assert P.from_callout(callout(stop=4990.0), CID, 0.25, now) is None                 # a short whose stop is below entry
     assert P.from_callout(callout(tp1=5010.0), CID, 0.25, now) is None                  # a short whose target is above entry
     assert P.from_callout(callout(event="TRIM"), CID, 0.25, now) is None and P.from_callout(callout(entry=None), CID, 0.25, now) is None
-    assert P.from_callout(callout(side=None), CID, 0.25, now)["side"] == "SHORT"        # side inferred from the stop
+    assert P.from_callout(callout(side=None), CID, 0.25, now) is None                   # no explicit side: never inferred from the stop
+    assert P.from_callout(callout(side="LONG", stop=4992.0, tp1=5016.0), CID, 0.25, now)["side"] == "LONG"
     assert P.from_callout(callout(), CID, 0.25, now, open_contracts={CID}) is None
     done = P.resolve(t, [bar(10, 10, 4999, 4980)], ms(10, 40))
     assert done is None or done["result"] != "MISSED"
@@ -189,3 +190,13 @@ def test_the_journal_script_prints_when_a_trade_opens(tmp_path, monkeypatch, cap
     assert mod.main(["--data", str(tmp_path)]) == 0
     assert "opened 1, closed 0" in capsys.readouterr().out
     assert (tmp_path / "paper_trades.jsonl").exists()
+
+
+def test_open_new_skips_an_entry_with_no_side_and_says_so_but_an_explicit_side_opens():
+    now = ms(10, 10)
+    cons = {"NQ": CID, "MNQ": CID}.get
+    skipped = []
+    assert P.open_new([], [], [callout(side=None)], cons, lambda c: 0.25, now, skipped) == [] and skipped == ["no_side"]
+    rows = P.open_new([], [], [callout(side="SHORT")], cons, lambda c: 0.25, now, skipped)
+    assert [r["side"] for r in rows] == ["SHORT"] and skipped == ["no_side"]            # the explicit one adds no skip
+    assert P.open_new([], [], [callout(side=None)], cons, lambda c: 0.25, now) == []    # `skipped` is optional

@@ -102,3 +102,8 @@ def test_items_are_newest_first_even_with_mixed_utc_offsets_and_tiny_prices_are_
     out = px_feed.sanitize_feed(rows, NOW)
     assert [i["age_s"] for i in out] == sorted(i["age_s"] for i in out) and out[0]["ts"].endswith("+00:00")
     assert out[0]["entry"] is None and px_feed.sanitize_feed([row()], NOW.replace(tzinfo=None))
+
+
+def test_the_plural_side_upstream_now_emits_is_read_as_the_explicit_side():
+    assert [px_feed.sanitize_feed([row(side=w)], NOW)[0]["side"] for w in ("Shorts", "Longs", "SHORTS", "long")] == ["SHORT", "LONG", "SHORT", "LONG"]
+    assert px_feed.sanitize_feed([row(side="Shortsy")], NOW)[0]["side"] is None

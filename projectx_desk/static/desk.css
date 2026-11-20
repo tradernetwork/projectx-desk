@@ -245,6 +245,8 @@ body.acct-live .ribbon{border-top:2px solid var(--magenta)}
 .nstate.ok{color:var(--green-ink);border-color:var(--green-line);background:var(--green-bg)}
 .nstate.warn{color:var(--amber-ink);border-color:var(--amber-line);background:var(--amber-bg)}
 .nstate.bad{color:#fff;border-color:var(--magenta);background:rgba(244,63,94,.3)}
+.ncancel{font:700 var(--fs-2xs)/1 var(--sans);letter-spacing:.08em;padding:3px 6px;border-radius:3px;border:1px solid var(--amber-line);background:var(--amber-bg);color:var(--amber-ink);cursor:pointer}
+.ncancel:disabled{opacity:.5;cursor:default}
 .n-h .unprot{margin-left:auto;font:800 var(--fs-2xs)/1 var(--sans);letter-spacing:.08em;padding:3px 6px;border-radius:3px;color:var(--amber-ink);border:1px solid var(--amber-line);background:repeating-linear-gradient(135deg,rgba(245,158,11,.18) 0 6px,rgba(245,158,11,.05) 6px 12px)}
 .n-h .unprot.naked{color:#fff;border-color:var(--magenta);background:repeating-linear-gradient(135deg,rgba(244,63,94,.45) 0 6px,rgba(244,63,94,.18) 6px 12px);animation:pulse 1.2s ease-in-out infinite}
 .n-main{font:600 var(--fs-lg)/1.25 var(--mono);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

@@ -385,6 +385,7 @@ function renderTree(){
     else if(st === 'PLACING') setState('tr-e-state', 'SENDING', 'warn');
     else if(filled) setState('tr-e-state', 'FILLED', 'ok');
     else if(tr.entry_status === 'expired') setState('tr-e-state', 'EXPIRED: CANCELLED UNFILLED', 'warn');
+    else if(tr.entry_status === 'cancelled') setState('tr-e-state', 'CANCELLED BY YOU, UNFILLED', 'warn');
     else if(tr.entry_status === 'gone') setState('tr-e-state', 'GONE: NOT WORKING, NOT FILLED', 'bad');
     else if(tr.acked) setState('tr-e-state', 'ACCEPTED, NOT FILLED', 'info');
     else setState('tr-e-state', 'PLACED', 'info');
@@ -393,6 +394,11 @@ function renderTree(){
     if(!(ss2 === 'ACKED' || ss2 === 'ATOMIC')) unprot = filled || ss2 === 'FAILED' ? 'naked' : 'warn';
     $('tr-filled').textContent = num(tr.size) ? 'filled ' + (tr.filled || 0) + '/' + tr.size : '';
   }
+  // CANCEL: only a resting LIMIT entry this page staged (the ticket id lives in this page only), placed, working and not filled at all.
+  // A partial fill is a position: FLATTEN. The server re-checks every one of these and answers with a fixed code.
+  const cb = $('cancel-entry-btn');
+  cb.hidden = !(live && m.t && m.t.ticket_id && tr.state === 'PLACED' && !filled && tr.entry_status === 'working'
+                && String(rb.order_type || '').toUpperCase() === 'LIMIT');
   const ub = $('tr-unprot');
   ub.hidden = !unprot; ub.className = 'unprot' + (unprot === 'naked' ? ' naked' : '');
   ub.textContent = unprot === 'naked' ? 'UNPROTECTED, POSITION OPEN' : 'UNPROTECTED';
@@ -996,6 +1002,23 @@ $('flatten-btn').onclick = async () => {
   const d = r.data || {};
   actMsg((d.flat ? 'Flat.' : 'NOT FLAT.') + (d.orphan_orders ? ' Orphan orders: ' + Number(d.orphan_orders) + '.' : '') + (Array.isArray(d.reasons) && d.reasons.length ? ' ' + d.reasons.map(String).join('; ') : ''));
   schedule(0);
+};
+const CANCEL_WHY = {cancelled: 'Limit entry cancelled.', live_cannot_cancel: 'The API cannot cancel on a live account: cancel it in the TopstepX UI.',
+  not_entry: 'Not a resting limit entry placed from this desk.', has_fill: 'It already filled (in part): use FLATTEN.',
+  already_cancelled: 'Already cancelled.', not_working: 'The broker no longer lists it as working.', order_mismatch: 'The broker order does not match the ticket: nothing sent.',
+  protective_stop: 'That is a protective stop: never cancelled here.', cancel_failed: 'The broker refused the cancel: it may still be working.',
+  still_working: 'Cancel unclear and the order is still listed: it is still working.', cancel_unknown: 'Cancel outcome UNKNOWN: halted. Check the platform.'};
+$('cancel-entry-btn').onclick = async () => {
+  const m = treeModel(), t = m && m.t;
+  if(!t || !t.ticket_id) return;
+  if(!confirm('Cancel the resting limit entry #' + String(t.hash8 || '') + '?')) return;
+  const b = $('cancel-entry-btn'); b.disabled = true;
+  try{
+    const r = await post('/api/cancel', {ticket_id: t.ticket_id});
+    if(!r.ok){actMsg('Cancel FAILED: ' + detailOf(r)); return}
+    const code = String((r.data || {}).code || '');
+    actMsg(CANCEL_WHY[code] || ('Cancel: ' + code.replace(/[^a-z_]/g, '').slice(0, 40)));
+  }finally{b.disabled = false; schedule(0)}
 };
 $('reconcile-btn').onclick = async () => {
   const r = await post('/api/reconcile', {});

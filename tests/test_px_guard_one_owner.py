@@ -8,6 +8,7 @@ CLOSED after CANCEL_GRACE_S and can never own a fill again.
 """
 import json
 
+from projectx_desk.client import PXWriteUnknown
 from projectx_desk.guard import ORDER_PLACE
 from test_px_guard_cancel import _row, resting
 from test_px_guard_place import CID, go, staged
@@ -133,3 +134,41 @@ async def test_a_retired_entry_never_arms_a_stop_and_retirement_needs_all_condit
     gw.writes.clear()
     await g.handle_position(fill(live))
     assert stops(gw) == [] and t1.stop_state is None
+
+
+async def test_an_unclear_cancel_of_an_order_that_filled_reports_filled_not_cancelled(tmp_path):
+    for err in (PXWriteUnknown("timeout"), "malformed"):
+        g, live, clock, gw, t = await resting(tmp_path / str(type(err).__name__))
+        gw.orders = []                                            # searchOpen drops FILLED orders too
+
+        async def filled_meanwhile(err=err, live=live):
+            live.trades.append({"id": 9, "orderId": 555, "contractId": CID, "size": 1, "voided": False})
+            if isinstance(err, BaseException):
+                raise err
+            return None                                           # a malformed reply
+        gw.reply = filled_meanwhile
+        r = await g.cancel_entry(t.ticket_id)
+        assert not r.ok and r.code == "filled" and not t.user_cancelled and not t.ttl_cancelled and not g.halted()
+        row = [a for a in audit(g) if a["event"] == "cancel"][-1]
+        assert row["state"] == "FILLED" and row["code"] == "user"
+        assert not any(a["event"] == "cancel" and a.get("state") == "OK" for a in audit(g))
+        assert g.entry_status(t) != "cancelled"
+
+
+async def test_a_fill_that_lands_during_an_unclear_cancel_is_filled_and_protected(tmp_path):
+    g, live, clock, gw, t = await resting(tmp_path, b=build2)
+    orig = gw.write
+
+    async def w(path, body):
+        if path.endswith("/cancel"):
+            gw.writes.append((path, dict(body)))
+            live.trades.append({"id": 9, "orderId": 555, "contractId": CID, "size": 1, "voided": False})   # it filled meanwhile
+            raise PXWriteUnknown("timeout")
+        return await orig(path, body)
+    gw.write = w
+    r = await g.cancel_entry(t.ticket_id)                         # unclear reply, REST lists nothing (it filled)
+    assert r.code == "filled" and not t.user_cancelled
+    gw.write = orig
+    live.orders.pop(555)
+    await g.handle_position(fill(live))
+    assert len(stops(gw)) == 1 and t.stop_state == "ACKED" and g.entry_status(t) == "filled"

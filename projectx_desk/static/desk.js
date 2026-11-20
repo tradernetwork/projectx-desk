@@ -1007,7 +1007,7 @@ const CANCEL_WHY = {cancelled: 'Limit entry cancelled.', live_cannot_cancel: 'Th
   not_entry: 'Not a resting limit entry placed from this desk.', has_fill: 'It already filled (in part): use FLATTEN.',
   already_cancelled: 'Already cancelled.', not_working: 'The broker no longer lists it as working.', order_mismatch: 'The broker order does not match the ticket: nothing sent.',
   protective_stop: 'That is a protective stop: never cancelled here.', cancel_failed: 'The broker refused the cancel: it may still be working.',
-  still_working: 'Cancel unclear and the order is still listed: it is still working.', cancel_unknown: 'Cancel outcome UNKNOWN: halted. Check the platform.'};
+  still_working: 'Cancel unclear and the order is still listed: it is still working.', filled: 'Cancel unclear and the order filled: it is a position now, protected by its stop.', cancel_unknown: 'Cancel outcome UNKNOWN: halted. Check the platform.'};
 $('cancel-entry-btn').onclick = async () => {
   const m = treeModel(), t = m && m.t;
   if(!t || !t.ticket_id) return;

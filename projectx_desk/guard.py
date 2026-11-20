@@ -1827,9 +1827,9 @@ class Guard:
 
     async def _cancel_entry_locked(self, t: Ticket, code: str, origin: str) -> str:
         """ONE ORDER_CANCEL for a ticket's resting entry. The caller holds self._lock and has just run _entry_cancel_refusal. Never resent:
-        an unclear reply is settled by ONE read-only REST orders read (still listed: still_working; gone: cancelled; unreadable: halt
-        cancel_unknown). t.state is never changed, so a fill that wins the race still reaches _arm_stop through handle_position.
-        Returns cancelled | cancel_failed | still_working | cancel_unknown."""
+        an unclear reply is settled by ONE read-only REST orders read (still listed: still_working; gone with a fill on its order id:
+        filled; gone with none: cancelled; unreadable: halt cancel_unknown). t.state is never changed, so a fill that wins the race still
+        reaches _arm_stop through handle_position. Returns cancelled | cancel_failed | still_working | filled | cancel_unknown."""
         oid = t.broker_order_id
         resp = None
         try:
@@ -1854,6 +1854,11 @@ class Guard:
             if listed:
                 self._audit("cancel", ticket=t.hash8, origin=origin, state="FAILED", code=code)
                 return "still_working"
+            if self._entry_has_fill(t):
+                # Order/searchOpen drops FILLED orders too: "not listed" plus a fill on its order id means the entry filled, not that the
+                # cancel landed. Not a cancel: no cancelled flag, and the fill is protected by the normal position path.
+                self._audit("cancel", ticket=t.hash8, origin=origin, state="FILLED", code=code)
+                return "filled"
         if code == "limit_ttl":
             t.ttl_cancelled = True
         else:

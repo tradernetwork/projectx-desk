@@ -213,7 +213,20 @@ below. The fund list is vendored from the leveraged-etfs data and refreshed with
 <p align="center"><img src="docs/img/ui-letf-proxy.jpg" alt="Gold charted through the GLD proxy next to UGL, with a warning that the comparison is approximate" width="900"></p>
 
 Where an underlying is not a ticker (gold, semiconductors, EUR/USD) it is charted through a proxy ETF and the chart says so. The
-screenshots are the offline mock, so every number is invented. Details: `docs/ROBINHOOD.md`.
+screenshots are the offline mock (and a local stand-in for the dealer-level feed), so every number is invented.
+
+More on the same screen, all display only:
+
+- **Bull or Bear stays selected.** Pick a bear fund, then click through underlyings: each lands on its bear fund. An underlying with no
+  fund on that side says so and keeps your choice for the next. The two charts are **linked**: scroll, zoom and the crosshair on one move the other.
+- **Every fund on the underlying** in one table (leverage, dollar volume, spread, today's move, the gap against L x the underlying), and
+  **what holding it did** over 1, 3, 6 and 12 months: L x the move, the ideal daily reset, and what the fund really returned, split into
+  compounding arithmetic and fees and tracking. Short history reads NA, never a shorter window under a longer label.
+- **Dealer-gamma levels** on the underlying chart (with `PX_GEX_KEY`), the **last 30 minutes** of the session shaded (when these funds
+  rebalance), a **Movers** tab ranking the 120 most traded funds by today's move or by their gap, and a **PNG** button that saves both
+  charts and the numbers as one picture.
+
+Details: `docs/ROBINHOOD.md`.
 
 Phase 0 and 1 are built: a mock Robinhood MCP server, OAuth login with a rotating token store, read-only positions, orders and
 approvals (only the dedicated agent-enabled account, never the others), and an order guard that mirrors the ProjectX one: kill

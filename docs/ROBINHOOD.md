@@ -187,17 +187,48 @@ no account is resolved and none of it reaches the digest, the desk MCP or the As
 
 **Routes** (GET only; present only when `PX_RH` is on and never in a recorder; a refusal is `{"ok": false, "code": ...}` and nothing
 else): `/api/rh/letf` (the list, no outbound call), `/api/rh/bars?symbols=QQQ,TQQQ&tf=5m` (up to 2 symbols; `tf` is 1m, 5m, 15m, 30m,
-1h or 1D), `/api/rh/quotes?symbols=QQQ,TQQQ` (up to 4). Only symbols in the vendored list (funds and their chart symbols) are
+1h or 1D), `/api/rh/quotes?symbols=QQQ,TQQQ` (up to 4), `/api/rh/movers` (the scan above) and `/api/rh/gex?symbol=QQQ` (dealer levels in that
+underlying's own price space; `gex_off` without `PX_GEX_KEY`; the symbol must be a chart symbol of the list, 5 minute cache, the key
+never leaves the header). Only symbols in the vendored list (funds and their chart symbols) are
 accepted. Chart reads share the Robinhood client's 4 calls a second with the order guard, so they are held to 2 a second (a burst of
 4); past that the route answers `busy` and the page retries. Replies are cached for 15 to 1800 seconds by timeframe (quotes 2).
 
-**Keys** (only while the LETF view is on screen): Up and Down move through the list on the side you are on, `L` and `S` jump to the
-long or short pick of the same underlying, `1` to `6` pick the timeframe, `/` searches, Enter fills the ticker box. The URL hash
-`#letf=TQQQ&tf=5m` is the only memory: share it and the desk opens straight to that fund.
+**Bull or Bear stays selected.** The Bull and Bear switch (keys `L` and `S`) is a preference, not a one-off jump: on a bear fund, a
+click on another underlying's name, an Up or Down key, or a search lands on that underlying's bear fund too. An underlying with no
+fund on that side shows the other one, says so, and keeps your choice for the next. Naming a fund directly (a click on it, the
+ladder, the movers list) sets the side from that fund. **Linked** makes the two charts one: scroll, zoom and the crosshair on one
+move the other (click it to unlink).
+
+**Under the charts.**
+
+- *Every fund on this underlying*: the up-to-8 most liquid funds on the underlying, bulls then bears, with leverage, 20-day dollar
+  volume, last, spread, today's move and the gap against L times the underlying. Thin funds are marked. A click charts that fund.
+  Quotes are read four symbols a call from the same 2 a second budget.
+- *What holding it did*: over 1, 3, 6 and 12 months of paired daily sessions, the underlying's move, L times it, the **ideal** daily
+  reset (compound `1 + L x` each day's move; a fund cannot go below zero), and what the fund actually did. **Path** = ideal minus L x
+  the move (the compounding arithmetic); **Fees** = fund minus ideal (expense ratio, financing, tracking). A window shorter than
+  asked is NA with the count, never a shorter window passed off as the long one. Price return only: a distribution is not added back.
+
+**On the charts.** The last 30 minutes of each regular session is shaded on intraday timeframes: daily-reset funds rebalance into the
+close, and the flow after a big move lands there. It is a fact about the clock, not a call. With `PX_GEX_KEY` set, the underlying's
+dealer-gamma levels (gamma flip, pin and the two nearest walls each side, within 5% of price) are drawn in the underlying's own price
+space (QQQ's levels are QQQ prices), labelled as positioning, not targets. Without a key, or for an underlying the source does not
+cover, nothing is drawn. The same picture, dealer lines and band included, is saved by **PNG**: both charts and the numbers as one
+image, with the fund-list date and "display only, not advice". It holds market data and fund statistics only.
+
+**Movers tab.** The top 120 funds by 20-day dollar volume (not all 694: the call budget), ranked by today's move or by the biggest
+gap against L times the underlying, bulls, bears or both, thin funds hidden by default. The scan is about 9 quote calls in batches of
+20, each cached on its own (30 s while open, 10 minutes closed), so a `busy` answer part way keeps what was fetched. Quotes carry no
+volume, so there is no volume-spike ranking.
+
+**Keys** (only while the LETF view is on screen): Up and Down move through the list on the side you are on, `L` and `S` switch Bull
+and Bear, `1` to `6` pick the timeframe, `/` searches, Enter fills the ticker box. The URL hash `#letf=TQQQ&tf=5m` is the only
+memory: share it and the desk opens straight to that fund.
 
 **Not verified yet.** The live shape of `get_equity_historicals` was captured once (2026-11-20, QQQ and TQQQ, 5 minute bars) and the
-bar view matches it, but the mock is still invented data. `previous_close` inside a live quote is UNVERIFIED (the desk falls back to
-the daily bars when it is absent); run `scripts/rh_shapes.py` against the live service to capture both.
+bar view matches it, but the mock is still invented data. a live quote does carry `previous_close` and `adjusted_previous_close`
+(checked 2026-11-20; the desk uses the adjusted one, which follows a split). The mock is still invented data, and the dealer-level
+source's coverage of single stocks is unverified: an unsupported symbol just draws nothing.
 
 ## Verified against the live Trading MCP (2026-11-17)
 

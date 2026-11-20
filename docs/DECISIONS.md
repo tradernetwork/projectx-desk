@@ -603,3 +603,30 @@ order surface (`rh.js`) small.
 `scripts/letf_sync.py`, `dev_robinhood.py` (deterministic bars and quotes where a daily-reset fund tracks L x its underlying).
 Tests: `test_letf_sync.py`, `test_letf.py`, `test_letf_routes.py`, `test_letf_ui.py`, and additions to `test_rh_reads.py`,
 `test_rh_mcp.py`, `test_rh_ui.py`.
+
+
+## Round 30: the LETF desk grows a ladder, a hold replay, dealer levels, movers and a picture (2026-11-20)
+
+**Problem.** The first desk showed one fund against its underlying. A trader choosing a fund wants the alternatives side by side, the
+real cost of holding rather than a formula, the underlying's positioning, and a way to scan for what is moving or misbehaving. They
+also move between underlyings on one side (all bears while the market sells off) and expect the charts to follow.
+
+**Decision.** All of it stays display only. `rh/guard.py` is untouched; the new routes are GET, market data with no account.
+
+- **Bull or Bear is a preference that survives a change of underlying**, with a stated fallback when a side does not exist, because the
+  alternative (a bear click that silently lands on a bull fund) is the kind of mistake a fast hand makes. The two charts are linked
+  (scroll, zoom, crosshair) by default and can be unlinked.
+- **The hold replay splits the result into arithmetic and cost**: ideal daily-reset compounding minus L x the move (path), and the
+  fund minus that ideal (fees and tracking). A short history is NA with its count, never a shorter window under the longer label.
+- **Dealer levels reuse the futures desk's GEX plumbing** (`gex.fetch_gex` gained an `allowed` set; the default is unchanged) in the
+  underlying's own price space, with no conversion, for chart symbols of the vendored list only. They are labelled positioning, not targets.
+- **The movers scan covers the top 120 funds, not all 694**, in cached batches of 20 symbols, so it cannot starve the order guard's
+  reads on the shared limiter and a `busy` answer keeps what it already fetched. Quotes carry no volume, so there is no volume ranking.
+- **The rebalance band is a fact about the clock** (bars starting 15:30 to 16:00 ET), not an estimate of flow: the data has no fund
+  assets, so a flow figure would be invented.
+- **The PNG is assembled in the browser** from the charts' own images and the same numbers the page shows; nothing is uploaded.
+- The reader now prefers `adjusted_previous_close` for a daily change (the broker's own advice; it follows a split) over `previous_close`.
+
+**Where.** `rh/letf.py` (`scan_plan`, `mover_row`, `movers_response`), `rh/letf_gex.py`, `gex.py` (`allowed`), `rh/reads.py`, `app.py`
+(`/api/rh/movers`, `/api/rh/gex`), `static/letf.js`, `static/rh.css`. Tests: `test_letf_gex.py`, additions to `test_letf.py`,
+`test_letf_routes.py`, `test_letf_ui.py`.

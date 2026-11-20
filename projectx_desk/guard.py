@@ -182,6 +182,31 @@ def _finite_pos(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0
 
 
+def _book(q) -> Optional[tuple]:
+    """(bestBid, bestAsk) as Decimals when both sides are finite, positive and not crossed; None otherwise (fail closed)."""
+    if not isinstance(q, dict):
+        return None
+    bid, ask = q.get("bestBid"), q.get("bestAsk")
+    if not (_finite_pos(bid) and _finite_pos(ask)):
+        return None
+    bid, ask = Decimal(str(bid)), Decimal(str(ask))
+    return (bid, ask) if bid <= ask else None
+
+
+def _limit_rests(side, entry, book) -> bool:
+    """A limit entry RESTS only strictly inside its own side: a buy under the ask, a sell over the bid."""
+    bid, ask = book
+    e = Decimal(str(entry))
+    return e < ask if side == "long" else e > bid
+
+
+def _stop_clear(side, stop_price, book) -> bool:
+    """The protective stop must sit beyond the live market: a long's sell stop under the bid, a short's buy stop over the ask."""
+    bid, ask = book
+    s = Decimal(str(stop_price))
+    return s < bid if side == "long" else s > ask
+
+
 class Guard:
     def __init__(self, client, live, limits: Limits, user_hub=None, contract_lookup: Optional[Callable] = None,
                  clock=time.monotonic, wall=lambda: datetime.now(timezone.utc), day: Optional[DayState] = None,
@@ -706,16 +731,27 @@ class Guard:
         # price reference: market orders are sized off the side that would fill
         q = self.live.quotes.get(contract_id)
         ref = None
+        book = None                 # (bestBid, bestAsk) when both sides are readable: the live market the stop and a limit are judged against
         if chk("quote", isinstance(q, dict) and self.clock() - q.get("_rx", -1e9) <= lim.max_quote_age_s,
                "no quote or older than the freshness limit"):
+            book = _book(q)
+            chk("quote_book", book is not None, "quote has no two-sided book (bestBid and bestAsk)")
             ref = q.get("bestAsk" if side == "long" else "bestBid") or q.get("lastPrice")
             chk("quote_price", _finite_pos(ref), "quote has no usable price")
         entry_px = float(ref) if _finite_pos(ref) else None
         if order_type == "limit":
             chk("limit_allowed", lim.account_kind == "sim", "limit opens are sim-only in v1")
             if chk("limit_entry", _finite_pos(entry), "limit order needs an entry price") and entry_px and spec:
-                dev = abs(Decimal(str(entry)) - Decimal(str(entry_px))) / Decimal(str(spec.tick_size))
+                try:
+                    dev = abs(Decimal(str(entry)) - Decimal(str(entry_px))) / Decimal(str(spec.tick_size))
+                    on_tick = (Decimal(str(entry)) / Decimal(str(spec.tick_size))) % 1 == 0
+                except ArithmeticError:             # an absurd price overflows Decimal: refuse it, never raise
+                    dev, on_tick = Decimal(10) ** 9, False
                 chk("entry_deviation", dev <= lim.max_entry_dev_ticks, "limit entry too far from the market")
+                chk("entry_aligned", on_tick, "limit price is not on a tick")
+                if book is not None:    # a limit at or through the far side trades at once: it is a market order the stop was not checked for
+                    chk("limit_rests", _limit_rests(side, entry, book),
+                        "limit price is at or through the market (buy must be under the ask, sell over the bid): it would fill at once")
                 entry_px = float(entry)
 
         if spec and entry_px:
@@ -727,6 +763,11 @@ class Guard:
             chk("stop_aligned", aligned, "stop is not on a tick")
             chk("stop_side", (side == "long" and stop_price < entry_px) or (side == "short" and stop_price > entry_px),
                 "stop is on the wrong side of entry")
+            if book is not None:
+                # Every entry, market or limit: the post-fill stop must rest beyond the LIVE book, not just beyond the entry price. A
+                # long's sell stop at or above the bid (a short's buy stop at or below the ask) is rejected or triggers at once on the fill.
+                chk("stop_clear_of_market", _stop_clear(side, stop_price, book),
+                    "stop is at or through the market (long: under the bid, short: over the ask)")
             if one_lot:         # no tick cap: the loss room below is the ceiling
                 chk("stop_distance", ticks_dec >= lim.min_stop_ticks, f"stop must be at least {lim.min_stop_ticks} ticks away")
             else:
@@ -923,14 +964,23 @@ class Guard:
         q = self.live.quotes.get(t.contract_id)
         if not isinstance(q, dict) or self.clock() - q.get("_rx", -1e9) > lim.max_quote_age_s:
             out.append("recheck: quote stale during the broker read")
-        elif t.order_type == "market":
-            ref = q.get("bestAsk" if t.side == "long" else "bestBid") or q.get("lastPrice")
-            if not _finite_pos(ref):
-                out.append("recheck: quote has no usable price")
+        else:
+            book = _book(q)         # the same live-market checks as _evaluate, on the quote as it stands at the commit point
+            if book is None:
+                out.append("recheck: quote has no two-sided book")
             else:
-                drift = abs(Decimal(str(ref)) - Decimal(str(t.readback["entry_ref"]))) / Decimal(str(ev.spec.tick_size))
-                if drift > lim.max_drift_ticks:
-                    out.append(f"recheck: market moved {drift} ticks during the broker read; restage")
+                if t.order_type == "limit" and not (_finite_pos(t.entry_limit) and _limit_rests(t.side, t.entry_limit, book)):
+                    out.append("recheck: the market reached the limit price during the broker read; it would fill at once: restage")
+                if not _stop_clear(t.side, t.stop_price, book):
+                    out.append("recheck: the stop is no longer clear of the market; restage")
+            if t.order_type == "market":
+                ref = q.get("bestAsk" if t.side == "long" else "bestBid") or q.get("lastPrice")
+                if not _finite_pos(ref):
+                    out.append("recheck: quote has no usable price")
+                else:
+                    drift = abs(Decimal(str(ref)) - Decimal(str(t.readback["entry_ref"]))) / Decimal(str(ev.spec.tick_size))
+                    if drift > lim.max_drift_ticks:
+                        out.append(f"recheck: market moved {drift} ticks during the broker read; restage")
         remaining, _daily = self.budget(self.wall())
         risk = t.readback.get("risk_usd")
         if remaining is None or (isinstance(risk, (int, float)) and remaining < lim.min_budget_multiple * risk):

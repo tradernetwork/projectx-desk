@@ -172,3 +172,135 @@ async def test_a_fill_that_lands_during_an_unclear_cancel_is_filled_and_protecte
     live.orders.pop(555)
     await g.handle_position(fill(live))
     assert len(stops(gw)) == 1 and t.stop_state == "ACKED" and g.entry_status(t) == "filled"
+
+
+# ---- second review: a stale owner from a missed size-0 event, and a late fill on a retired entry ----------------------------
+
+B_STOP = {"id": 901, "contractId": CID, "type": 4, "side": 1, "size": 1, "status": 1, "stopPrice": 4994.0}
+
+
+async def _stale_a_then_b(tmp_path, stop_fill_seen=True):
+    """A fills and its stop is ACKED; the stop fills while the user hub is down (no size-0 event, the snapshot just drops the position);
+    B is let through by contract_flat. Returns before B's fill is handled."""
+    g, live, clock, gw = build2(tmp_path)
+    gw.reply = {"success": True, "orderId": 555}
+    a = await staged(g)
+    assert (await go(g, a)).ok
+    await g.handle_position(fill(live))
+    assert a.stop_state == "ACKED" and a.filled_size == 1
+    live.positions.clear()
+    if stop_fill_seen:
+        live.trades.append({"id": 50, "orderId": a.stop_order_id, "contractId": CID, "size": 1, "voided": False})
+    clock.t += 60
+    live.quotes[CID]["_rx"] = clock.t
+    gw.reply = {"success": True, "orderId": 556}
+    gw.stop_reply = {"success": True, "orderId": 901}
+    b = await staged(g)
+    assert (await go(g, b)).ok
+    gw.writes.clear()
+    return g, live, clock, gw, a, b
+
+
+async def test_stale_owner_from_a_missed_close_takes_the_new_entrys_fill(tmp_path):
+    g, live, clock, gw, a, b = await _stale_a_then_b(tmp_path)
+    await g.handle_position(fill(live))                          # B's fill
+    s = stops(gw)
+    assert len(s) == 1 and s[0]["customTag"] == f"px-{b.hash8}-2" and b.stop_state == "ACKED"
+    assert a.state == "CLOSED"                                    # its stop filled: closed out before the owner was picked
+
+
+async def test_an_unlisted_stop_does_not_keep_a_stale_owner_even_without_its_fill(tmp_path):
+    g, live, clock, gw, a, b = await _stale_a_then_b(tmp_path, stop_fill_seen=False)
+    assert live.positions_seeded and a.stop_order_id not in live.orders
+    await g.handle_position(fill(live))
+    s = stops(gw)
+    assert len(s) == 1 and s[0]["customTag"] == f"px-{b.hash8}-2" and b.stop_state == "ACKED"
+
+
+async def test_the_resync_closes_out_a_filled_ticket_on_a_provably_flat_contract(tmp_path):
+    g, live, clock, gw = build2(tmp_path)
+    gw.reply = {"success": True, "orderId": 555}
+    a = await staged(g)
+    assert (await go(g, a)).ok
+    await g.handle_position(fill(live))
+    live.positions.clear()                                        # no size-0 event, no stop fill seen
+    gw.pos = [{"id": 1, "contractId": CID, "type": 1, "size": 1}]
+    assert await g.protect_open_positions() == {} and a.state == "PLACED"     # REST still shows it: not flat, left alone
+    gw.pos = []
+    gw.writes.clear()
+    assert await g.protect_open_positions() == {} and a.state == "CLOSED" and not g.halted()
+    assert [w for w in gw.writes if w[0] == ORDER_PLACE] == []
+
+
+async def test_an_unreadable_resync_read_never_closes_out(tmp_path):
+    g, live, clock, gw = build2(tmp_path)
+    gw.reply = {"success": True, "orderId": 555}
+    a = await staged(g)
+    assert (await go(g, a)).ok
+    await g.handle_position(fill(live))
+    live.positions.clear()
+
+    async def down(_):
+        raise RuntimeError("down")
+    g.client.open_positions = down
+    await g.protect_open_positions()
+    assert a.state == "PLACED" and a.stop_state == "ACKED"
+
+
+async def test_the_resync_arms_the_newer_ticket_instead_of_flattening_the_position_as_ours(tmp_path):
+    g, live, clock, gw, a, b = await _stale_a_then_b(tmp_path)
+    p = fill(live)                                                # B's fill, seen only by the resync
+    gw.pos, gw.working = [dict(p)], []
+    out = await g.protect_open_positions()
+    assert out == {CID: "TICKET"} and not g.halted()
+    s = stops(gw)
+    assert len(s) == 1 and s[0]["customTag"] == f"px-{b.hash8}-2" and b.stop_state == "ACKED"
+
+
+async def test_stale_owner_then_reseed_keeps_the_new_owner(tmp_path):
+    g, live, clock, gw, a, b = await _stale_a_then_b(tmp_path)
+    p = fill(live)
+    await g.handle_position(p)
+    gw.writes.clear()
+    gw.pos, gw.working = [dict(p)], [dict(B_STOP)]
+    out = await g.protect_open_positions()
+    assert out == {CID: "TICKET"} and gw.writes == [] and not g.halted() and b.stop_state == "ACKED"
+
+
+async def _late(tmp_path, reseed_while_flat):
+    g, live, clock, gw, t1 = await resting(tmp_path, b=build2)
+    assert (await g.cancel_entry(t1.ticket_id)).ok
+    live.orders.pop(555)
+    if reseed_while_flat:
+        gw.pos, gw.working = [], []
+        assert await g.protect_open_positions() == {}            # the 60 s reseed runs while flat and closes the entry intent
+    clock.t += 31
+    await g.expire_resting_entries()
+    assert t1.state == "CLOSED"
+    live.trades.append({"id": 9, "orderId": 555, "contractId": CID, "size": 1, "voided": False})   # the raced fill, late
+    p = fill(live)
+    gw.pos, gw.working = [dict(p)], []
+    gw.writes.clear()
+    await g.handle_position(p)
+    return g, live, gw, p
+
+
+async def test_late_fill_on_a_retired_entry_is_flattened_and_halted(tmp_path):
+    for flat_reseed in (False, True):
+        g, live, gw, p = await _late(tmp_path / str(flat_reseed), flat_reseed)
+        assert stops(gw) == []
+        assert any(w[0].endswith("closeContract") for w in gw.writes) and g.halt_cause() == "unprotected_position"
+        assert any(a["event"] == "position" and a.get("state") == "NO_OWNER" for a in audit(g))
+        gw.pos, gw.working = [dict(p)], []
+        assert await g.protect_open_positions() == {CID: "FLATTENED"}
+
+
+async def test_an_external_position_with_no_owner_is_audited_once_and_never_touched(tmp_path):
+    g, live, clock, gw = build2(tmp_path)
+    p = fill(live)
+    await g.handle_position(p)
+    await g.handle_position(p)
+    rows = [a for a in audit(g) if a["event"] == "position" and a.get("state") == "NO_OWNER"]
+    assert len(rows) == 1 and rows[0]["size"] == 1 and gw.writes == [] and not g.halted()
+    await g.handle_position(fill(live, size=2))
+    assert len([a for a in audit(g) if a["event"] == "position"]) == 2 and gw.writes == []

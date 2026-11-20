@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from projectx_desk.client import PXError, PXWriteUnknown
-from projectx_desk.guard import ORDER_CANCEL, ORDER_MODIFY, ORDER_PLACE, POSITION_CLOSE, GuardError
+from projectx_desk.guard import ORDER_CANCEL, ORDER_MODIFY, ORDER_PLACE, POSITION_CLOSE
 from test_px_guard_place import CID, GW, build, go, staged  # noqa: F401
 
 
@@ -246,16 +246,16 @@ async def test_flatten_on_sim_cancels_working_orders_first_live_reports_orphans(
     assert gw2.cancelled == [] and r2.orphan_orders == 1 and any("TopstepX UI" in x for x in r2.reasons)
 
 
-async def test_cancel_is_sim_only_and_never_calls_the_api_on_live(tmp_path):
+async def test_there_is_no_cancel_by_order_id_and_the_ticket_cancel_is_sim_only(tmp_path):
+    # The old Guard.cancel(order_id) took ANY integer, a protective stop's id included. It is gone: the only human cancel takes a
+    # ticket id (cancel_entry, tests/test_px_guard_cancel.py) and the only other cancels are the guard's own sweeps.
     g, live, clock, gw = build2(tmp_path)
-    assert await g.cancel(900)
-    assert gw.cancelled == [900]
+    assert not hasattr(g, "cancel")
     g2, live2, clock2, gw2 = build2(tmp_path, account_kind="live", allow_live=True)
-    with pytest.raises(GuardError):
-        await g2.cancel(900)
-    assert gw2.writes == []
-    with pytest.raises(GuardError):
-        await g.cancel("900; DROP")
+    r = await g2.cancel_entry("900")
+    assert not r.ok and r.code == "live_cannot_cancel" and gw2.writes == []
+    r = await g.cancel_entry("900; DROP")
+    assert not r.ok and r.code == "not_entry" and gw.writes == []
 
 
 async def test_after_a_restart_the_one_covering_broker_stop_is_adopted_and_can_still_be_tightened(tmp_path):

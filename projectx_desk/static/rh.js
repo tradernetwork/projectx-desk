@@ -132,9 +132,11 @@
     return {ok: true, intent: {symbol, side, qty, limit_price: px}};
   }
   function holdProgress(heldMs){ return Math.max(0, Math.min(1, heldMs / HOLD_MS)); }
+  // '?stream=1' on a path that may already carry a query string.
+  function withStream(path, on){ return on ? path + (String(path).indexOf('?') >= 0 ? '&' : '?') + 'stream=1' : path; }
 
   const api = {HOLD_MS, ON_SCREEN_MS, POLL_MS, REFUSALS, STATES, WARNINGS, WARNING_LINE, DEMO_LINE, refusalText, stateText, haltText, actionsFor, isLive,
-    fmtQty, fmtPrice, fmtMoney, optionLabel, countdown, accountLine, readForm, holdProgress};
+    fmtQty, fmtPrice, fmtMoney, optionLabel, countdown, accountLine, readForm, holdProgress, withStream};
   if(typeof module !== 'undefined' && module.exports) module.exports = api;
   if(typeof window === 'undefined' || typeof document === 'undefined') return;
   root.pxRh = api;
@@ -148,7 +150,7 @@
     return n;
   };
   const streaming = () => document.body.classList.contains('streaming');
-  const S = {open: false, snap: null, tickets: null, timer: 0, form: null, busy: false, msg: null, confirm: null, hold: null, tick: 0};
+  const S = {view: 'letf', fields: null, open: false, snap: null, tickets: null, timer: 0, form: null, busy: false, msg: null, confirm: null, hold: null, tick: 0};
 
   async function csrf(){
     const r = await fetch('/api/csrf', {credentials: 'same-origin'});
@@ -164,13 +166,12 @@
     return r.json();
   }
   async function getJson(path){
-    const q = streaming() ? '?stream=1' : '';
-    const r = await fetch(path + q, {credentials: 'same-origin'});
+    const r = await fetch(withStream(path, streaming()), {credentials: 'same-origin'});
     if(!r.ok) throw new Error('http');
     return r.json();
   }
 
-  let panel, sw, banner, body, topHost, formHost, listHost;
+  let panel, sw, banner, body, topHost, formHost, listHost, lxHost, lxAlert, tabs, ctl;
   function build(){
     sw = el('div', 'rh-switch');
     sw.setAttribute('role', 'group'); sw.setAttribute('aria-label', 'Broker');
@@ -189,21 +190,59 @@
     head.append(el('h2', '', 'Robinhood'));
     const close = el('button', 'rh-x', 'Back to ProjectX');
     close.type = 'button'; close.onclick = () => setOpen(false);
-    head.append(close);
+    tabs = el('div', 'rh-tabs');
+    tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', 'View');
+    const tl = el('button', '', 'LETF desk'), ta = el('button', '', 'Account');
+    tl.type = ta.type = 'button';
+    tl.onclick = () => { S.view = 'letf'; applyView(); };
+    ta.onclick = () => { S.view = 'account'; applyView(); };
+    tabs.append(tl, ta); tabs._l = tl; tabs._a = ta;
+    head.append(tabs, close);
     body = el('div', 'rh-body');
     topHost = el('div'); formHost = el('div'); listHost = el('div');   // the form host is NOT rebuilt by the poll: typing and a hold survive it
-    body.append(topHost, formHost, listHost);
+    lxHost = el('div', 'lx-host'); lxAlert = el('div');                // the halt banner stays on screen in both views
+    body.append(lxAlert, lxHost, topHost, formHost, listHost);
     panel.append(head, banner, body);
     document.body.append(panel, sw);
+  }
+
+  // Two views of one panel: the LETF desk (default) or the account tables. The ticket form is the same DOM node in both: it moves
+  // between the LETF side column and the account page, so typing, a previewed ticket and the hold button survive a switch.
+  function applyView(){
+    const on = S.view === 'letf' && !!ctl;
+    panel.classList.toggle('lx-wide', on);
+    topHost.hidden = listHost.hidden = on; lxHost.hidden = !on; lxAlert.hidden = !on;
+    tabs._l.classList.toggle('on', on); tabs._a.classList.toggle('on', !on);
+    if(on){ ctl.ticketSlot.append(formHost); if(S.open) ctl.show(); }
+    else{ body.insertBefore(formHost, listHost); if(ctl) ctl.hide(); }
+    render();
+  }
+  // A click on a fund only fills the ticker box. It never previews and never places: the ticket flow below is unchanged.
+  function prefill(sym){
+    if(S.form && S.form.ticket) return 'A previewed ticket is on screen. Place or discard it first.';
+    if(!S.fields) renderForm();
+    const f = S.fields;
+    if(!f) return 'The ticket form is not available.';
+    f.sym.value = sym; f.side.value = 'buy'; f.lim.value = '';
+    f.qty.focus();
+    return sym + ' is in the ticket (buy to open). Enter shares and a limit, then Preview.';
+  }
+  function useAsk(price){
+    if(S.form && S.form.ticket) return 'A previewed ticket is on screen. Place or discard it first.';
+    if(!S.fields) renderForm();
+    if(!S.fields || !isNum(price) || !(price > 0)) return 'No live ask to copy.';
+    S.fields.lim.value = String(+price.toFixed(4));
+    return 'Ask ' + fmtPrice(price) + ' is in the limit box. Preview, then hold to place.';
   }
 
   function setOpen(on){
     S.open = !!on;
     panel.hidden = !S.open;
+    if(!S.open && ctl) ctl.hide();
     sw._px.classList.toggle('on', !S.open); sw._rh.classList.toggle('on', S.open);
     document.body.classList.toggle('rh-open', S.open);
     clearInterval(S.timer); clearInterval(S.tick);
-    if(S.open){ renderForm(); refresh(); S.timer = setInterval(() => { if(!document.hidden) refresh(); }, POLL_MS); S.tick = setInterval(tickClock, 1000); }
+    if(S.open){ renderForm(); applyView(); refresh(); S.timer = setInterval(() => { if(!document.hidden) refresh(); }, POLL_MS); S.tick = setInterval(tickClock, 1000); }
   }
 
   async function refresh(){
@@ -243,11 +282,12 @@
     if(snap.error){ out.push(el('p', 'rh-bad', 'Could not reach the desk. Retrying.')); topHost.replaceChildren(...out); listHost.replaceChildren(); return; }
     if(snap.enabled === false){ out.push(el('p', 'rh-bad', 'Robinhood is off on this desk (PX_RH=0).')); topHost.replaceChildren(...out); listHost.replaceChildren(); return; }
     const tk = S.tickets || {};
+    lxAlert.replaceChildren();
     if(tk.halt){
       const h = el('div', 'rh-halt');
       h.append(el('p', '', 'ROBINHOOD HALTED: ' + haltText(tk.halt)), el('p', 'rh-note', 'Nothing new goes out until you clear it. Check the Robinhood app first.'));
       h.append(confirmBtn('halt', 'Clear halt', 'Clear the Robinhood halt? Only do this after checking the Robinhood app.', () => act('/api/rh/halt/resolve', {})));
-      out.push(h);
+      if(ctl && S.view === 'letf') lxAlert.replaceChildren(h); else out.push(h);
     }
     if(!snap.connected) out.push(el('p', 'rh-bad', 'Not connected to Robinhood. Sign in (scripts/rh_capture.py), then reload.'));
     out.push(el('p', 'rh-acct', accountLine(snap.account, snap.approval_setting)));
@@ -327,6 +367,7 @@
   }
 
   function ticketForm(){
+    S.fields = null;
     const wrap = section('Order ticket (stocks, whole shares, limit orders)');
     wrap.append(warnBox());
     const f = S.form;
@@ -358,6 +399,7 @@
     const lim = el('input'); lim.placeholder = 'Limit price'; lim.inputMode = 'decimal'; lim.autocomplete = 'off'; lim.setAttribute('aria-label', 'Limit price');
     const go = el('button', '', 'Preview'); go.type = 'submit';
     form.append(sym, side, qty, lim, go);
+    S.fields = {sym, side, qty, lim};
     const err = el('p', 'rh-bad'); err.hidden = true;
     form.onsubmit = async (e) => {
       e.preventDefault();
@@ -441,7 +483,11 @@
     try{ s = await getJson('/api/rh/state'); }catch(_){ return; }     // no route (record-only) or desk down: no switch
     if(!s || s.enabled !== true) return;
     build();
+    ctl = root.pxLetf && root.pxLetf.mount ? root.pxLetf.mount(lxHost, {prefill, useAsk}) : null;
+    if(!ctl){ S.view = 'account'; tabs.hidden = true; }
     S.snap = s;
+    applyView();
+    if(ctl && /^#letf/.test(String(location.hash))) setOpen(true);       // a shared link opens the desk straight into the LETF view
     let was = streaming();                               // stream mode flipped: redraw so no dollar value stays on screen
     new MutationObserver(() => { const now = streaming(); if(now !== was){ was = now; if(S.open){ renderForm(); refresh(); } } })
       .observe(document.body, {attributes: true, attributeFilter: ['class']});

@@ -157,3 +157,33 @@ def test_form_reading():
 @needs_node
 def test_hold_progress_is_600ms():
     assert run_node("[r.HOLD_MS, r.holdProgress(0), r.holdProgress(300), r.holdProgress(600), r.holdProgress(9999), r.holdProgress(-5)]") == [600, 0, 0.5, 1, 1, 0]
+
+
+# ---- the LETF desk wiring (static/letf.js is covered by tests/test_letf_ui.py) ---------------------------------------------
+def test_index_has_one_letf_tag_before_rh_js():
+    html = read(STATIC / "index.html")
+    assert html.count('<script src="/static/letf.js"></script>') == 1
+    assert html.index("/static/letf.js") < html.index("/static/rh.js")             # rh.js mounts it at boot
+
+
+@needs_node
+def test_with_stream_handles_a_path_that_already_has_a_query():
+    assert run_node("[r.withStream('/api/rh/state', true), r.withStream('/api/rh/bars?symbols=QQQ', true), r.withStream('/api/rh/state', false)]") \
+        == ["/api/rh/state?stream=1", "/api/rh/bars?symbols=QQQ&stream=1", "/api/rh/state"]
+
+
+def test_prefill_only_fills_boxes_and_never_posts():
+    src = read(JS)
+    m = re.search(r"function prefill\(sym\)\{.*?\n  \}\n  function useAsk\(price\)\{.*?\n  \}\n", src, re.S)
+    assert m, "prefill and useAsk not found"
+    body = m.group(0)
+    for bad in (r"\bpost\(", r"\bfetch\(", r"\bact\(", r"/api/", r"\bpreview\b", r"\bplace\(", r"placeNow", r"readForm", r"\.onsubmit", r"\.submit\("):
+        assert not re.search(bad, body), bad                                         # a fund click only sets input values
+    assert "f.sym.value" in body and "S.fields.lim.value" in body
+
+
+def test_the_ticket_form_is_one_node_moved_between_views_not_rebuilt():
+    src = read(JS)
+    assert "ctl.ticketSlot.append(formHost)" in src and "body.insertBefore(formHost, listHost)" in src
+    m = re.search(r"function applyView\(\)\{.*?\n  \}\n", src, re.S)
+    assert m and "renderForm" not in m.group(0)                                      # a view switch must not wipe a previewed ticket

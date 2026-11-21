@@ -842,3 +842,47 @@ Tests: `test_px_guard_one_owner.py` (the human and TTL re-entries arm exactly on
 resync; a raced fill on the cancelled entry still arms one stop only; the lone race fill is protected; `filled`; the stale owner from a
 missed size-0 event; the third review's three scenarios; a newer entry rejected after its fill, human and TTL). The race tests in `test_px_guard_cancel.py` and `test_px_guard_protect.py`
 are unchanged.
+
+## Round 36: a read-only Public tab, as a loopback link to a separate desk (2026-11-20)
+
+**Question.** The trader runs a separate Public.com desk (its own repo and process, default `127.0.0.1:8700`) for his own money and
+the wheel. Should the futures desk show it, and how?
+
+**Decision.** A READ-ONLY "Public" tab that DISPLAYS what that desk reports, through a loopback LINK, not an embed: the futures desk
+GETs the Public desk's `/ai/state` and draws an allowlisted reduction of it. It does not import the Public desk's code or Public's SDK,
+does not share its process, and cannot ask it to do anything. Decided after a three-advocate review.
+
+**The three advocates.** Their verdicts were not handed to the session that built this; one sentence each is to be filled in by the
+owner (see `NEEDS-MICHAEL.md`):
+- Advocate 1: (to be recorded)
+- Advocate 2: (to be recorded)
+- Advocate 3: (to be recorded)
+
+**Conditions, each test pinned.**
+1. No import of the Public desk's package or of Public's SDK anywhere in `projectx_desk` (`tests/test_px_guard_pin.py`).
+2. The futures process never sends a POST, PUT or DELETE to the Public desk and never relays an order, cancel, confirm, stage, record
+   or halt-resolve: `pub/` may only GET (pin), and the Public desk's write routes are banned as literals everywhere.
+3. No shared file, halt, lock, audit or event-loop time with the Topstep path: the fetch is async httpx with a 3 s total bound, a
+   256 KB cap and a 5 s single-flight cache; a test runs `_deadline_loop` beside a fetch to a server that never answers and checks
+   `deadline_age_s` stays under 1.6 s while the fetch ends by its timeout. The link writes nothing to disk.
+4. `guard.py`, `sizing.py`, `limits.py` and `anchor.py` do not import `projectx_desk/pub/` (AST test).
+5. Public numbers never enter a Topstep calculation or a cross-broker sum: the `risk`, `size`, `kpi`, `positions` and `orders` blocks of
+   `/ai/state` are identical with and without the link, and the notifier builds its state without it.
+6. `PX_PUB_URL` unset: feature absent (no route, no tab). Also absent under `PX_RECORD_ONLY` (no link, no route, no fetch).
+7. Unknown is never 0: an unread section is None, and an unreachable Public desk prints `PUB: UNKNOWN code=<code>`.
+8. The AI surface is an allowlist: numbers, enums and validated short strings only; no account id, ticket id, order reference,
+   confirm hash, proposal id, ledger event id or free text.
+9. `?stream=1` drops every dollar field (the link asks the Public desk for `?stream=1` and strips its own dollar keys as well).
+10. No float in what is stored or shown: the JSON is parsed with `parse_float=Decimal` and numbers are kept as decimal strings.
+11. No bare `.write(` (the existing pin).
+12. Every error is a fixed code (`unset unreachable timeout bad_status too_big bad_json not_allowed`), never the Public desk's text.
+
+**Why a link and not an embed.** An embed would put a second broker's SDK, writer and halt file into the process that owns the
+Topstep order path, and one more thing on its event loop that can block or crash. A link costs one bounded GET and can only ever show
+stale or missing data, which it labels.
+
+**Deferred.** Phase 1 (showing or staging Public tickets from this desk in any form beyond the read above) is deferred until a live
+read-only Public run is recorded.
+
+Docs: `docs/PUBLIC.md`. Tests: `tests/test_pub_link.py`, `tests/test_pub_app.py`, `tests/test_pub_ui.py`, and the new cases in
+`tests/test_px_guard_pin.py`.

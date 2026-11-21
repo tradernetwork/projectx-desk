@@ -141,6 +141,7 @@ It will not make you profitable. It stands between you and the leaks.
 | **AI-ready** | A plain-text digest and an MCP server for assistants. They can read and stage. Only you place. |
 | **The Ask box runs on any AI** | Not just a Claude subscription: a gear opens a picker that detects what is installed and offers OpenRouter, OpenAI, Venice, the Anthropic API, Ollama, LM Studio or your own endpoint. Text only, no tools, secrets redacted from questions and replies, wording that reads like advice flagged. [Details](docs/AI_AGENTS.md#no-claude-subscription-pick-another-ai) |
 | **Robinhood, for personal money** | A second broker next to the prop-firm one, in its own package with its own guard: read your positions, orders and option positions through Robinhood's official Trading MCP, and place whole-share limit orders only while Robinhood's trade-approvals setting is verified ON, so the last tap is yours in their app. Runs against a mock with no account (`./run_dev.sh` shows it). No paper trading exists at Robinhood and a fill carries no stop: read [docs/ROBINHOOD.md](docs/ROBINHOOD.md) first. |
+| **Public, display only** | With `PX_PUB_URL` set, a Public tab shows what your separate Public.com desk reports (positions, orders, its tickets, wheel cycles with true basis, wash flags) over a loopback GET. Nothing is sent to it and nothing in it touches the futures numbers. [docs/PUBLIC.md](docs/PUBLIC.md) |
 
 ## What it does not model
 

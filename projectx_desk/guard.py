@@ -95,7 +95,6 @@ class Ticket:
     ttl_last: float = 0.0           # clock() of the last attempt
     ttl_cancelled: bool = False     # the TTL cancel was acknowledged: the entry expired unfilled
     user_cancelled: bool = False    # the trader's CANCEL was confirmed (cancel_entry). t.state stays PLACED: a fill that won the race is still protected
-    cancelled_at: float = 0.0       # clock() when a cancel (TTL or human) was confirmed: starts CANCEL_GRACE_S, after which an unfilled entry is retired
     abandoned: bool = False         # the naked-position path flattened this ticket; a late stop ACK must be cancelled
     one_lot: bool = False           # Round 28: staged through the 1-lot branch; its post-fill protective stop goes in as a TRAIL
     account_suffix: str = ""        # sensitive: confirm screen only, never in the AI surface or audit
@@ -236,8 +235,6 @@ class Guard:
         self._watchdogs: dict[str, asyncio.Task] = {}
         self._fill_at: dict[str, float] = {}     # ticket_id -> clock() when its entry fill reached us (for the stop-SENDING lag audit)
         self._probed: set[str] = set()           # tickets that already had their one fill probe
-        self._no_owner_seen: dict = {}           # contract -> size last audited as a position with no owning ticket (one line per change)
-        self._unowned_flattening: set = set()    # contracts whose ownerless-but-ours position is being flattened right now
         self._bg: set = set()                    # strong refs to fire-and-forget read-only tasks (probe, contract pre-warm)
         self.protection: dict = {}
         if hasattr(live, "listen"):
@@ -1210,149 +1207,60 @@ class Guard:
                 except OSError:
                     pass
 
-    CANCEL_GRACE_S = 30.0       # a cancelled entry with no fill evidence stays eligible to own a fill this long (the cancel/fill race)
-
-    def _has_fill_evidence(self, t: Ticket) -> bool:
-        """_entry_has_fill, but only for a ticket whose entry order id is known (a None id would match any id-less trade row)."""
-        oid = t.broker_order_id
-        return bool(t.filled_size) or (isinstance(oid, int) and not isinstance(oid, bool) and self._entry_has_fill(t))
-
-    def _retire_dead_entries(self) -> None:
-        """A cancelled (human or TTL) entry stays PLACED so a fill that won the race still gets its stop. Once the broker no longer lists the
-        order as working, no fill carries its order id, it never owned a fill, and CANCEL_GRACE_S has passed since the cancel was confirmed,
-        it is CLOSED: from then on it can never own a fill or arm a stop. Its intents are left alone (protect_open_positions closes them while
-        flat), so an unexplained position in that contract meanwhile is flattened and halted rather than adopted. Sync, no I/O."""
-        now = self.clock()
-        for t in list(self.tickets.values()):
-            if t.state != PLACED or not (t.user_cancelled or t.ttl_cancelled) or t.stop_state is not None or t.filled_size:
-                continue
-            if now - t.cancelled_at < self.CANCEL_GRACE_S or self._has_fill_evidence(t):
-                continue
-            row = self.live.orders.get(t.broker_order_id)
-            if isinstance(row, dict) and row.get("status") in (None, *WORKING_STATUSES):
-                continue
-            t.state = "CLOSED"
-            self._cancel_watchdog(t)
-            self._audit("cancel", ticket=t.hash8, state="RETIRED", code="limit_ttl" if t.ttl_cancelled else "user")
-
-    def _position_owner(self, active: list, newest_rej):
-        """The ONE ticket a nonzero position in a contract belongs to (one protection owner per net position), or None.
-        1. a ticket that already owns it (counted a fill or armed a stop): it resizes, nobody else arms;
-        2. else a ticket with fill evidence carrying its own entry order id (live trades, or fillVolume on its row);
-        3. else the NEWEST active ticket: a position event carries no order id, and an older ticket (a cancelled or gone entry) never
-           outranks the entry just placed; 4. with no active ticket, the newest rejection that carried an order id.
-        A ticket whose stop is provably gone (_stop_unlisted: its stop filled, or the seeded book no longer lists it) does not count in
-        steps 1 and 2: the position it owned ended, and a stale owner from a missed size-0 event must never swallow the next entry's fill
-        (the size would match its old stop and nothing would be sent). It can still win step 3. The newest wins inside each step. Read-only."""
-        if not active:
-            return newest_rej
-        newest = lambda ts: max(ts, key=lambda x: x.created)      # noqa: E731
-        live_owners = [t for t in active if not self._stop_unlisted(t)]
-        held = [t for t in live_owners if t.filled_size or t.stop_state is not None]
-        if held:
-            return newest(held)
-        traded = [t for t in live_owners if self._has_fill_evidence(t)]
-        return newest(traded or active)
-
-    def _stop_unlisted(self, t: Ticket) -> bool:
-        """This ticket's ACKED stop is provably gone: a non-voided fill carries its id, or the seeded broker book no longer lists it."""
-        if t.stop_state != "ACKED" or t.stop_order_id is None:
+    def _dead_entry(self, t: Ticket, active: list) -> bool:
+        """A cancelled entry (human or TTL) that must NOT own a fill on its contract. It stays PLACED so a fill that won the cancel race
+        is still protected, but it never owned a fill or a stop, and either another active ticket on the contract already owns one (a
+        second stop for one position: never) or a NEWER entry was placed after it (the next fill is that entry's, and it arms the one
+        stop, sized to the position). Alone on its contract it is never dead. Read-only."""
+        if not (t.user_cancelled or t.ttl_cancelled) or t.filled_size or t.stop_state is not None:
             return False
-        return self._stop_filled(t) or (bool(getattr(self.live, "positions_seeded", False)) and t.stop_order_id not in self.live.orders)
-
-    def _stop_done(self, t: Ticket) -> bool:
-        """The position this ticket owned provably ended through its own stop: the stop FILLED (a fill carries its id) and the book
-        no longer lists it as working (a partially filled stop is still working and still protects the rest)."""
-        if t.stop_state != "ACKED" or t.stop_order_id is None or not t.filled_size or not self._stop_filled(t):
-            return False
-        row = self.live.orders.get(t.stop_order_id)
-        return not (isinstance(row, dict) and row.get("status") in (None, *WORKING_STATUSES))
-
-    async def _close_out(self, t: Ticket) -> None:
-        """The position this ticket owned is gone: CLOSED, watchdog cancelled, intents closed, a still-working stop retired."""
-        t.state = "CLOSED"
-        self._cancel_watchdog(t)
-        self._close_intents(t)
-        if t.stop_state == "SENDING":
-            t.abandoned = True      # the stop request is still in flight: its ACK must be cancelled, not trusted
-        elif t.stop_state == "ACKED" and t.stop_order_id is not None:
-            await self._retire_stop_after_close(t)
-
-    def _ours_unowned(self, cid) -> bool:
-        """A position in this contract that no ticket owns is still OURS when our own entry intent for the contract is open, or when a
-        fill carries the entry order id of a cancelled entry we retired (the fill lost the race by more than CANCEL_GRACE_S)."""
-        if any(tag.endswith("-1") and rec.get("state") in ("ACKED", "FOUND", "SENDING", "UNKNOWN") and rec.get("contract") == cid
-               for tag, rec in self._intents.items()):
-            return True
-        return any(t.contract_id == cid and t.state == "CLOSED" and (t.user_cancelled or t.ttl_cancelled) and t.stop_state is None
-                   and isinstance(t.broker_order_id, int) and not isinstance(t.broker_order_id, bool) and self._entry_has_fill(t)
-                   for t in self.tickets.values())
-
-    async def _flatten_unowned(self, cid) -> None:
-        """Ours, with no owning ticket and so no provable stop: flatten and halt, exactly as protect_open_positions does for our intent."""
-        if cid in self._unowned_flattening:
-            return
-        self._unowned_flattening.add(cid)
-        try:
-            self._audit("halt", code="unprotected_position")
-            self._note_auto("unprotected_position")
-            try:
-                await self.flatten(contract_id=cid, origin="ui")
-            finally:
-                self.trip_halt("unprotected_position")
-        finally:
-            self._unowned_flattening.discard(cid)
+        others = [x for x in active if x is not t]
+        return any(x.filled_size or x.stop_state is not None or x.created > t.created for x in others)
 
     async def handle_position(self, p: dict, via: str = "hub") -> None:
         """React to a position event: protect a fresh fill, resize the stop, or close out the ticket. `via` (hub, reseed, probe) is audit only.
-        A nonzero position is given to exactly ONE ticket (_position_owner): two tickets arming a stop each for one position would, when
-        both fill, open a reverse position with no protection."""
+        A cancelled entry that _dead_entry rules out is skipped: one protection owner per net position."""
         cid, size = p.get("contractId"), abs(p.get("size") or 0)
-        self._retire_dead_entries()
         active = [t for t in self.tickets.values() if t.contract_id == cid and t.state in (PLACING, PLACED, UNKNOWN)]
+        dead = {t.ticket_id for t in active if size and self._dead_entry(t, active)}
         recent_rej = [t for t in self.tickets.values() if t.contract_id == cid and t.state == REJECTED
                       and t.broker_order_id is not None and self.clock() - t.rejected_at < REJECTED_LIVE_S]
         newest_rej = max(recent_rej, key=lambda x: x.rejected_at) if recent_rej else None    # one owner, never two stops
-        if size == 0:
-            for t in list(self.tickets.values()):
-                if t.contract_id != cid or (t.state not in (PLACING, PLACED, UNKNOWN) and not (t is newest_rej and not active)):
-                    continue
+        for t in list(self.tickets.values()):
+            if t.contract_id != cid:
+                continue
+            # A fill can land while place() is still awaiting the POST reply (PLACING), after an ambiguous reply
+            # (UNKNOWN), or after a rejection that carried an order id (the docs say the order may still exist).
+            # A real position must be protected in every one of those states.
+            rejected_live = t is newest_rej and not active
+            if (t.state not in (PLACING, PLACED, UNKNOWN) and not rejected_live) or t.ticket_id in dead:
+                continue
+            if size == 0:
                 if t.filled_size and t.state == PLACED:
-                    await self._close_out(t)
-            return
-        for t in active:
-            if t.state == PLACED and self._stop_done(t):
-                await self._close_out(t)        # its stop filled while no size-0 event reached us: the position it owned is gone
-        active = [t for t in active if t.state in (PLACING, PLACED, UNKNOWN)]
-        # A fill can land while place() is still awaiting the POST reply (PLACING), after an ambiguous reply
-        # (UNKNOWN), or after a rejection that carried an order id (the docs say the order may still exist).
-        # A real position must be protected in every one of those states, by one ticket only.
-        t = self._position_owner(active, newest_rej)
-        if t is None:
-            if self._no_owner_seen.get(cid) != size:
-                self._no_owner_seen[cid] = size
-                self._audit("position", state="NO_OWNER", size=size, via=via)
-            if self._ours_unowned(cid):
-                await self._flatten_unowned(cid)
-            return
-        self._no_owner_seen.pop(cid, None)
-        rejected_live = t is newest_rej and not active
-        if self._pos_side(p) != t.side:
-            # A nonzero position in our contract whose side is not the ticket's (or not a side we recognise: the Short enum is
-            # unverified) is never benign: either the enum is wrong or the position was flipped. Silently skipping it left a
-            # fill with no stop and no watchdog while protect_open_positions reported it as handled. Flatten and halt.
-            await self._naked(t, "position_side_unknown")
-            return
-        if rejected_live and not t.filled_size:
-            self.trip_halt("rejected_but_filled")       # protect it, then a human looks at why a rejection filled
-        t.filled_size = size
-        if t.position_id is None and isinstance(p.get("id"), int) and not isinstance(p.get("id"), bool):
-            t.position_id = p["id"]
-        if t.stop_plan["mode"] == "separate_after_fill":
-            if t.stop_state is None:
-                await self._arm_stop(t, size, via)
-            elif t.stop_state == "ACKED" and size != t.stop_size:
-                await self._resize_stop(t, size)
+                    t.state = "CLOSED"
+                    self._cancel_watchdog(t)
+                    self._close_intents(t)
+                    if t.stop_state == "SENDING":
+                        t.abandoned = True      # the stop request is still in flight: its ACK must be cancelled, not trusted
+                    elif t.stop_state == "ACKED" and t.stop_order_id is not None:
+                        await self._retire_stop_after_close(t)
+                continue
+            if self._pos_side(p) != t.side:
+                # A nonzero position in our contract whose side is not the ticket's (or not a side we recognise: the Short enum is
+                # unverified) is never benign: either the enum is wrong or the position was flipped. Silently skipping it left a
+                # fill with no stop and no watchdog while protect_open_positions reported it as handled. Flatten and halt.
+                await self._naked(t, "position_side_unknown")
+                continue
+            if rejected_live and not t.filled_size:
+                self.trip_halt("rejected_but_filled")       # protect it, then a human looks at why a rejection filled
+            t.filled_size = size
+            if t.position_id is None and isinstance(p.get("id"), int) and not isinstance(p.get("id"), bool):
+                t.position_id = p["id"]
+            if t.stop_plan["mode"] == "separate_after_fill":
+                if t.stop_state is None:
+                    await self._arm_stop(t, size, via)
+                elif t.stop_state == "ACKED" and size != t.stop_size:
+                    await self._resize_stop(t, size)
 
     async def protect_open_positions(self) -> dict:
         """Run after boot and after every resync: every open position must be a protected one.
@@ -1376,18 +1284,6 @@ class Guard:
                     self._set_intent(tag, state="CLOSED")
                 except OSError:
                     pass
-        # A filled ticket on a contract with no open position: its stop (or a manual close) ended the position while no size-0 event
-        # reached us (the hub was down). Closed out only when a FRESH REST read also shows the contract flat; an unreadable read
-        # changes nothing. Otherwise it would stay the owner and swallow the next entry's fill.
-        stale = {t.contract_id for t in self.tickets.values() if t.state == PLACED and t.filled_size and t.contract_id not in held}
-        if stale:
-            try:
-                fresh = {q.get("contractId") for q in await self._positions_rest(None) if abs(q.get("size") or 0)}
-            except Exception:  # noqa: BLE001 - cannot prove flat: leave them
-                fresh = None
-            if fresh is not None:
-                for cid in stale - fresh:
-                    await self.handle_position({"contractId": cid, "size": 0}, via="reseed")
         try:
             working = await self.client.open_orders(self.live.account_id)
         except Exception:  # noqa: BLE001 - cannot prove coverage
@@ -1395,17 +1291,10 @@ class Guard:
         for p in positions:
             cid, size = p["contractId"], abs(p["size"])
             side = self._pos_side(p)
-            self._retire_dead_entries()
-            for t in self.tickets.values():
-                if t.contract_id == cid and t.state == PLACED and self._stop_done(t):
-                    await self._close_out(t)        # the same close-out handle_position does before it picks the owner
-            owner, settled = None, False
-            for _ in range(len(self.tickets) + 1):     # re-run the decision each time a stale owner is retired below
-                owner = self._position_owner([t for t in self.tickets.values() if t.contract_id == cid    # the one owner handle_position picks
-                                              and t.state in (PLACING, PLACED, UNKNOWN)], None)
-                if not (owner is not None and owner.stop_state == "ACKED" and working is not None
-                        and owner.stop_order_id not in {o.get("id") for o in working}):
-                    break
+            act = [t for t in self.tickets.values() if t.contract_id == cid and t.state in (PLACING, PLACED, UNKNOWN)]
+            owner = next((t for t in act if not self._dead_entry(t, act)), None)      # the same exclusion handle_position makes
+            if owner is not None and owner.stop_state == "ACKED" and working is not None \
+                    and owner.stop_order_id not in {o.get("id") for o in working}:
                 # The ticket thinks it has a stop, but the broker book does not list it. What that means is decided by
                 # EVIDENCE, in this order, and never by the broker position id alone (whether it is stable is unverified):
                 #   1. another stop already covers the position (the trader replaced ours): protected, leave it alone.
@@ -1417,8 +1306,8 @@ class Guard:
                     owner.state = "CLOSED"
                     self._cancel_watchdog(owner)
                     self._close_intents(owner)
-                    out[cid], settled = "COVERED", True
-                    break
+                    out[cid] = "COVERED"
+                    continue
                 if not self._stop_filled(owner):
                     self._audit("halt", code="owned_position_stop_missing")
                     self._note_auto("owned_position_stop_missing")
@@ -1428,14 +1317,12 @@ class Guard:
                     finally:
                         if not (res is not None and res.flat and not res.closed):   # already gone (the stop filled mid-check): no halt
                             self.trip_halt("owned_position_stop_missing")
-                    out[cid], settled = "FLATTENED", True
-                    break
+                    out[cid] = "FLATTENED"
+                    continue
                 owner.state = "CLOSED"           # our stop filled: the position we owned is gone; judge this one afresh
                 self._cancel_watchdog(owner)
                 self._close_intents(owner)
-                owner = None                     # and re-run the decision: a newer active ticket may own this position
-            if settled:
-                continue
+                owner = None
             if owner is not None:
                 await self.handle_position(p, via="reseed")
                 if owner.abandoned:                                       # handle_position already flattened and halted
@@ -1451,7 +1338,9 @@ class Guard:
             if covered:
                 out[cid] = "COVERED"
                 continue
-            if self._ours_unowned(cid):         # our own entry intent, or a late fill on a cancelled entry we retired
+            mine = any(rec.get("state") in ("ACKED", "FOUND", "SENDING", "UNKNOWN") and tag.endswith("-1")
+                       and rec.get("contract") == cid for tag, rec in self._intents.items())
+            if mine:
                 self._audit("halt", code="unprotected_position")
                 self._note_auto("unprotected_position")
                 try:
@@ -1847,7 +1736,6 @@ class Guard:
         cannot cancel on live, and limit opens are sim-only anyway). Reduces exposure only: it never places anything, is allowed while halted,
         and skips an order that has any fill. A cancel that loses the race to a fill fails harmlessly: the fill is protected by the normal path.
         Called about once a second by the app. Returns how many cancels were ACKed this pass."""
-        self._retire_dead_entries()         # a cancelled entry the broker shows gone and unfilled can no longer own a fill
         ttl = self.limits.limit_ttl_s
         if not ttl or self.limits.account_kind != "sim":
             return 0
@@ -1939,7 +1827,6 @@ class Guard:
             t.ttl_cancelled = True
         else:
             t.user_cancelled = True
-        t.cancelled_at = self.clock()
         self._audit("cancel", ticket=t.hash8, origin=origin, state="OK", code=code)
         return "cancelled"
 

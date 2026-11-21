@@ -1,16 +1,15 @@
-"""One protection owner per net position, also across a cancelled, expired or gone entry (Round 35, adversarial review).
+"""One protection owner per net position across a cancelled or expired entry (Round 35, adversarial review).
 
-A cancelled limit entry stays PLACED so a fill that won the cancel race still gets its stop. handle_position used to give a fill to
-EVERY active ticket on the contract, so CANCEL (or the TTL) followed by a market entry armed TWO stops for one position: both fill and
-the account is reversed with no protection. A position now goes to exactly one ticket (Guard._position_owner): the one that already
-owns it, else the one whose entry order id the fills carry, else the newest. A cancelled entry the broker shows gone and unfilled is
-CLOSED after CANCEL_GRACE_S and can never own a fill again.
+A cancelled limit entry stays PLACED so a fill that won the cancel race still gets its stop. handle_position gives a fill to EVERY
+active ticket on the contract, so CANCEL (or the TTL) followed by a market entry armed TWO stops for one position: both fill and the
+account is reversed with no protection. Guard._dead_entry now rules out a cancelled entry that never owned a fill or a stop once
+another ticket on the contract owns one or a newer entry was placed after it; alone on its contract it still protects its raced fill.
 """
 import json
 
 from projectx_desk.client import PXWriteUnknown
 from projectx_desk.guard import ORDER_PLACE
-from test_px_guard_cancel import _row, resting
+from test_px_guard_cancel import resting
 from test_px_guard_place import CID, go, staged
 from test_px_guard_protect import build2, fill
 
@@ -42,7 +41,7 @@ async def test_human_cancel_then_market_reentry_arms_exactly_one_stop_owned_by_t
     s = stops(gw)
     assert len(s) == 1 and s[0]["customTag"] == f"px-{t2.hash8}-2" and s[0]["size"] == 1
     assert t2.stop_state == "ACKED" and t2.filled_size == 1
-    assert t1.stop_state is None and not t1.filled_size and t1.state == "CLOSED"     # past the grace, gone, unfilled: retired
+    assert t1.stop_state is None and not t1.filled_size
     await g.handle_position(fill(live, size=2))                                        # a resize goes to the same owner only
     assert t1.stop_state is None and t2.filled_size == 2
 
@@ -59,14 +58,13 @@ async def test_ttl_cancel_then_reentry_arms_exactly_one_stop(tmp_path):
     await g.handle_position(fill(live))
     s = stops(gw)
     assert len(s) == 1 and s[0]["customTag"] == f"px-{t2.hash8}-2"
-    assert t1.stop_state is None and t1.state == "CLOSED"
-    assert [a for a in audit(g) if a["event"] == "cancel" and a.get("state") == "RETIRED"][-1]["code"] == "limit_ttl"
+    assert t1.stop_state is None and not t1.filled_size
 
 
-async def test_reentry_inside_the_grace_still_gives_the_fill_to_the_newest_ticket_only(tmp_path):
+async def test_a_quick_reentry_still_gives_the_fill_to_the_newer_ticket_only(tmp_path):
     g, live, clock, gw, t1 = await resting(tmp_path, b=build2)
     assert (await g.cancel_entry(t1.ticket_id)).ok
-    t2 = await _reenter(g, live, clock, gw, wait=11)             # past IN_FLIGHT_S, inside CANCEL_GRACE_S
+    t2 = await _reenter(g, live, clock, gw, wait=11)             # just past IN_FLIGHT_S
     await g.handle_position(fill(live))
     s = stops(gw)
     assert len(s) == 1 and s[0]["customTag"] == f"px-{t2.hash8}-2"
@@ -78,62 +76,30 @@ async def test_reentry_inside_the_grace_still_gives_the_fill_to_the_newest_ticke
     assert out == {CID: "TICKET"} and gw.writes == [] and not g.halted()
 
 
-async def test_a_gone_entry_does_not_own_the_next_entrys_fill(tmp_path):
-    g, live, clock, gw = build2(tmp_path)
-    gw.reply = {"success": True, "orderId": 555}
-    t1 = await staged(g)
-    assert (await go(g, t1)).ok
-    clock.t += 60                                                 # never listed, no fill: entry_status gone
-    assert g.entry_status(t1) == "gone"
-    live.quotes[CID]["_rx"] = clock.t
-    gw.reply = {"success": True, "orderId": 556}
-    t2 = await staged(g)
-    assert (await go(g, t2)).ok
-    gw.writes.clear()
-    await g.handle_position(fill(live))
-    s = stops(gw)
-    assert len(s) == 1 and s[0]["customTag"] == f"px-{t2.hash8}-2" and t1.stop_state is None
-
-
-async def test_a_fill_carrying_the_older_entrys_order_id_goes_to_that_ticket_only(tmp_path):
+async def test_a_fill_carrying_the_cancelled_entrys_order_id_still_arms_one_stop_only(tmp_path):
     g, live, clock, gw, t1 = await resting(tmp_path, b=build2)
     assert (await g.cancel_entry(t1.ticket_id)).ok
     t2 = await _reenter(g, live, clock, gw, wait=11)
     live.trades.append({"id": 9, "orderId": 555, "contractId": CID, "size": 1, "voided": False})   # the cancel lost the race
     await g.handle_position(fill(live))
     s = stops(gw)
-    assert len(s) == 1 and s[0]["customTag"] == f"px-{t1.hash8}-2" and t2.stop_state is None and t1.state == "PLACED"
+    assert len(s) == 1 and s[0]["customTag"] == f"px-{t2.hash8}-2" and t1.stop_state is None   # the newer entry owns it, sized to the position
+    gw.writes.clear()
+    await g.handle_position(fill(live, size=2))                  # the newer entry fills too: its one stop resizes, nobody arms a second
+    assert stops(gw) == [] and t1.stop_state is None and t2.filled_size == 2
 
 
-async def test_the_race_fill_inside_the_grace_is_still_protected(tmp_path):
+async def test_the_race_fill_of_a_lone_cancelled_entry_is_still_protected(tmp_path):
     g, live, clock, gw, t1 = await resting(tmp_path, b=build2)
     assert (await g.cancel_entry(t1.ticket_id)).ok
     live.orders.pop(555)
     clock.t += 20
-    assert await g.expire_resting_entries() == 0 and t1.state == "PLACED"      # inside the grace: not retired
+    assert await g.expire_resting_entries() == 0 and t1.state == "PLACED"
     await g.handle_position(fill(live))
     assert len(stops(gw)) == 1 and t1.stop_state == "ACKED"
     clock.t += 999
     await g.expire_resting_entries()
-    assert t1.state == "PLACED"                                   # it owns a fill: never retired
-
-
-async def test_a_retired_entry_never_arms_a_stop_and_retirement_needs_all_conditions(tmp_path):
-    g, live, clock, gw, t1 = await resting(tmp_path, b=build2)
-    assert (await g.cancel_entry(t1.ticket_id)).ok
-    clock.t += 999
-    await g.expire_resting_entries()
-    assert t1.state == "PLACED"                                   # the broker still lists it working
-    live.orders[555] = _row(t1, status=3)                         # listed, but no longer working
-    live.trades.append({"id": 9, "orderId": 555, "contractId": CID, "size": 1, "voided": False})
-    await g.expire_resting_entries()
-    assert t1.state == "PLACED"                                   # a fill carries its order id
-    live.trades.clear()
-    await g.expire_resting_entries()
-    assert t1.state == "CLOSED" and g.entry_status(t1) is None
-    gw.writes.clear()
-    await g.handle_position(fill(live))
-    assert stops(gw) == [] and t1.stop_state is None
+    assert t1.state == "PLACED"
 
 
 async def test_an_unclear_cancel_of_an_order_that_filled_reports_filled_not_cancelled(tmp_path):
@@ -174,7 +140,7 @@ async def test_a_fill_that_lands_during_an_unclear_cancel_is_filled_and_protecte
     assert len(stops(gw)) == 1 and t.stop_state == "ACKED" and g.entry_status(t) == "filled"
 
 
-# ---- second review: a stale owner from a missed size-0 event, and a late fill on a retired entry ----------------------------
+# ---- a stale owner from a missed size-0 event (second review): the next entry still arms its own stop -----------------------
 
 B_STOP = {"id": 901, "contractId": CID, "type": 4, "side": 1, "size": 1, "status": 1, "stopPrice": 4994.0}
 
@@ -206,53 +172,12 @@ async def test_stale_owner_from_a_missed_close_takes_the_new_entrys_fill(tmp_pat
     await g.handle_position(fill(live))                          # B's fill
     s = stops(gw)
     assert len(s) == 1 and s[0]["customTag"] == f"px-{b.hash8}-2" and b.stop_state == "ACKED"
-    assert a.state == "CLOSED"                                    # its stop filled: closed out before the owner was picked
 
 
-async def test_an_unlisted_stop_does_not_keep_a_stale_owner_even_without_its_fill(tmp_path):
+async def test_a_stale_owner_whose_stop_fill_was_missed_too_does_not_block_the_next_entry(tmp_path):
     g, live, clock, gw, a, b = await _stale_a_then_b(tmp_path, stop_fill_seen=False)
     assert live.positions_seeded and a.stop_order_id not in live.orders
     await g.handle_position(fill(live))
-    s = stops(gw)
-    assert len(s) == 1 and s[0]["customTag"] == f"px-{b.hash8}-2" and b.stop_state == "ACKED"
-
-
-async def test_the_resync_closes_out_a_filled_ticket_on_a_provably_flat_contract(tmp_path):
-    g, live, clock, gw = build2(tmp_path)
-    gw.reply = {"success": True, "orderId": 555}
-    a = await staged(g)
-    assert (await go(g, a)).ok
-    await g.handle_position(fill(live))
-    live.positions.clear()                                        # no size-0 event, no stop fill seen
-    gw.pos = [{"id": 1, "contractId": CID, "type": 1, "size": 1}]
-    assert await g.protect_open_positions() == {} and a.state == "PLACED"     # REST still shows it: not flat, left alone
-    gw.pos = []
-    gw.writes.clear()
-    assert await g.protect_open_positions() == {} and a.state == "CLOSED" and not g.halted()
-    assert [w for w in gw.writes if w[0] == ORDER_PLACE] == []
-
-
-async def test_an_unreadable_resync_read_never_closes_out(tmp_path):
-    g, live, clock, gw = build2(tmp_path)
-    gw.reply = {"success": True, "orderId": 555}
-    a = await staged(g)
-    assert (await go(g, a)).ok
-    await g.handle_position(fill(live))
-    live.positions.clear()
-
-    async def down(_):
-        raise RuntimeError("down")
-    g.client.open_positions = down
-    await g.protect_open_positions()
-    assert a.state == "PLACED" and a.stop_state == "ACKED"
-
-
-async def test_the_resync_arms_the_newer_ticket_instead_of_flattening_the_position_as_ours(tmp_path):
-    g, live, clock, gw, a, b = await _stale_a_then_b(tmp_path)
-    p = fill(live)                                                # B's fill, seen only by the resync
-    gw.pos, gw.working = [dict(p)], []
-    out = await g.protect_open_positions()
-    assert out == {CID: "TICKET"} and not g.halted()
     s = stops(gw)
     assert len(s) == 1 and s[0]["customTag"] == f"px-{b.hash8}-2" and b.stop_state == "ACKED"
 
@@ -264,43 +189,53 @@ async def test_stale_owner_then_reseed_keeps_the_new_owner(tmp_path):
     gw.writes.clear()
     gw.pos, gw.working = [dict(p)], [dict(B_STOP)]
     out = await g.protect_open_positions()
-    assert out == {CID: "TICKET"} and gw.writes == [] and not g.halted() and b.stop_state == "ACKED"
+    assert out[CID] in ("TICKET", "COVERED") and gw.writes == [] and not g.halted() and b.stop_state == "ACKED"
 
 
-async def _late(tmp_path, reseed_while_flat):
+# ---- third review: regressions of the larger design that was abandoned (each must stay fixed) ------------------------------
+
+async def test_a_raced_fill_after_the_new_entry_owns_the_position_never_arms_a_second_stop(tmp_path):
     g, live, clock, gw, t1 = await resting(tmp_path, b=build2)
     assert (await g.cancel_entry(t1.ticket_id)).ok
-    live.orders.pop(555)
-    if reseed_while_flat:
-        gw.pos, gw.working = [], []
-        assert await g.protect_open_positions() == {}            # the 60 s reseed runs while flat and closes the entry intent
-    clock.t += 31
-    await g.expire_resting_entries()
-    assert t1.state == "CLOSED"
-    live.trades.append({"id": 9, "orderId": 555, "contractId": CID, "size": 1, "voided": False})   # the raced fill, late
-    p = fill(live)
-    gw.pos, gw.working = [dict(p)], []
+    t2 = await _reenter(g, live, clock, gw, wait=11)
+    await g.handle_position(fill(live))
+    assert t2.stop_state == "ACKED" and len(stops(gw)) == 1
+    assert t2.stop_order_id not in live.orders                   # ACKed, the hub has not listed it yet
+    live.trades.append({"id": 9, "orderId": 555, "contractId": CID, "size": 1, "voided": False})   # t1's raced fill shows up
     gw.writes.clear()
-    await g.handle_position(p)
-    return g, live, gw, p
-
-
-async def test_late_fill_on_a_retired_entry_is_flattened_and_halted(tmp_path):
-    for flat_reseed in (False, True):
-        g, live, gw, p = await _late(tmp_path / str(flat_reseed), flat_reseed)
-        assert stops(gw) == []
-        assert any(w[0].endswith("closeContract") for w in gw.writes) and g.halt_cause() == "unprotected_position"
-        assert any(a["event"] == "position" and a.get("state") == "NO_OWNER" for a in audit(g))
-        gw.pos, gw.working = [dict(p)], []
-        assert await g.protect_open_positions() == {CID: "FLATTENED"}
-
-
-async def test_an_external_position_with_no_owner_is_audited_once_and_never_touched(tmp_path):
-    g, live, clock, gw = build2(tmp_path)
-    p = fill(live)
-    await g.handle_position(p)
-    await g.handle_position(p)
-    rows = [a for a in audit(g) if a["event"] == "position" and a.get("state") == "NO_OWNER"]
-    assert len(rows) == 1 and rows[0]["size"] == 1 and gw.writes == [] and not g.halted()
     await g.handle_position(fill(live, size=2))
-    assert len([a for a in audit(g) if a["event"] == "position"]) == 2 and gw.writes == []
+    assert stops(gw) == [] and t1.stop_state is None and t2.filled_size == 2
+
+
+async def test_after_a_restart_our_position_under_our_listed_stop_is_left_alone(tmp_path):
+    g, live, clock, gw = build2(tmp_path)
+    gw.reply = {"success": True, "orderId": 555}
+    a = await staged(g)
+    assert (await go(g, a)).ok
+    await g.handle_position(fill(live))
+    row = {"id": a.stop_order_id, "contractId": CID, "type": 4, "side": 1, "size": 1, "status": 1, "stopPrice": 4994.0}
+    live.orders[a.stop_order_id] = row
+    g.tickets.clear()                                             # restart: tickets are not persisted, intents are
+    gw.writes.clear()
+    gw.pos, gw.working = [dict(live.positions[1])], [dict(row)]
+    assert await g.protect_open_positions() == {CID: "COVERED"}
+    await g.handle_position(fill(live))                           # a later hub position event
+    assert gw.writes == [] and not g.halted()
+
+
+async def test_the_resync_never_closes_out_a_ticket_from_a_positions_read(tmp_path):
+    g, live, clock, gw, a, b = await _stale_a_then_b(tmp_path)
+    reads = []
+    orig = gw.open_positions
+
+    async def counted(account_id):
+        reads.append(1)
+        return await orig(account_id)
+    gw.open_positions = counted
+    p = fill(live)
+    await g.handle_position(p)                                    # B fills and arms
+    live.orders[901] = dict(B_STOP)
+    gw.writes.clear()
+    gw.pos, gw.working = [dict(p)], [dict(B_STOP)]
+    await g.protect_open_positions()
+    assert reads == [] and b.state == "PLACED" and b.stop_state == "ACKED" and gw.writes == [] and not g.halted()

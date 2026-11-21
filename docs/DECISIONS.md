@@ -798,41 +798,40 @@ stop. An entry that went `gone` did the same. The reviewer reproduced it on the 
 CANCEL existed. Separately, an unclear cancel reply followed by "not listed in `Order/searchOpen`" was recorded as a clean cancel, but
 searchOpen drops FILLED orders too.
 
-**Decision 3.** A position has exactly one owner, `Guard._position_owner`, used by `handle_position` and `protect_open_positions`
-alike: the ticket that already owns it (a counted fill or a stop; it resizes), else the ticket whose own entry order id a non-voided
-fill or the row's `fillVolume` carries, else the NEWEST active ticket (a position event carries no order id, and an older cancelled or
-gone entry never outranks the entry just placed), else the newest rejection with an order id. The newest wins inside each step.
-`_retire_dead_entries` moves a cancelled (human or TTL) entry to CLOSED once the broker no longer lists it working, no fill carries its
-order id, it owns no fill, and `CANCEL_GRACE_S` (30 s) has passed since the cancel was confirmed (`Ticket.cancelled_at`); from then on it
-can never own a fill. It runs on every position event, every resync and the once-a-second deadline loop. The unclear-cancel path
-checks `_entry_has_fill` before declaring cancelled: a fill returns the fixed code `filled`, audits `state=FILLED`, sets no cancelled
-flag, and the fill is protected by the normal path.
+**Decision 3 (minimal).** The fill-assignment loop in `handle_position` and the owner pick in `protect_open_positions` are unchanged
+from before this round except for ONE exclusion, `Guard._dead_entry(t, active)`: a cancelled entry (`user_cancelled` or
+`ttl_cancelled`) that never owned a fill or a stop (`filled_size == 0`, `stop_state is None`) is skipped as a fill owner while ANOTHER
+active ticket on the contract already owns a fill or a stop (a second stop for one position: never), or a NEWER entry was placed after
+it (the next fill is that entry's; it arms the one stop, sized to the position, and resizes it if the cancelled entry's raced fill
+shows up too). Alone on its contract a cancelled entry is never skipped, so a fill that won the cancel race is protected exactly as
+before. `protect_open_positions` skips the same tickets when it picks a contract's owner, so the resync judges the newer ticket and
+does not take the cancelled one for a naked owner. No I/O, no new state, no ranking. The unclear-cancel path checks `_entry_has_fill`
+before declaring cancelled: a fill returns the fixed code `filled`, audits `state=FILLED`, sets no cancelled flag, and the fill is
+protected by the normal path.
 
-**Problem 4 (a second adversarial review of Decision 3).** A ticket whose stop filled while the user hub was down got no size-0
-event: it stayed PLACED with its stop ACKED, `contract_flat` let the next entry through (no position, no listed order), and as the
-"already owns it" ticket it took the new entry's fill. The size matched its old stop, so nothing was sent: the new entry had no stop
-and no watchdog until a reseed flattened and halted. Separately, a late fill on a retired cancelled entry, after a reseed while flat had
-closed its intent, became `EXTERNAL_UNPROTECTED`: never touched, no halt, so the "flattened and halted" claim above was false.
+**Why the larger design was abandoned.** The first version of this fix ranked owners (`_position_owner`: already owns, then fill
+evidence, then newest), retired cancelled entries to CLOSED after a grace period, closed out tickets from a fresh REST positions read,
+excluded tickets whose stop was not listed, and flattened and halted any position with no owner while our intent was open. Three
+adversarial review rounds each found a regression in it against the code before this round: a stale owner from a missed size-0 event
+swallowed the next entry's fill and sent nothing; a stop ACKed but not yet listed dropped the real owner, so a cancelled entry's raced
+fill armed a SECOND stop; after a restart a position of ours under our own listed stop was flattened and halted by the next hub event;
+and a flat REST read taken before a fill closed out the ticket that had just filled and cancelled its stop. All of it was removed. The
+rule now is one predicate on top of code that was safe in every one of those scenarios.
 
-**Decision 4.** Belt and braces.
-- Root cause: `protect_open_positions` (every resync and reseed) closes out a filled PLACED ticket on a contract with no open
-  position, only when a FRESH REST positions read also shows that contract flat; an unreadable read changes nothing.
-- Before picking the owner, `handle_position` and `protect_open_positions` close out a ticket whose stop provably filled (a fill
-  carries its id) and is no longer working (`_stop_done`; a partly filled stop still protects the rest and is left alone).
-- `_position_owner` does not count a ticket whose stop is provably gone (`_stop_unlisted`: its stop filled, or the seeded book no
-  longer lists it) in the first two steps, so the newest active ticket owns the fill. Such a ticket can still win the last step, which
-  is what keeps a lone ticket the owner while the hub has not listed its just-ACKED stop yet.
-- `protect_open_positions` re-runs the owner decision after it retires a stale owner whose stop filled, instead of flattening the
-  position as ours while a newer ticket could own it.
-- A nonzero position event with no owner is audited (`position`, `state=NO_OWNER`, the size, once per size change). It is OURS when our
-  own entry intent for the contract is open or a fill carries the entry order id of a cancelled entry we retired (`_ours_unowned`):
-  `handle_position` and the resync then flatten and halt `unprotected_position`, as for any position of ours with no provable stop.
-  Anything else stays external and untouched.
+**Not fixed (pre-existing, unchanged by this round).**
+- An entry that went `gone` (ACKed, never listed, no fill seen) and was NOT cancelled still takes a fill on its contract like any
+  active ticket: a later entry's fill arms a stop for both (two stops for one position), and a later manual position is adopted with a
+  stop. Only cancelled entries are ruled out.
+- A lone cancelled entry with no fill evidence stays eligible indefinitely: a manual position opened later in that contract is adopted
+  with its stop, as before.
+- A late fill on a lone cancelled entry arms that entry's own stop (nothing retires it). After a restart (tickets are not persisted),
+  once a reseed while flat has closed its intent, such a fill is `EXTERNAL_UNPROTECTED`: reported, never touched.
+- A ticket whose stop filled while the user hub was down keeps `filled_size` and its ACKED stop until a size-0 event arrives. The next
+  entry's fill still arms that entry's own stop through `handle_position`. If a resync is the first to see that fill, the stale ticket
+  is picked as owner, its stop is missing from the book and filled, it is closed, and the position is flattened and halted as ours
+  (fail closed, as before this round).
 
-Tests: `test_px_guard_one_owner.py` (the human and TTL re-entries arm exactly one stop, owned by the new ticket; a gone entry; a fill
-carrying the older order id; the race inside the grace; retirement needs every condition; the resync picks the same owner; `filled`;
-the stale owner, by a seen stop fill and by an unlisted stop; the flat close-out and its unreadable-read refusal; the re-run in the
-resync; the late fill on a retired entry with and without a reseed while flat; an external position audited once and never touched).
-The race tests in `test_px_guard_cancel.py` and `test_px_guard_protect.py` are unchanged. Not verified against the real gateway:
-whether the hub lists a just-ACKED stop before the next position event (the last step covers a lone ticket either way), and how often
-the gateway sends position events with an unchanged size (the NO_OWNER audit is written once per size).
+Tests: `test_px_guard_one_owner.py` (the human and TTL re-entries arm exactly one stop, owned by the new ticket; a quick re-entry and the
+resync; a raced fill on the cancelled entry still arms one stop only; the lone race fill is protected; `filled`; the stale owner from a
+missed size-0 event; the third review's three scenarios). The race tests in `test_px_guard_cancel.py` and `test_px_guard_protect.py`
+are unchanged.

@@ -100,12 +100,10 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
   Only a human clears a halt (there is deliberately no MCP tool).
 - **One protection owner per net position.** The `contract_flat` check refuses a second entry while the contract has a position,
   a working order or an entry in flight. No scale-in. Open stop risk of live tickets is subtracted from the budget used for sizing.
-  A position goes to exactly ONE ticket (`Guard._position_owner`, shared by `handle_position` and `protect_open_positions`): the one
-  that already owns it, else the one whose entry order id a fill carries, else the newest; a ticket whose stop is provably gone (filled
-  or no longer listed) never counts as already owning it. A cancelled or expired entry the broker shows gone and unfilled is CLOSED after
-  `CANCEL_GRACE_S` (`_retire_dead_entries`); a filled ticket is closed out when its stop filled or a fresh REST read shows its contract
-  flat. A position with no owner is audited `NO_OWNER`; if our entry intent is open or a fill carries a retired entry's order id it is
-  ours: flatten and halt. Never let two tickets arm a stop for one position.
+  A cancelled entry (`user_cancelled`/`ttl_cancelled`) that never owned a fill or stop is skipped as a fill owner, in `handle_position`
+  and in the `protect_open_positions` owner pick, once another ticket on the contract owns a fill or stop or a newer entry was placed
+  (`Guard._dead_entry`, Round 35); alone it still protects its raced fill. Keep it that one predicate: a larger ranking design was
+  abandoned after three review rounds found regressions. Never let two tickets arm a stop for one position.
 - **Every open position must be protected.** `Guard.protect_open_positions()` runs after boot and every resync: known ticket arms or
   resizes the stop, a broker stop that covers it is fine, our own persisted intent with no provable stop is flattened and halts,
   anything else is reported `EXTERNAL_UNPROTECTED` and never touched.

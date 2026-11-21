@@ -1,5 +1,7 @@
 # Design decisions (rounds 1 and 2, 2026-10-14)
 
+*Numbering note: there are two Round 19 headings and no Round 22; the commit titled "round 31" (33d4c3f) is Round 35. Nothing is renumbered.*
+
 Six agents (guard designer, red team, trader UX; then trader's advocate, risk engineer,
 implementer) argued the contested points. This is the reconciled ruling. Where they
 disagreed, the reasoning for the pick is given. Items marked UNVERIFIED must be proven
@@ -868,8 +870,8 @@ All three named the same condition: Public never shares the futures halt file, e
 1. No import of the Public desk's package or of Public's SDK anywhere in `projectx_desk` (`tests/test_px_guard_pin.py`).
 2. The futures process never sends a POST, PUT or DELETE to the Public desk and never relays an order, cancel, confirm, stage, record
    or halt-resolve: `pub/` may only GET (pin), and the Public desk's write routes are banned as literals everywhere.
-3. No shared file, halt, lock, audit or event-loop time with the Topstep path: the fetch is async httpx with a 3 s total bound, a
-   256 KB cap and a 5 s single-flight cache; a test runs `_deadline_loop` beside a fetch to a server that never answers and checks
+3. No shared file, halt, lock, audit or event-loop time with the Topstep path: the fetch is async httpx with a 3 s total bound
+   (the parse and reduction run in a worker thread inside it, see the review below), a 256 KB cap and a single-flight cache; a test runs `_deadline_loop` beside a fetch to a server that never answers and checks
    `deadline_age_s` stays under 1.6 s while the fetch ends by its timeout. The link writes nothing to disk.
 4. `guard.py`, `sizing.py`, `limits.py` and `anchor.py` do not import `projectx_desk/pub/` (AST test).
 5. Public numbers never enter a Topstep calculation or a cross-broker sum: the `risk`, `size`, `kpi`, `positions` and `orders` blocks of
@@ -881,7 +883,7 @@ All three named the same condition: Public never shares the futures halt file, e
 9. `?stream=1` drops every dollar field (the link asks the Public desk for `?stream=1` and strips its own dollar keys as well).
 10. No float in what is stored or shown: the JSON is parsed with `parse_float=Decimal` and numbers are kept as decimal strings.
 11. No bare `.write(` (the existing pin).
-12. Every error is a fixed code (`unset unreachable timeout bad_status too_big bad_json not_allowed`), never the Public desk's text.
+12. Every error is a fixed code (`unset unreachable timeout bad_status too_big bad_json not_allowed`, plus `pending` from the review), never the Public desk's text.
 
 **Why a link and not an embed.** An embed would put a second broker's SDK, writer and halt file into the process that owns the
 Topstep order path, and one more thing on its event loop that can block or crash. A link costs one bounded GET and can only ever show
@@ -892,3 +894,46 @@ read-only Public run is recorded.
 
 Docs: `docs/PUBLIC.md`. Tests: `tests/test_pub_link.py`, `tests/test_pub_app.py`, `tests/test_pub_ui.py`, and the new cases in
 `tests/test_px_guard_pin.py`.
+
+**Adversarial review (same day): two blockers and seven should-fix items, all fixed.** Regression tests in
+`tests/test_pub_review.py` (the reviewer's own five failing tests kept as written, each seen failing before the fix).
+- *B1, a number could hold the loop.* `num()` formatted any Decimal, so a 2 KB reply of `1e100000000` values held the event loop
+  3.6 s, and `1e999999999999999999` raised MemoryError out of `state()` (a 500). Now a Decimal is judged on its digits (at most 18)
+  and adjusted exponent (-12 to 14) BEFORE it is formatted, the parse and reduction run in a worker thread inside the same 3 s bound,
+  and `state()`/`peek()` catch everything into a fixed code. A 256 KB body of such values keeps loop lag under 0.3 s and the
+  deadline loop ticking (tested).
+- *B2, an unreadable row read as nothing.* A short put sent as an OCC-padded symbol, or `BRK/B`, was dropped and the digest said
+  `PUB_POS: NONE`. Every dropped row is now counted (`incomplete[section] = {unreadable, more}`) for positions, orders, tickets, wheel
+  cycles, legs, rolls and wash rows; the digest prints `n=0 unreadable=1` and `n=200+`, the panel says INCOMPLETE, and NONE means the
+  Public desk sent an empty list and every row was read.
+- *Free text.* The halt cause, poll error and ledger code were "short words", which a hostile reply can still use as a prompt. They are
+  now closed sets copied from the Public desk's code (named in `view.py`); anything else is `unreadable`.
+- */ai/state waited on the sidecar* (3.01 s measured). The digest, `/ai/state` and the MCP state read `link.peek()`: the cached view
+  with its age and a background refresh, `PUB: UNKNOWN code=pending` before the first attempt ends. Only `GET /api/pub/state` (the
+  panel) awaits the bounded fetch. A success is fresh 5 s and a failure 10 s, counted from the end of the attempt.
+- `Accept-Encoding: identity` is sent and a compressed reply is `bad_status` (no gzip bomb). Truncation at 200 rows is visible.
+- `pub.js` dropped no reply from the other stream mode: a non-stream reply landing after stream mode was switched on could draw
+  dollars. Such a reply is now dropped and fetched again, and `render()` never draws one (node-tested).
+- The pin now folds strings built from constants (concatenation, f-string constant parts, `join`, `chr`, base64, rot13), bans any
+  `/api/desk/` or `/api/wheel/` prefix, catches other spellings of the two package names, and flags non-GET call shapes
+  (`.post/.put/.patch/.delete`, `.request`/`.stream`/`.build_request` with a method that is not a constant GET, urllib with a body or a
+  write method, `subprocess`, `os.system`) outside the files that send writes today (`NON_GET_SENDERS`, `SUBPROCESS_ALLOWED`). What a
+  static pin cannot see (names built from run-time data, raw sockets, `http.client`) is listed as KNOWN LIMITS in the test.
+
+## Round 37: a sim probe to settle what is unverified, without order code (2026-11-20)
+
+- **Why.** Rounds 25 and 35 and ROADMAP items 1, 2 and 4 each end in "needs a sim run", and LIMITATIONS still says no order write has
+  ever been made on the real gateway. Nothing settles them but a human placing 1-lot orders on a simulated account, so the probe is a
+  runbook and a report, not code.
+- **What.** `docs/SIM_PROBE.md` (steps S1 to S14, phases A to E with the switches each one needs, the Sunday-open phase for the
+  wide-spread limit and tick throughput, capture, the halt list, a by-hand sheet) and `scripts/probe_report.py` (read-only table over
+  the audit and a saved order search). No change to `guard.py`, `app.py`, any default or the guard pin.
+- **The report never infers a pass.** A step whose evidence is not in the files is UNKNOWN; by-hand items (S6 crossed-stop reply, S7
+  partial-fill cancel, S13 trail modify and gap, S14 throughput) are always UNKNOWN in the table and live on the sheet. FAIL is
+  reserved for an observed unsafe or contradicting outcome (an UNKNOWN write, a failed stop, a type-5 row whose `trailPrice` is a
+  level rather than the distance the read-back assumes, a re-latched logout).
+- **What the probe cannot settle.** A crossed post-fill stop cannot be produced by a click; a 1-lot cannot partially fill and the desk
+  never cancels a filled entry; the desk never modifies a trail and flat-by forbids holding a gap; the TopstepX UI is not shown to be
+  the same path as the API. These stay unverified after the probe and the runbook says so.
+- **The one extra login.** `fillVolume`/`customTag` and the trail fields need raw order rows, which no desk route returns (they are
+  allowlisted away on purpose). The runbook takes one `Order/search` with the desk STOPPED, never alongside it (Round 23).

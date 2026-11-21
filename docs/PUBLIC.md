@@ -33,16 +33,22 @@ prints the URL itself.
   whatever `PX_PUB_URL` says.
 - The URL must be `http://` to `127.0.0.0/8`, `::1` or `localhost`, with no user name or password, query, fragment or path. Anything
   else is `not_allowed` and nothing is fetched.
-- One request shape only: `GET /ai/state?stream=0|1`. No redirect is followed, proxy variables are ignored, the body is capped at
-  256 KB, and the whole fetch is bounded by 3 seconds on the event loop (httpx async), so a hung Public desk cannot hold the
-  deadline loop. One result per stream flag is cached for 5 seconds, single flight; a failure is cached the same way and never
-  covered with older data.
-- Error codes are fixed words: `unset unreachable timeout bad_status too_big bad_json not_allowed`. No text from the Public desk is
-  ever shown.
+- One request shape only: `GET /ai/state?stream=0|1` with `Accept-Encoding: identity` (a compressed reply is refused). No
+  redirect is followed, proxy variables are ignored, the body is capped at 256 KB, and the fetch plus the parse (in a worker
+  thread, every number bounded before it is formatted) is bounded by 3 seconds, so a hung or hostile Public desk cannot hold the
+  deadline loop. One result per stream flag, single flight: a success is fresh for 5 seconds and a failure for 10, counted from
+  the end of the attempt; a failure is never covered with older data.
+- The digest, `/ai/state` and the MCP state never wait on the Public desk: they show the last result with its age while a refresh
+  runs in the background (`PUB: UNKNOWN code=pending` until the first attempt ends). Only the panel's own route waits, at most 3 s.
+- Error codes are fixed words: `unset unreachable timeout bad_status too_big bad_json not_allowed pending`. No text from the
+  Public desk is ever shown: the halt cause, the poll error and the ledger code are closed sets copied from the Public desk's own
+  code, and anything else reads `unreadable`.
 - The reduction (`projectx_desk/pub/view.py`) is an allowlist: enums from fixed sets, validated symbols and OSI option symbols,
   dates, and numbers as decimal strings (the JSON is parsed with `Decimal`, so no float exists). No account number, ticket id,
   order reference, confirm hash, proposal id or ledger event id crosses. A section the Public desk could not read stays UNKNOWN,
-  never an empty list.
+  never an empty list. A ROW this desk cannot read (an OCC-padded option symbol, `BRK/B`) is counted, never dropped silently: the
+  digest prints `PUB_POS: n=0 unreadable=1`, the panel says INCOMPLETE, and a list cut at 200 rows prints `n=200+`. NONE means the
+  Public desk sent an empty list and every row was read.
 - No futures path reads it: `guard.py`, `sizing.py`, `limits.py` and `anchor.py` import nothing from `projectx_desk/pub/`, the
   phone-alert notifier builds its state without it, and Public numbers enter no Topstep calculation and no cross-broker sum.
 - Nothing is shared with the Topstep path: no file, halt, lock, audit line or thread. The link writes nothing to disk.

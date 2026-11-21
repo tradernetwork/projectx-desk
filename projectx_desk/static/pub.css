@@ -1,0 +1,4 @@
+/* Public tab (pub.js, Round 36). Display only: reuses the Robinhood panel classes, adds the permanent note and the UNKNOWN cell. */
+.pub-panel{z-index:56}
+.pub-note{max-width:1100px;margin:0 auto 8px;border:1px solid var(--amber-line);background:var(--amber-bg);color:var(--amber-ink);padding:6px 10px;border-radius:var(--r-sm);font-weight:600}
+.pub-unk{color:var(--amber-ink)}

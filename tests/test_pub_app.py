@@ -284,3 +284,23 @@ def test_the_pub_package_never_opens_a_file():
                 assert n.func.id not in ("open", "print"), f.name
             if isinstance(n, ast.Attribute):
                 assert n.attr not in ("write_text", "write_bytes", "open", "mkdir", "unlink", "replace"), (f.name, n.attr)
+
+
+# ---- F33: nothing on disk, so the boot check and the agent's deny list need nothing new -----------------------------------
+def test_boot_check_and_agent_deny_list_are_unaffected(tmp_path, monkeypatch):
+    assert "PX_PUB" not in (PKG / "datacheck.py").read_text(encoding="utf-8")
+    from projectx_desk import datacheck
+    env = {"PX_PUB_URL": "http://127.0.0.1:8700"}
+    assert datacheck.problem(env, ROOT) == datacheck.problem({}, ROOT)
+    made = []
+    for i, pub in enumerate((None, mock_link())):            # the same files appear with and without the link
+        d = tmp_path / str(i)
+        d.mkdir()
+        monkeypatch.chdir(d)
+        with TestClient(make(pub=pub)) as c:
+            c.get("/api/pub/state")
+            c.get("/ai/digest")
+        made.append(sorted(str(x.relative_to(d)) for x in d.rglob("*")))
+    assert made[0] == made[1]
+    src = (ROOT / "scripts" / "deskagent.py").read_text(encoding="utf-8")
+    assert "pub" not in src.split("DENIED = [", 1)[1].split("]", 1)[0].lower()

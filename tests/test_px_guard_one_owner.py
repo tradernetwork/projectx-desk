@@ -239,3 +239,40 @@ async def test_the_resync_never_closes_out_a_ticket_from_a_positions_read(tmp_pa
     gw.pos, gw.working = [dict(p)], [dict(B_STOP)]
     await g.protect_open_positions()
     assert reads == [] and b.state == "PLACED" and b.stop_state == "ACKED" and gw.writes == [] and not g.halted()
+
+
+# ---- pre-push review: the newer entry fills while PLACING and its POST comes back rejected with an order id -----------------
+
+async def _b_fills_then_rejected(tmp_path, ttl):
+    g, live, clock, gw, t1 = await resting(tmp_path, b=build2)
+    if ttl:
+        clock.t += 400
+        live.quotes[CID]["_rx"] = clock.t
+        await g.expire_resting_entries()
+        assert t1.ttl_cancelled
+    else:
+        assert (await g.cancel_entry(t1.ticket_id)).ok
+    live.orders.pop(555, None)
+    clock.t += 11
+    live.quotes[CID]["_rx"] = clock.t
+    t2 = await staged(g)
+
+    async def reply():                       # t2's fill reaches the hub while its POST is in flight, then the POST says rejected
+        await g.handle_position(fill(live))
+        return {"success": False, "orderId": 556, "errorCode": 2}
+    gw.reply = reply
+    gw.writes.clear()
+    await go(g, t2)
+    assert t2.state == "REJECTED" and t2.stop_state == "ACKED"
+    await g.handle_position(fill(live))      # any later position event or reseed
+    return g, gw, t1, t2
+
+
+async def test_human_cancel_then_a_rejected_but_filled_entry_keeps_one_stop(tmp_path):
+    g, gw, t1, t2 = await _b_fills_then_rejected(tmp_path, ttl=False)
+    assert len(stops(gw)) == 1 and t1.stop_state is None
+
+
+async def test_ttl_cancel_then_a_rejected_but_filled_entry_keeps_one_stop(tmp_path):
+    g, gw, t1, t2 = await _b_fills_then_rejected(tmp_path, ttl=True)
+    assert len(stops(gw)) == 1 and t1.stop_state is None

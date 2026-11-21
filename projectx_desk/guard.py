@@ -1211,10 +1211,12 @@ class Guard:
         """A cancelled entry (human or TTL) that must NOT own a fill on its contract. It stays PLACED so a fill that won the cancel race
         is still protected, but it never owned a fill or a stop, and either another active ticket on the contract already owns one (a
         second stop for one position: never) or a NEWER entry was placed after it (the next fill is that entry's, and it arms the one
-        stop, sized to the position). Alone on its contract it is never dead. Read-only."""
+        stop, sized to the position). Alone on its contract it is never dead. A REJECTED ticket that armed a stop (a rejection that
+        carried an order id and filled) still owns the position until its stop provably fills, so it counts too. Read-only."""
         if not (t.user_cancelled or t.ttl_cancelled) or t.filled_size or t.stop_state is not None:
             return False
-        others = [x for x in active if x is not t]
+        others = [x for x in self.tickets.values() if x is not t and x.contract_id == t.contract_id
+                  and (x in active or (x.state == REJECTED and x.stop_state is not None and not self._stop_filled(x)))]
         return any(x.filled_size or x.stop_state is not None or x.created > t.created for x in others)
 
     async def handle_position(self, p: dict, via: str = "hub") -> None:

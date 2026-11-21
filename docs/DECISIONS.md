@@ -852,11 +852,17 @@ the wheel. Should the futures desk show it, and how?
 GETs the Public desk's `/ai/state` and draws an allowlisted reduction of it. It does not import the Public desk's code or Public's SDK,
 does not share its process, and cannot ask it to do anything. Decided after a three-advocate review.
 
-**The three advocates.** Their verdicts were not handed to the session that built this; one sentence each is to be filled in by the
-owner (see `NEEDS-MICHAEL.md`):
-- Advocate 1: (to be recorded)
-- Advocate 2: (to be recorded)
-- Advocate 3: (to be recorded)
+**The three advocates.** Each argued one option against the others, read-only, with file and line evidence:
+- Library embed (option a): the strongest case is one process, one lock and one halt view. It holds only if the Public guard never sees
+  `os.environ` or a CWD-relative default, because the default halt and audit paths are exactly the futures desk's own `data/HALT` and
+  `data/audit.jsonl`, so a Public halt resolve would delete the futures halt.
+- Sidecar with a relay (option c): the one-POST proof only ran inside the Public desk's own startup, and the AST pin cannot scan a
+  library in site-packages. It holds only if the futures process never relays an order-sending POST.
+- Stay separate (option d, and a red team of a): the Public desk has never touched a live account (its README says so), embedding
+  widens what the pin allows while weakening what it can see, and no phase inside the futures desk should start before one real
+  read-only run of the standalone desk is recorded.
+All three named the same condition: Public never shares the futures halt file, event loop or writer pin. The decision above
+(a loopback read-only link) satisfies it. Phase 1 (staged tickets from the futures desk) waits for that live run.
 
 **Conditions, each test pinned.**
 1. No import of the Public desk's package or of Public's SDK anywhere in `projectx_desk` (`tests/test_px_guard_pin.py`).

@@ -7,8 +7,8 @@ Decision record: `docs/DECISIONS.md` Round 36.
 ## Turn it on
 
 1. Run the Public desk on the same machine. It listens on `127.0.0.1:8700` by default. Note that `./run_dev.sh` also uses port
-   8700 for the mock ProjectX gateway: when you run both, move one (`PUBLIC_DESK_PORT` on the Public side, `DEV_GATEWAY_PORT`
-   here).
+   8700 for the mock ProjectX gateway: when you run both, move one. Recommended: start the Public desk with `PUBLIC_DESK_PORT=8701` and set `PX_PUB_URL=http://127.0.0.1:8701`
+   (the mock gateway keeps 8700, overridable with `DEV_GATEWAY_PORT`).
 2. Set `PX_PUB_URL` for the futures desk, for example `PX_PUB_URL=http://127.0.0.1:8700`, and restart it.
 
 The boot log prints `Public link: on`, or `Public link off: not_allowed` when the value is not a plain loopback http URL. It never

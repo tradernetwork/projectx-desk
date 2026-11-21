@@ -1,0 +1,43 @@
+{
+  "v": 2,
+  "stream": false,
+  "mode": {"reads": true, "trading": false, "options": false},
+  "halt": {"halted": false, "cause": null},
+  "caps": {"max_qty": "10", "max_contracts": "1", "max_notional": "5000", "cash_reserve": "1000",
+           "wheel_max_per_underlying": "4000", "wheel_max_total": "8000"},
+  "account": {"type": "BROKERAGE", "permissions": "BUY_AND_SELL", "options_level": "LEVEL_2", "unknown": []},
+  "balances": {"equity": "12345.67", "cash": "4321.00", "buying_power": "4321.00",
+               "unknown": ["cash_only_buying_power", "options_buying_power"]},
+  "positions": [
+    {"symbol": "ACME", "asset": "EQUITY", "qty": "100", "cost_basis": "4210.00", "market_value": "4400.00",
+     "unrealized_pl": "190.00", "unknown": []},
+    {"symbol": "ACME261218P00040000", "asset": "OPTION", "qty": "-1", "market_value": "-35.00",
+     "unknown": ["cost_basis", "unrealized_pl"]}
+  ],
+  "orders": [
+    {"symbol": "ZETA", "side": "BUY", "type": "LIMIT", "status": "NEW", "qty": "5", "price": "18.25",
+     "filled_qty": "0", "open_close": "OPEN", "unknown": ["avg_price"]}
+  ],
+  "tickets": [
+    {"ticket_id": "tkt-invented-0001", "state": "placed", "symbol": "ZETA", "side": "BUY", "asset": "EQUITY",
+     "qty": "5", "limit_price": "18.25"}
+  ],
+  "wheel": {
+    "summary": {"cycles_open": 2, "legs_open": 1, "basis_unknown": 1, "rolls_active": 0, "rolls_stuck": 0},
+    "cycles": [
+      {"underlying": "ACME", "open": true, "shares": "100", "basis_state": "KNOWN", "basis": "41.35", "legs": 3},
+      {"underlying": "BOLT", "open": true, "shares": "0", "basis_state": "UNKNOWN", "basis": null, "legs": 1}
+    ],
+    "legs": [
+      {"osi": "ACME261218P00040000", "underlying": "ACME", "contracts": "1", "status": "open", "dte": 28,
+       "tested": [], "profit": "noprofit", "roll": "notested"}
+    ],
+    "rolls": [],
+    "wash_mode": "warn",
+    "wash": [
+      {"underlying": "BOLT", "washflag": "POSSIBLE", "window_start": "2026-10-20", "window_end": "2026-12-19",
+       "events": ["ev-invented-7"]}
+    ]
+  },
+  "data": {"polled": true, "as_of": "2026-11-20T15:04:05+00:00", "unknown": [], "error": null}
+}

@@ -48,6 +48,7 @@ from projectx_desk import journal as px_journal
 from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
 from projectx_desk import ticks as px_ticks
+from projectx_desk.pub import link as px_pub_link
 from projectx_desk.rh import letf as px_letf, letf_gex as px_letf_gex, state as px_rh
 from projectx_desk.rh.guard import Guard as RhGuard, Refused as RhRefused
 from projectx_desk.guard import Guard, GuardError
@@ -87,13 +88,16 @@ def record_only_problem(environ=None):
 
 
 def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, connect=True, guard=None, limits=None, mcp_token=None,
-               operator_token=None, allowed_origins=None, record_only=None, rh=None):
+               operator_token=None, allowed_origins=None, record_only=None, rh=None, pub=None):
     """Build the app. Tests inject a fake client / hubs and set connect=False.
 
     record_only (default: PX_RECORD_ONLY): a log-only recorder. Only the market hub, the trade tape, the indicator tracker and
     read-only routes exist: no user hub, no Guard, no watchdog, no MCP, no POST route of any kind.
 
-    rh: an injected Robinhood runtime (tests). Default: built unless PX_RH is explicitly off (0/false/no/off). Never in record-only."""
+    rh: an injected Robinhood runtime (tests). Default: built unless PX_RH is explicitly off (0/false/no/off). Never in record-only.
+
+    pub: an injected Public sidecar link (tests). Default: from PX_PUB_URL; unset means the feature is absent. Never in record-only:
+    a recorder builds no link, registers no route and fetches nothing (Round 36)."""
     rec = record_only_enabled() if record_only is None else bool(record_only)
     if rec:
         why = record_only_problem()
@@ -110,6 +114,9 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
     op_token = operator_token if operator_token is not None else (os.getenv("PX_OPERATOR_TOKEN") or None)
     if op_token and px_mcp.weak_token_reason(op_token):
         raise SystemExit(f"PX_OPERATOR_TOKEN is not usable ({px_mcp.weak_token_reason(op_token)}); generate one with: openssl rand -hex 32")
+    pub_link = None if rec else (pub if pub is not None else px_pub_link.from_env())
+    if pub_link is not None:          # key name and a fixed code only: the URL itself is never printed
+        print("Public link: on" if pub_link.base else f"Public link off: {pub_link.code}", flush=True)
     holder = {}   # the FastMCP server and its ASGI app, when a usable token is configured
 
     @asynccontextmanager
@@ -203,6 +210,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             await c.aclose()
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    app.state.pub = pub_link
 
     tok = mcp_token if mcp_token is not None else os.getenv("PX_MCP_TOKEN")
     if tok and rec:
@@ -452,6 +460,13 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         for _name in ("positions", "orders", "approvals"):
             app.add_api_route(f"/api/rh/{_name}", _rh_section(_name), methods=["GET"])
 
+    if pub_link is not None:
+        # The Public tab (Round 36): display only. One GET to the loopback sidecar, cached and bounded in pub/link.py. There is no
+        # POST, no MCP tool and no chat path for it, and nothing here reaches the guard.
+        @app.get("/api/pub/state")
+        async def pub_state(request: Request, stream: int = 0):
+            return await request.app.state.pub.state(stream=bool(stream))
+
     @app.get("/state.json")
     async def state_json(request: Request, contract: str | None = None, stream: int = 0):
         """Allowlisted view: numbers, enums and validated names only. No account id, no gateway free text."""
@@ -460,6 +475,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         q = live.quotes.get(contract) if contract and CONTRACT_RE.match(contract) else None
         keep = ("lastPrice", "bestBid", "bestAsk", "high", "low", "volume", "timestamp")
         return {
+            **({"pub": st.pub.health()} if getattr(st, "pub", None) is not None else {}),
             "v": 0,
             "asof": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "boot_error": st.boot_error,
@@ -1024,7 +1040,7 @@ async def _notify_task(app):
         amounts, grace, interval = px_notify.config()
         if getattr(app.state, "pusher", None) is None:
             app.state.pusher = px_push.Pusher.from_env(ROOT)
-        n = px_notify.Notifier(app.state.pusher, lambda c: px_digest.build_ai_state(app, c), lambda: _push_extras(app),
+        n = px_notify.Notifier(app.state.pusher, lambda c: px_digest.build_ai_state(app, c, with_pub=False), lambda: _push_extras(app),
                                lambda: _push_contract(app), amounts=amounts, grace_s=grace)
         app.state.notifier = n
         await px_notify.notify_loop(n, interval)

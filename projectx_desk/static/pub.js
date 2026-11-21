@@ -57,20 +57,36 @@
     return s;
   }
   const money = (v) => !(v && v.stream);
+  // Rows the link could not read (or a list it cut) for one section: {unreadable, more} or null.
+  function meta(v, name){
+    const m = v && v.incomplete && v.incomplete[name];
+    return m && (m.unreadable > 0 || m.more) ? {unreadable: m.unreadable > 0 ? m.unreadable : 0, more: !!m.more} : null;
+  }
+  // The words under a table when it is not the whole list: an unreadable row is never shown as "no rows".
+  function incompleteText(t){
+    if(!t || (!t.unreadable && !t.more)) return null;
+    const bits = [];
+    if(t.unreadable) bits.push(t.unreadable + (t.unreadable === 1 ? ' row' : ' rows') + ' the Public desk sent could not be read here');
+    if(t.more) bits.push('the list was cut at ' + t.rows.length + ' rows');
+    return 'INCOMPLETE: ' + bits.join('; ') + '. Check the Public desk itself.';
+  }
+  // A reply belongs on screen only when its stream flag matches the mode now: a non-stream reply that lands after stream
+  // mode was switched on carries dollars and is dropped (and fetched again).
+  function acceptReply(v, streamingNow){ return !!v && (v.stream === true) === !!streamingNow; }
   function positionRows(v){
     const cols = [['Symbol', 'symbol'], ['Asset', 'asset'], ['Qty', 'qty']];
     if(money(v)) cols.push(['Cost', 'cost_basis'], ['Value', 'market_value'], ['Unrealized', 'unrealized_pl']);
-    return table(v && v.positions, cols);
+    return table(v && v.positions, cols, meta(v, 'positions'));
   }
   function orderRows(v){
     const cols = [['Symbol', 'symbol'], ['Side', 'side'], ['Type', 'type'], ['Status', 'status'], ['Qty', 'qty'], ['Filled', 'filled_qty']];
     if(money(v)) cols.push(['Price', 'price'], ['Avg', 'avg_price']);
-    return table(v && v.orders, cols);
+    return table(v && v.orders, cols, meta(v, 'orders'));
   }
   function ticketRows(v){
     const cols = [['State', 'state'], ['Symbol', 'symbol'], ['Side', 'side'], ['Asset', 'asset'], ['Qty', 'qty'], ['Purpose', 'purpose']];
     if(money(v)) cols.push(['Limit', 'limit_price']);
-    return table(v && v.tickets, cols);
+    return table(v && v.tickets, cols, meta(v, 'tickets'));
   }
   function basisText(c){
     if(c.basis_state === 'KNOWN') return c.basis != null ? c.basis : 'KNOWN (hidden in stream mode)';
@@ -80,15 +96,16 @@
   function cycleRows(v){
     const w = v && v.wheel;
     if(!w || w.cycles == null) return null;
-    return {head: ['Underlying', 'Open', 'Shares', 'True basis', 'Legs'],
-      rows: w.cycles.map((c) => [c.underlying, c.open ? 'yes' : 'no', c.shares == null ? U : c.shares, basisText(c), c.legs == null ? U : String(c.legs)])};
+    return withMeta({head: ['Underlying', 'Open', 'Shares', 'True basis', 'Legs'],
+      rows: w.cycles.map((c) => [c.underlying, c.open ? 'yes' : 'no', c.shares == null ? U : c.shares, basisText(c), c.legs == null ? U : String(c.legs)])},
+      meta(v, 'cycles'));
   }
   function washRows(v){
     const w = v && v.wheel;
     if(!w || w.wash_mode === 'off') return {off: true};
     if(w.wash == null) return null;
-    return {head: ['Underlying', 'Wash flag', 'Window'],
-      rows: w.wash.map((r) => [r.underlying, r.flag, (r.window_start || '?') + ' to ' + (r.window_end || '?')])};
+    return withMeta({head: ['Underlying', 'Wash flag', 'Window'],
+      rows: w.wash.map((r) => [r.underlying, r.flag, (r.window_start || '?') + ' to ' + (r.window_end || '?')])}, meta(v, 'wash'));
   }
   function wheelLine(v){
     const w = v && v.wheel;
@@ -98,14 +115,15 @@
     return 'Wheel: ' + n('cycles_open') + ' cycles open, ' + n('legs_open') + ' legs open, ' + n('basis_unknown') + ' with unknown basis, '
       + n('rolls_active') + ' rolls active, ' + n('rolls_stuck') + ' stuck' + (s.ledger ? ', ledger ' + s.ledger : '') + '.';
   }
-  function table(rows, cols){
+  function withMeta(t, m){ t.unreadable = m ? m.unreadable : 0; t.more = m ? m.more : false; return t; }
+  function table(rows, cols, m){
     if(rows == null) return null;                      // a section the Public desk could not read: UNKNOWN, never empty
-    return {head: cols.map((c) => c[0]), rows: rows.map((r) => cols.map((c) => cell(r, c[1])))};
+    return withMeta({head: cols.map((c) => c[0]), rows: rows.map((r) => cols.map((c) => cell(r, c[1])))}, m);
   }
   function withStream(path, on){ return on ? path + '?stream=1' : path; }
 
   const api = {NOTE, ROUTE, codeText, cell, ageText, statusLine, haltLine, accountLine, positionRows, orderRows, ticketRows,
-    cycleRows, washRows, wheelLine, withStream};
+    cycleRows, washRows, wheelLine, withStream, acceptReply, incompleteText};
   if(typeof module !== 'undefined' && module.exports) module.exports = api;
   if(typeof window === 'undefined' || typeof document === 'undefined') return;
   root.pxPub = api;
@@ -121,10 +139,18 @@
   const S = {open: false, view: null, timer: 0, busy: false};
   let panel, bodyHost, btn, own, ownPx, host, opening = false;
 
-  async function load(){
+  async function fetchOnce(){
     const r = await fetch(withStream(ROUTE, streaming()), {credentials: 'same-origin'});
     if(!r.ok) throw new Error('http');
     return r.json();
+  }
+  // A reply whose stream flag no longer matches the mode is dropped and fetched again at once (at most twice more).
+  async function load(){
+    for(let i = 0; i < 3; i++){
+      const v = await fetchOnce();
+      if(acceptReply(v, streaming())) return v;
+    }
+    return null;
   }
 
   function build(){
@@ -195,14 +221,15 @@
   async function refresh(){
     if(S.busy) return;
     S.busy = true;
-    try{ S.view = await load(); }catch(_){ S.view = {enabled: true, reachable: false, code: 'unreachable'}; }
+    try{ S.view = await load(); }catch(_){ S.view = {enabled: true, reachable: false, code: 'unreachable', stream: streaming()}; }
     finally{ S.busy = false; }
     render();
   }
 
   function drawTable(t, emptyText){
     if(t == null) return el('p', 'rh-bad', U + ': the Public desk could not read this.');
-    if(!t.rows.length) return el('p', 'rh-none', emptyText);
+    const inc = incompleteText(t);
+    if(!t.rows.length) return inc ? el('p', 'rh-bad', inc) : el('p', 'rh-none', emptyText);
     const tb = el('table', 'rh-table'), hr = el('tr');
     t.head.forEach((h) => hr.append(el('th', '', h)));
     tb.append(hr);
@@ -211,7 +238,10 @@
       r.forEach((c) => tr.append(el('td', c === U ? 'pub-unk' : '', c)));
       tb.append(tr);
     });
-    return tb;
+    if(!inc) return tb;
+    const box = el('div');
+    box.append(tb, el('p', 'rh-bad', inc));
+    return box;
   }
   function section(title, ...kids){
     const s = el('div', 'rh-sec');
@@ -221,7 +251,7 @@
 
   function render(){
     if(!bodyHost) return;
-    const v = S.view;
+    const v = S.view && acceptReply(S.view, streaming()) ? S.view : null;   // never draw a reply from the other mode
     const kids = [];
     const halt = haltLine(v);
     if(halt) kids.push(el('div', 'rh-halt', halt));
@@ -243,7 +273,7 @@
   // ---- boot: the tab exists only when the desk answers the route ---------------------------------------------------------------
   async function boot(){
     let v;
-    try{ v = await load(); }catch(_){ return; }         // no route: PX_PUB_URL unset, a recorder, or the desk is down
+    try{ v = await fetchOnce(); }catch(_){ return; }    // no route: PX_PUB_URL unset, a recorder, or the desk is down
     if(!v || v.enabled !== true) return;
     S.view = v;
     build();

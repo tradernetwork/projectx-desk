@@ -814,7 +814,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
         "flow": flow,
         "session_ctx": _session_ctx(app, contract_id),
         "rh": rh_block(app, stream),
-        "pub": await pub_block(app, stream) if with_pub else None,
+        "pub": pub_block(app, stream) if with_pub else None,
         "positions": [position_view(p) for p in live.positions.values()],
         "orders": [order_view(o) for o in live.orders.values()],
         "fills_today": len(live.trades) if live.trades_seeded else None,
@@ -919,14 +919,15 @@ def rh_lines(b):
     return [l[:RH_MAX_LINE] for l in L]
 
 
-async def pub_block(app, stream=False):
+def pub_block(app, stream=False):
     """The Public sidecar block (Round 36): the link's allowlisted view, None when PX_PUB_URL is unset. Display only: nothing in
-    it is read by the guard, sizing or any sum with the futures account. Bounded by the link's 3 s timeout, never raises."""
+    it is read by the guard, sizing or any sum with the futures account. NEVER waits on the sidecar: the cached view with its
+    age (a refresh runs in the background), `pending` before the first attempt ends. Never raises."""
     lk = getattr(app.state, "pub", None)
     if lk is None:
         return None
     try:
-        return await lk.state(stream=bool(stream))
+        return lk.peek(stream=bool(stream))
     except Exception:  # noqa: BLE001 - a broken link reads as UNKNOWN, never as empty
         return {"enabled": True, "reachable": False, "code": "unreachable"}
 
@@ -948,14 +949,22 @@ def _pub_fields(row, names):
 
 
 
-def _pub_list(label, rows, item):
+def _pub_count(rows, meta):
+    """`n=3`, `n=200+` when the link cut the list, plus ` unreadable=k` for rows it could not read."""
+    meta = meta if isinstance(meta, dict) else {}
+    n = f"n={len(rows)}{'+' if meta.get('more') else ''}"
+    return n + (f" unreadable={meta['unreadable']}" if meta.get("unreadable") else "")
+
+
+def _pub_list(label, rows, item, meta=None):
+    """UNKNOWN when the section was not read; NONE only when it was read, empty, and no row was unreadable or cut."""
     if rows is None:
         return f"{label}: UNKNOWN"
-    if not rows:
+    if not rows and not meta:
         return f"{label}: NONE"
     shown = "; ".join(item(x) for x in rows[:PUB_MAX_ITEMS])
     more = f" (+{len(rows) - PUB_MAX_ITEMS} more)" if len(rows) > PUB_MAX_ITEMS else ""
-    return f"{label}: n={len(rows)} {shown}{more}"
+    return f"{label}: {_pub_count(rows, meta)}" + (f" {shown}" if shown else "") + more
 
 
 def _pub_yn(v):
@@ -1001,8 +1010,10 @@ def pub_lines(b):
         return " ".join([x.get("state") or "unknown", x.get("symbol") or "UNKNOWN"] +
                         [x[k] for k in ("side", "asset", "open_close", "purpose") if x.get(k)] +
                         _pub_fields({**x, "unknown": []}, [("qty", "qty"), ("limit", "limit_price")]))
-    L += [_pub_list("PUB_POS", b.get("positions"), pos), _pub_list("PUB_ORD", b.get("orders"), order),
-          _pub_list("PUB_TKT", b.get("tickets"), ticket)]
+    inc = b.get("incomplete") if isinstance(b.get("incomplete"), dict) else {}
+    L += [_pub_list("PUB_POS", b.get("positions"), pos, inc.get("positions")),
+          _pub_list("PUB_ORD", b.get("orders"), order, inc.get("orders")),
+          _pub_list("PUB_TKT", b.get("tickets"), ticket, inc.get("tickets"))]
     w = b.get("wheel")
     if w is None:
         L.append("PUB_WHEEL: UNKNOWN")
@@ -1017,9 +1028,11 @@ def pub_lines(b):
             basis = c["basis_state"] + (f":{c['basis']}" if c.get("basis") is not None else "")
             return f"{c['underlying']} basis={basis} shares={c.get('shares') or 'UNKNOWN'}" + ("" if c.get("open") else " closed")
         cycles = w.get("cycles")
-        tail = "cycles=UNKNOWN" if cycles is None else ("cycles=NONE" if not cycles else
-                                                        "; ".join(cyc(c) for c in cycles[:PUB_MAX_ITEMS]) +
-                                                        (f" (+{len(cycles) - PUB_MAX_ITEMS} more)" if len(cycles) > PUB_MAX_ITEMS else ""))
+        tail = "cycles=UNKNOWN" if cycles is None else (
+            "cycles=NONE" if not cycles and not inc.get("cycles") else
+            "cycles " + _pub_count(cycles, inc.get("cycles")) + (" " if cycles else "") +
+            "; ".join(cyc(c) for c in cycles[:PUB_MAX_ITEMS]) +
+            (f" (+{len(cycles) - PUB_MAX_ITEMS} more)" if len(cycles) > PUB_MAX_ITEMS else ""))
         L.append("PUB_WHEEL: " + " ".join(bits) + " | " + tail)
         mode = w.get("wash_mode")
         if mode != "off":
@@ -1027,8 +1040,8 @@ def pub_lines(b):
             if wash is None:
                 L.append("PUB_WASH: UNKNOWN")
             else:
-                L.append(_pub_list("PUB_WASH", wash, lambda r: f"{r['underlying']}={r['flag']}({_f(r.get('window_start'))}..{_f(r.get('window_end'))})")
-                         + f" mode={mode or 'UNKNOWN'}")
+                L.append(_pub_list("PUB_WASH", wash, lambda r: f"{r['underlying']}={r['flag']}({_f(r.get('window_start'))}..{_f(r.get('window_end'))})",
+                                   inc.get("wash")) + f" mode={mode or 'UNKNOWN'}")
     return [ln[:PUB_MAX_LINE] for ln in L]
 
 

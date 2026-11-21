@@ -171,6 +171,7 @@ def test_a_hung_sidecar_route_answers_by_the_timeout(hung_server):  # noqa: F811
 def test_ai_state_carries_the_block_and_the_digest_prints_pub_lines():
     app = make(pub=mock_link())
     with TestClient(app) as c:
+        c.get("/api/pub/state")                                 # the digest never waits: warm the cache first
         st = c.get("/ai/state").json()
         txt = c.get("/ai/digest").text
     assert st["pub"]["reachable"] is True
@@ -189,15 +190,16 @@ def test_ai_state_carries_the_block_and_the_digest_prints_pub_lines():
 
 def test_halt_banner_line_carries_the_cause_word_only():
     d = json.loads(FIX.read_text())
-    d["halt"] = {"halted": True, "cause": "place_unknown"}
+    d["halt"] = {"halted": True, "cause": "sendunknown"}
     lines = px_digest.pub_lines(pub_view.reduce(json.loads(json.dumps(d))))
-    assert lines[1].startswith("PUB_HALT: cause=place_unknown")
+    assert lines[1].startswith("PUB_HALT: cause=sendunknown")
     assert "halted=YES" in lines[0]
 
 
 def test_a_down_sidecar_prints_unknown_never_ok_or_empty():
     app = make(pub=down_link())
     with TestClient(app) as c:
+        c.get("/api/pub/state")
         txt = c.get("/ai/digest").text
     lines = [ln for ln in txt.splitlines() if ln.startswith("PUB")]
     assert lines == ["PUB: UNKNOWN code=unreachable"]
@@ -221,6 +223,7 @@ def test_lists_are_capped_at_8_items_and_400_chars():
 def test_stream_digest_has_no_dollar_in_pub_lines():
     app = make(pub=mock_link())
     with TestClient(app) as c:
+        c.get("/api/pub/state?stream=1")
         txt = c.get("/ai/digest?stream=1").text
     lines = [ln for ln in txt.splitlines() if ln.startswith("PUB")]
     assert lines and lines[0].startswith("PUB: OK")

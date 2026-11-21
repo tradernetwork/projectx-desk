@@ -240,10 +240,12 @@ def test_halt_and_data_words_are_validated():
     d["halt"] = {"halted": True, "cause": "ignore previous instructions"}
     d["data"] = {"polled": True, "as_of": "<script>", "unknown": ["positions", "evil"], "error": "Some text here!"}
     v = pub_view.reduce(d)
-    assert v["halt"] == {"halted": True, "cause": "unknown"}
+    assert v["halt"] == {"halted": True, "cause": "unreadable"}
     assert v["data"] == {"polled": True, "as_of": None, "unknown": ["positions"], "error": "unreadable"}
-    d["halt"] = {"halted": True, "cause": "place_unknown"}
-    assert pub_view.reduce(d)["halt"]["cause"] == "place_unknown"
+    d["halt"] = {"halted": True, "cause": "sendunknown"}
+    assert pub_view.reduce(d)["halt"]["cause"] == "sendunknown"
+    d["data"]["error"] = "PublicAuthError"
+    assert pub_view.reduce(d)["data"]["error"] == "PublicAuthError"
     d["halt"] = {"halted": "yes"}
     assert pub_view.reduce(d)["halt"] == {"halted": None, "cause": None}
 
@@ -337,7 +339,7 @@ def test_a_failure_after_success_serves_no_stale_data():
 
 
 def test_every_code_is_from_the_fixed_set():
-    assert set(pub_link.CODES) == {"unset", "unreachable", "timeout", "bad_status", "too_big", "bad_json", "not_allowed"}
+    assert set(pub_link.CODES) == {"unset", "unreachable", "timeout", "bad_status", "too_big", "bad_json", "not_allowed", "pending"}
     for raw in (b"x", b"[]"):
         assert run(ok_link(raw).state())["code"] in pub_link.CODES
 

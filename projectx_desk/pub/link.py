@@ -4,12 +4,16 @@ Rules, each test pinned:
   * PX_PUB_URL unset or blank: `from_env` returns None and the feature is absent (no route, no tab, no digest line).
   * The URL must be plain http to a loopback host (127.0.0.0/8, ::1, localhost) with no userinfo, query, fragment or path.
     Anything else is the fixed code `not_allowed` and nothing is ever fetched. The URL itself is never logged.
-  * GET only. No redirect is followed (a 3xx is `bad_status`), proxy variables are ignored, the body is capped at 256 KB
-    while it streams in (`too_big`), and the whole fetch is bounded by a 3 s timeout (`timeout`), so a hung sidecar costs
-    at most 3 s of one awaiting coroutine and never blocks the event loop.
-  * One result per stream flag is cached for about 5 s, single flight: any number of callers share one request. A failure
-    is cached the same way (a down sidecar is not hammered) and is never covered with stale data: every section is None.
-  * Every error is one of CODES. Sidecar text never leaves this module: the JSON is reduced by `view.reduce`.
+  * GET only, `Accept-Encoding: identity` (a compressed reply is `bad_status`: no decompression bomb). No redirect is
+    followed (a 3xx is `bad_status`), proxy variables are ignored, the raw body is capped at 256 KB while it streams in
+    (`too_big`). The fetch AND the parse and reduction (run in a worker thread, every number bounded before it is
+    formatted) sit inside one 3 s bound (`timeout`): a hung or hostile sidecar costs one awaiting coroutine, never the loop.
+  * One result per stream flag is cached, single flight: any number of callers share one request. A success is fresh for
+    TTL_S and a failure for FAIL_TTL_S, both counted from the END of the attempt; a failure is never covered with stale data
+    (every section None). `peek` never waits: the digest, /ai/state and MCP read the cache and a refresh runs in the
+    background; before the first attempt ends they read `pending`.
+  * `state` and `peek` never raise. Every error is one of CODES. Sidecar text never leaves: the JSON is reduced by
+    `view.reduce`.
 """
 import asyncio
 import ipaddress
@@ -24,10 +28,11 @@ import httpx
 
 from projectx_desk.pub import view as pub_view
 
-CODES = ("unset", "unreachable", "timeout", "bad_status", "too_big", "bad_json", "not_allowed")
+CODES = ("unset", "unreachable", "timeout", "bad_status", "too_big", "bad_json", "not_allowed", "pending")
 TIMEOUT_S = 3.0
 MAX_BODY = 256 * 1024
 TTL_S = 5.0
+FAIL_TTL_S = 10.0
 PATH = "/ai/state"
 MAX_URL = 200
 
@@ -68,6 +73,15 @@ def decode(body: bytes) -> Any:
     return json.loads(body.decode("utf-8"), parse_float=Decimal, parse_constant=_no_constant)
 
 
+def _parse(body: bytes, stream: bool) -> Any:
+    """Decode and reduce, in a worker thread. The reduced view, or a _Fail. Never raises."""
+    try:
+        view = pub_view.reduce(decode(body), stream)
+    except Exception:  # noqa: BLE001 - malformed, too deep, or anything else: a fixed code, never text
+        return _Fail("bad_json")
+    return _Fail("bad_json") if view is None else view
+
+
 class _Fail:
     """A failed fetch, kept apart from any JSON value (a document that is itself a string is bad_json, not a code)."""
     __slots__ = ("code",)
@@ -86,7 +100,8 @@ class PubLink:
         self._transport = transport
         self._clock = clock
         self._timeout = float(timeout_s)
-        self._cache: Dict[bool, tuple] = {}          # stream -> (attempted_at, fetched_at or None, view)
+        self._cache: Dict[bool, tuple] = {}          # stream -> (ended_at, fetched_at or None, view)
+        self._bg: Dict[bool, Any] = {}               # stream -> the background refresh task started by peek
         self._locks: Dict[bool, tuple] = {}          # stream -> (loop, lock): a lock is bound to the loop it first ran on
         self.requests = 0                            # GETs actually sent (tests read it)
         self.last: Dict[str, Any] = {"reachable": None, "code": self.code, "fetched_at": None}
@@ -102,7 +117,7 @@ class PubLink:
 
     def _fresh(self, stream: bool) -> Optional[Dict[str, Any]]:
         hit = self._cache.get(stream)
-        if hit is None or self._clock() - hit[0] >= TTL_S:
+        if hit is None or self._clock() - hit[0] >= (TTL_S if hit[1] is not None else FAIL_TTL_S):
             return None
         return self._aged(hit)
 
@@ -112,8 +127,16 @@ class PubLink:
         return view
 
     async def state(self, stream: bool = False) -> Dict[str, Any]:
-        """The reduced view for this stream flag, from the cache when it is under TTL_S old. Never raises."""
+        """The reduced view for this stream flag, from the cache while it is fresh, else one bounded fetch. Never raises."""
         stream = bool(stream)
+        try:
+            return await self._state(stream)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - documented never to raise: UNKNOWN with a fixed code
+            return pub_view.failed("unreachable", stream)
+
+    async def _state(self, stream: bool) -> Dict[str, Any]:
         if self.base is None:
             return pub_view.failed(self.code or "not_allowed", stream)
         hit = self._fresh(stream)
@@ -123,19 +146,31 @@ class PubLink:
             hit = self._fresh(stream)               # another caller fetched while this one waited: share it
             if hit is not None:
                 return hit
-            started = self._clock()
             got = await self._get(stream)
+            ended = self._clock()
             if isinstance(got, _Fail):
                 view, fetched = pub_view.failed(got.code, stream), None
             else:
-                view = pub_view.reduce(got, stream)
-                if view is None:
-                    view, fetched = pub_view.failed("bad_json", stream), None
-                else:
-                    fetched = self._clock()
-            self._cache[stream] = (started, fetched, view)
+                view, fetched = got, ended
+            self._cache[stream] = (ended, fetched, view)
             self.last = {"reachable": view["reachable"], "code": view["code"], "fetched_at": fetched}
             return self._aged(self._cache[stream])
+
+    def peek(self, stream: bool = False) -> Dict[str, Any]:
+        """The last view for this flag WITHOUT waiting (the digest, /ai/state and MCP use it), with its age. A stale or missing
+        entry starts one background refresh. `pending` before the first attempt ends. Never raises."""
+        stream = bool(stream)
+        try:
+            if self.base is None:
+                return pub_view.failed(self.code or "not_allowed", stream)
+            if self._fresh(stream) is None:
+                task = self._bg.get(stream)
+                if task is None or task.done():
+                    self._bg[stream] = asyncio.get_running_loop().create_task(self.state(stream))
+            hit = self._cache.get(stream)
+            return self._aged(hit) if hit is not None else pub_view.failed("pending", stream)
+        except Exception:  # noqa: BLE001
+            return pub_view.failed("unreachable", stream)
 
     def health(self) -> Dict[str, Any]:
         """For /state.json: what the last attempt found. No fetch, never raises."""
@@ -146,9 +181,15 @@ class PubLink:
     async def _get(self, stream: bool) -> Any:
         url = self.base + PATH + ("?stream=1" if stream else "?stream=0")
         try:
-            return await asyncio.wait_for(self._fetch(url), self._timeout)
+            return await asyncio.wait_for(self._fetch_and_parse(url, stream), self._timeout)
         except asyncio.TimeoutError:
             return _Fail("timeout")
+
+    async def _fetch_and_parse(self, url: str, stream: bool) -> Any:
+        body = await self._fetch(url)
+        if isinstance(body, _Fail):
+            return body
+        return await asyncio.to_thread(_parse, body, stream)
 
     async def _fetch(self, url: str) -> Any:
         self.requests += 1
@@ -156,13 +197,16 @@ class PubLink:
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(self._timeout), follow_redirects=False, trust_env=False,
                                          transport=self._transport) as c:
-                async with c.stream("GET", url, headers={"accept": "application/json"}) as r:
+                async with c.stream("GET", url, headers={"accept": "application/json", "accept-encoding": "identity"}) as r:
                     if r.status_code != 200:
+                        return _Fail("bad_status")
+                    enc = (r.headers.get("content-encoding") or "identity").strip().lower()
+                    if enc != "identity":
                         return _Fail("bad_status")
                     cl = r.headers.get("content-length")
                     if cl is not None and cl.strip().isdigit() and int(cl.strip()) > MAX_BODY:
                         return _Fail("too_big")
-                    async for chunk in r.aiter_bytes():
+                    async for chunk in r.aiter_bytes():         # identity only (checked above): no decompression here
                         buf += chunk
                         if len(buf) > MAX_BODY:
                             return _Fail("too_big")
@@ -170,10 +214,7 @@ class PubLink:
             return _Fail("timeout")
         except (httpx.HTTPError, OSError, ValueError):
             return _Fail("unreachable")
-        try:
-            return decode(bytes(buf))
-        except (ValueError, UnicodeDecodeError, RecursionError):
-            return _Fail("bad_json")
+        return bytes(buf)
 
 
 def from_env(env: Optional[Dict[str, str]] = None, transport: Any = None) -> Optional[PubLink]:

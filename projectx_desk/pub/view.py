@@ -6,8 +6,12 @@ the end that reads it. Every field below is one of:
   * an enum from a fixed set copied from the sidecar's vocabulary, or a short word matching a strict pattern;
   * a validated symbol (equity ticker or OSI option symbol), or a YYYY-MM-DD day.
 Nothing else crosses: no account number, no ticket id, no order reference, no confirm hash, no proposal id, no ledger event
-id, no free text. A field that fails its check is dropped; a section the sidecar could not read stays None (UNKNOWN), never
-an empty list. Stream mode drops every dollar key, recursively.
+id, no free text. Words that could carry text (halt cause, error, ledger code) are FIXED ENUMS copied from the Public desk's
+own code; anything else reads `unreadable`. A field that fails its check is dropped; a section the sidecar could not read
+stays None (UNKNOWN), never an empty list; a ROW that fails its check is never dropped silently: it is counted in
+`incomplete[section]["unreadable"]`, and a list cut at MAX_ROWS is flagged `more`, so an unreadable short put can never
+read as "no positions". Numbers are bounded BEFORE they are formatted (a huge exponent is never expanded). Stream mode drops
+every dollar key, recursively.
 """
 import re
 from decimal import Decimal
@@ -18,7 +22,7 @@ SYMBOL = re.compile(r"[A-Z0-9][A-Z0-9.\-]{0,20}")
 OSI = re.compile(r"[A-Z][A-Z0-9]{0,5}\d{6}[CP]\d{8}", re.ASCII)
 WORD = re.compile(r"[a-z][a-z0-9_]{0,31}")
 ERRWORD = re.compile(r"[A-Za-z_]{1,40}")
-NUM = re.compile(r"-?\d{1,15}(\.\d{1,10})?", re.ASCII)
+NUM = re.compile(r"-?\d{1,15}(\.\d{1,12})?", re.ASCII)
 DAY = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
 ASOF = re.compile(r"[0-9T:+\-.Z]{10,40}")
 
@@ -45,6 +49,30 @@ WASH_MODES = frozenset({"warn", "refuse", "off"})
 SECTIONS = ("account", "balances", "positions", "orders")
 SUMMARY_KEYS = ("cycles_open", "legs_open", "basis_unknown", "rolls_active", "rolls_stuck")
 
+# Closed vocabularies copied from the Public desk (/home/mph/pxdev/public-desk at d9c73c6). Anything else is `unreadable`.
+# Halt causes: desk/guard.py H_SEND_UNKNOWN, H_CANCEL_UNKNOWN, H_UNEXPECTED, H_REJECTED, H_BAD_FILE; wheel/desk.py trip_halt
+# ("wheelfile") and _strand ("rollstranded", "rollpartial"); "unknown" is what its halt_cause() returns for an unreadable file.
+HALT_CAUSES = frozenset({"sendunknown", "cancelunknown", "unexpected", "rejected", "badfile", "wheelfile", "rollstranded",
+                         "rollpartial", "unknown"})
+# Poll errors: errors.py PublicError subclasses' `code`, desk/reads.py Unknown ("account_unknown", "account_unflagged"),
+# desk/state.py Runtime ("bad_reply").
+ERRORS = frozenset({"PublicError", "PublicNotConfigured", "PublicAuthError", "PublicRateLimited", "PublicBadReply",
+                    "account_unknown", "account_unflagged", "bad_reply"})
+# Ledger and refusal codes: desk/guard.py CODES and wheel/rules.py CODES (the digest's `_code` passes only these).
+LEDGER_CODES = frozenset({
+    "disabled", "halted", "nocap", "qtycap", "notionalcap", "closed", "busy", "noaccount", "restricted", "stale",
+    "unreadable", "noposition", "oversell", "nofunds", "badintent", "noticket", "used", "expired", "mismatch", "unwritable",
+    "badstate", "noorder", "unsafe", "unconfirmed", "optionsoff", "optionlevel", "naked", "nocash", "noshort", "lossclose",
+    "wheelonly",
+    "noquote", "wide", "nodelta", "delta", "nooi", "thin", "dte", "capped", "noshares", "nobasis", "belowbasis", "debitroll",
+    "noroll", "notested", "noprofit", "tick", "noleg", "ledger", "noproposal", "rollstate", "badrecord", "duplicate",
+    "badrequest", "unrecorded", "washsale"})
+# Number bounds, checked on the Decimal's digits and exponent BEFORE any formatting.
+MAX_DIGITS = 18
+MAX_ADJUSTED = 14
+MIN_ADJUSTED = -12
+MAX_INT = 10 ** 15
+
 # Every dollar key this view can carry. Stream mode removes each of them (and the whole balances block).
 DOLLARS = frozenset({"cost_basis", "market_value", "unrealized_pl", "price", "limit_price", "avg_price", "equity",
                      "cash", "buying_power", "cash_only_buying_power", "options_buying_power", "basis"})
@@ -53,18 +81,30 @@ MAX_ROWS = 200                                      # rows kept per list; the di
 
 # ---- validators ------------------------------------------------------------------------------------------------------
 def num(v: Any) -> Optional[str]:
-    """A canonical decimal string, or None. Accepts an int, a finite Decimal or a decimal string; never a float."""
+    """A canonical decimal string, or None. Accepts an int, a finite Decimal or a decimal string; never a float. A Decimal is
+    judged on its digits and exponent first: one with more than MAX_DIGITS significant digits, or a magnitude outside
+    10**MIN_ADJUSTED to 10**MAX_ADJUSTED (zero excepted), is refused without ever being expanded."""
     if isinstance(v, bool) or v is None:
         return None
-    if isinstance(v, int):
-        s = str(v)
-    elif isinstance(v, Decimal):
-        if not v.is_finite():
+    try:
+        if isinstance(v, int):
+            if not -MAX_INT < v < MAX_INT:
+                return None
+            s = str(v)
+        elif isinstance(v, Decimal):
+            if not v.is_finite():
+                return None
+            t = v.as_tuple()
+            if len(t.digits) > MAX_DIGITS or not isinstance(t.exponent, int) or t.exponent < -MAX_DIGITS:
+                return None
+            if v != 0 and not MIN_ADJUSTED <= v.adjusted() <= MAX_ADJUSTED:
+                return None
+            s = format(v, "f")
+        elif isinstance(v, str):
+            s = v.strip() if len(v) <= 40 else ""
+        else:
             return None
-        s = format(v, "f")
-    elif isinstance(v, str):
-        s = v.strip()
-    else:
+    except (ValueError, ArithmeticError, MemoryError):
         return None
     return s if NUM.fullmatch(s) else None
 
@@ -133,27 +173,39 @@ TICKET_FIELDS = {"state": lambda v: _enum(v, TICKET_STATES), "symbol": instrumen
 
 
 # ---- sections -------------------------------------------------------------------------------------------------------
-def _rows(raw: Any, fields: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+def _collect(raw: Any, fn, name: str, inc: Dict[str, Dict[str, Any]]) -> Optional[list]:
+    """Reduce one list. None when the sidecar sent no list (UNKNOWN). Every row `fn` cannot read is COUNTED in
+    inc[name]["unreadable"], never dropped silently, and a list longer than MAX_ROWS is flagged `more`."""
     if not isinstance(raw, list):
         return None
-    out = [r for r in (_row(x, fields) for x in raw[:MAX_ROWS]) if r is not None]
-    # A row whose symbol could not be read stays only when the sidecar itself listed the symbol as unknown: it may hold a
-    # claim on shares. A row with neither is dropped.
-    return [r for r in out if "symbol" in r or "symbol" in r["unknown"]]
-
-
-def _tickets(raw: Any) -> Optional[List[Dict[str, Any]]]:
-    if not isinstance(raw, list):
-        return None
-    out = []
-    for t in raw[:MAX_ROWS]:
-        r = _row(t, TICKET_FIELDS)
-        if r is None or "symbol" not in r:
-            continue
-        r.pop("unknown", None)
-        r.setdefault("state", "unknown")
-        out.append(r)
+    out, bad = [], 0
+    for x in raw[:MAX_ROWS]:
+        r = fn(x)
+        if r is None:
+            bad += 1
+        else:
+            out.append(r)
+    if bad or len(raw) > MAX_ROWS:
+        inc[name] = {"unreadable": bad, "more": len(raw) > MAX_ROWS}
     return out
+
+
+def _listed(fields: Dict[str, Any]):
+    def fn(x: Any) -> Optional[Dict[str, Any]]:
+        r = _row(x, fields)
+        # A row whose symbol could not be read is kept (printed sym=UNKNOWN) only when the sidecar itself listed the symbol
+        # as unknown; any other unreadable symbol (an OCC-padded option, BRK/B) makes the row unreadable, and counted.
+        return r if r is not None and ("symbol" in r or "symbol" in r["unknown"]) else None
+    return fn
+
+
+def _ticket(t: Any) -> Optional[Dict[str, Any]]:
+    r = _row(t, TICKET_FIELDS)
+    if r is None or "symbol" not in r:
+        return None
+    r.pop("unknown", None)
+    r.setdefault("state", "unknown")
+    return r
 
 
 def _halt(raw: Any) -> Dict[str, Any]:
@@ -164,7 +216,8 @@ def _halt(raw: Any) -> Dict[str, Any]:
         return {"halted": None, "cause": None}
     if not halted:
         return {"halted": False, "cause": None}
-    return {"halted": True, "cause": word(raw.get("cause")) or "unknown"}
+    c = raw.get("cause")
+    return {"halted": True, "cause": c if isinstance(c, str) and c in HALT_CAUSES else "unreadable"}
 
 
 def _mode(raw: Any) -> Dict[str, Any]:
@@ -214,25 +267,25 @@ def _wash(r: Any) -> Optional[Dict[str, Any]]:
             "window_start": _day(r.get("window_start")), "window_end": _day(r.get("window_end"))}
 
 
-def _wheel(w: Any, stream: bool) -> Optional[Dict[str, Any]]:
+def _wheel(w: Any, stream: bool, inc: Dict[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not isinstance(w, dict):
         return None
     s = w.get("summary") if isinstance(w.get("summary"), dict) else {}
     summary: Dict[str, Any] = {k: _int(s.get(k)) for k in SUMMARY_KEYS}
     if "ledger" in s:
-        summary["ledger"] = word(s.get("ledger")) or "unreadable"
+        lg = s.get("ledger")
+        summary["ledger"] = lg if isinstance(lg, str) and lg in LEDGER_CODES else "unreadable"
 
-    def lst(key, fn):
-        raw = w.get(key)
-        return None if not isinstance(raw, list) else [x for x in (fn(v) for v in raw[:MAX_ROWS]) if x is not None]
-    rolls = w.get("rolls")
     return {"summary": summary,
-            "cycles": lst("cycles", lambda c: _cycle(c, stream)),
-            "legs": lst("legs", _leg),
-            "rolls": None if not isinstance(rolls, list) else [
-                _enum(r.get("state"), ROLL_STATES) or "unknown" for r in rolls[:MAX_ROWS] if isinstance(r, dict)],
+            "cycles": _collect(w.get("cycles"), lambda c: _cycle(c, stream), "cycles", inc),
+            "legs": _collect(w.get("legs"), _leg, "legs", inc),
+            "rolls": _collect(w.get("rolls"), _roll, "rolls", inc),
             "wash_mode": _enum(w.get("wash_mode"), WASH_MODES),
-            "wash": lst("wash", _wash)}
+            "wash": _collect(w.get("wash"), _wash, "wash", inc)}
+
+
+def _roll(r: Any) -> Optional[str]:
+    return (_enum(r.get("state"), ROLL_STATES) or "unknown") if isinstance(r, dict) else None
 
 
 def _data(raw: Any) -> Dict[str, Any]:
@@ -243,7 +296,7 @@ def _data(raw: Any) -> Dict[str, Any]:
     return {"polled": raw.get("polled") is True,
             "as_of": a if isinstance(a, str) and ASOF.fullmatch(a) else None,
             "unknown": [k for k in SECTIONS if isinstance(unk, list) and k in unk],
-            "error": None if err is None else (err if isinstance(err, str) and ERRWORD.fullmatch(err) else "unreadable")}
+            "error": None if err is None else (err if isinstance(err, str) and err in ERRORS else "unreadable")}
 
 
 # ---- the view ---------------------------------------------------------------------------------------------------------
@@ -252,7 +305,7 @@ def failed(code: str, stream: bool = False) -> Dict[str, Any]:
     out = {"enabled": True, "reachable": False, "code": code, "age_s": None, "stream": bool(stream),
            "mode": {"reads": None, "trading": None, "options": None}, "halt": {"halted": None, "cause": None},
            "account": None, "balances": None, "positions": None, "orders": None, "tickets": None, "wheel": None,
-           "data": {"polled": False, "as_of": None, "unknown": list(SECTIONS), "error": None}}
+           "data": {"polled": False, "as_of": None, "unknown": list(SECTIONS), "error": None}, "incomplete": {}}
     if stream:
         out.pop("balances")
     return out
@@ -264,18 +317,20 @@ def reduce(doc: Any, stream: bool = False) -> Optional[Dict[str, Any]]:
         return None
     acct = doc.get("account")
     bal = doc.get("balances")
+    inc: Dict[str, Dict[str, Any]] = {}
     out: Dict[str, Any] = {
         "enabled": True, "reachable": True, "code": None, "age_s": None, "stream": bool(stream),
         "mode": _mode(doc.get("mode")),
         "halt": _halt(doc.get("halt")),
         "account": _row(acct, ACCOUNT_FIELDS) if isinstance(acct, dict) else None,
         "balances": _row(bal, BALANCE_FIELDS) if isinstance(bal, dict) else None,
-        "positions": _rows(doc.get("positions"), POSITION_FIELDS),
-        "orders": _rows(doc.get("orders"), ORDER_FIELDS),
-        "tickets": _tickets(doc.get("tickets")),
-        "wheel": _wheel(doc.get("wheel"), stream),
+        "positions": _collect(doc.get("positions"), _listed(POSITION_FIELDS), "positions", inc),
+        "orders": _collect(doc.get("orders"), _listed(ORDER_FIELDS), "orders", inc),
+        "tickets": _collect(doc.get("tickets"), _ticket, "tickets", inc),
+        "wheel": _wheel(doc.get("wheel"), stream, inc),
         "data": _data(doc.get("data")),
     }
+    out["incomplete"] = inc
     return strip(out) if stream else out
 
 

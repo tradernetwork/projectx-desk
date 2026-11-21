@@ -133,3 +133,28 @@ def test_no_dynamic_html_eval_storage_or_console():
 def test_no_em_or_en_dashes_in_the_new_files():
     for p in (JS, CSS, pathlib.Path(__file__)):
         assert not re.search("[" + chr(0x2013) + chr(0x2014) + "]", read(p)), p.name
+
+
+# ---- review should-fix 5: the stream-mode race, and B2 in the panel ----------------------------------------------------
+def test_a_reply_from_the_other_mode_is_dropped():
+    full_v, stream_v = full(), stream()
+    got = node("[p.acceptReply(v.a, true), p.acceptReply(v.a, false), p.acceptReply(v.b, true), p.acceptReply(v.b, false),"
+               " p.acceptReply(null, false), p.acceptReply({stream: undefined}, true)]", {"a": full_v, "b": stream_v})
+    assert got == [False, True, True, False, False, False]
+    src = code_only(read(JS))
+    assert "if(acceptReply(v, streaming())) return v;" in src                     # load() refetches a stale-mode reply
+    assert "S.view && acceptReply(S.view, streaming()) ? S.view : null" in src     # render() never draws one
+
+
+def test_unreadable_and_cut_rows_are_said_in_the_panel():
+    d = json.loads(read(FIX))
+    d["positions"] = [{"symbol": "ACME  261218P00040000", "asset": "OPTION", "qty": "-1"}]
+    d["wheel"]["wash"].append({"underlying": "BRK/B", "washflag": "POSSIBLE"})
+    v = {**pub_view.reduce(d), "age_s": 1}
+    got = node("{pos: p.positionRows(v), pt: p.incompleteText(p.positionRows(v)), wt: p.incompleteText(p.washRows(v)),"
+               " ok: p.incompleteText(p.orderRows(v))}", v)
+    assert got["pos"]["rows"] == [] and got["pos"]["unreadable"] == 1
+    assert got["pt"] == "INCOMPLETE: 1 row the Public desk sent could not be read here. Check the Public desk itself."
+    assert got["wt"].startswith("INCOMPLETE: 1 row") and got["ok"] is None
+    src = code_only(read(JS))
+    assert "return inc ? el('p', 'rh-bad', inc) : el('p', 'rh-none', emptyText);" in src

@@ -36,6 +36,153 @@ PUB_BANNED_RE = re.compile(r"\b(" + "|".join(sorted(PUB_BANNED)) + r")\b")
 PUB_WRITE_PATHS = ("/api/desk/place", "/api/desk/cancel", "/api/desk/halt", "/api/wheel/confirm", "/api/wheel/stage",
                    "/api/wheel/record", "/api/wheel/sync")
 PUB_WRITE_RE = re.compile("|".join(re.escape(x) for x in PUB_WRITE_PATHS), re.I)
+# Review of Round 36: the futures desk has no /api/desk/ or /api/wheel/ route of its own, so ANY string (or string built from
+# constants, or the constant parts of an f-string) holding one of those prefixes is the sidecar's write surface.
+PUB_ROUTE_PREFIX = re.compile(r"/api/(desk|wheel)/", re.I)
+PUB_MODULE_RE = re.compile(r"public_?desk|public_?api", re.I)       # module names, any spelling of the two packages
+# Files that may send an outbound non-GET HTTP request today, each for its own documented reason (the two guards and the mocks are
+# exempt from every rule). Anywhere else, a write verb on the wire is a violation (call-shape rule below).
+NON_GET_SENDERS = {f"{PKG}/client.py", f"{PKG}/push.py", f"{PKG}/chat.py", f"{PKG}/llm_login.py", f"{PKG}/llm_chat.py",
+                   f"{PKG}/rh/oauth.py", f"{PKG}/rh/mcp.py"}
+SUBPROCESS_ALLOWED = {f"{PKG}/llm_providers.py", "scripts/deskagent.py", "scripts/screenshots.py"}
+WRITE_VERBS = {"POST", "PUT", "PATCH", "DELETE"}
+# ProjectX reads are POSTs to a constant /api/<Capitalised>/ path through PXClient (the order-write paths are banned above); those
+# stay allowed. A post to anything else, or to a URL computed at run time, is a send.
+PROJECTX_PATH = re.compile(r"/api/[A-Z][A-Za-z]+/[A-Za-z]+$")
+# KNOWN LIMITS of this static pin (cannot be caught by AST folding; covered by review, the GET-only rule on pub/, and the
+# fact that the sidecar's POSTs need its own CSRF token, which nothing here fetches):
+#   * a route or name assembled from runtime data (a variable, a file, an env var, a network reply), e.g. f"/api/x/{v}" with
+#     v not a constant, or "".join(reversed(s)) of a variable;
+#   * a write sent through a module this pin does not model (raw socket, http.client, asyncio.open_connection, ctypes), or a
+#     function object fetched through a container or a closure;
+#   * a non-GET sent by one of NON_GET_SENDERS to a URL built at run time (those files are reviewed by hand; none names the
+#     sidecar today, and the folded-string rule still catches a constant one).
+
+
+def _fold(node):
+    """The string a node evaluates to when it is built only from constants, else None. f-string holes that are not constant
+    fold to a NUL placeholder, so a constant prefix like "/api/desk/" is still seen."""
+    if isinstance(node, ast.Constant):
+        v = node.value
+        if isinstance(v, bytes):
+            return v.decode("utf-8", "ignore")
+        return v if isinstance(v, str) else None
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        a, b = _fold(node.left), _fold(node.right)
+        return a + b if a is not None and b is not None else None
+    if isinstance(node, ast.JoinedStr):
+        out = []
+        for part in node.values:
+            if isinstance(part, ast.FormattedValue):
+                f = _fold(part.value)
+                out.append(f if f is not None else "\x00")
+            else:
+                out.append(_fold(part) or "")
+        return "".join(out)
+    if isinstance(node, ast.Call):
+        f, args = node.func, node.args
+        name = f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else None
+        if name == "join" and isinstance(f, ast.Attribute) and len(args) == 1:
+            sep = _fold(f.value)
+            items = args[0]
+            if isinstance(items, ast.Call) and isinstance(items.func, ast.Name) and items.func.id == "map" and len(items.args) == 2 \
+                    and isinstance(items.args[0], ast.Name) and items.args[0].id == "chr" and isinstance(items.args[1], (ast.List, ast.Tuple)):
+                vals = [e.value for e in items.args[1].elts if isinstance(e, ast.Constant) and isinstance(e.value, int)]
+                if sep is not None and len(vals) == len(items.args[1].elts):
+                    try:
+                        return sep.join(map(chr, vals))
+                    except (ValueError, OverflowError):
+                        return None
+            if sep is not None and isinstance(items, (ast.List, ast.Tuple)):
+                parts = [_fold(e) for e in items.elts]
+                return sep.join(parts) if all(x is not None for x in parts) else None
+        if name == "chr" and len(args) == 1 and isinstance(args[0], ast.Constant) and isinstance(args[0].value, int):
+            try:
+                return chr(args[0].value)
+            except (ValueError, OverflowError):
+                return None
+        if name in ("decode", "encode", "str", "lower", "upper", "strip") and isinstance(f, ast.Attribute) and not args:
+            return _fold(f.value)
+        if name in ("b64decode", "urlsafe_b64decode", "b32decode", "b16decode") and args:
+            raw = _fold(args[0])
+            if raw is not None:
+                import base64
+                try:
+                    return getattr(base64, name)(raw).decode("utf-8", "ignore")
+                except Exception:  # noqa: BLE001
+                    return None
+        if name == "decode" and len(args) >= 2:
+            raw, codec = _fold(args[0]), _fold(args[1])
+            if raw is not None and codec and codec.replace("-", "_").lower() in ("rot13", "rot_13"):
+                import codecs
+                return codecs.decode(raw, "rot13")
+    return None
+
+
+def _built_text_violations(node, filename):
+    """The text rules, applied to a string BUILT from constants (concatenation, f-string, join, chr, base64, rot13)."""
+    text = _fold(node)
+    if text is None:
+        return []
+    out = []
+    if WRITE_ENDPOINT.search(text):
+        out.append(f"{filename}:{node.lineno} built endpoint literal {text[:40]!r}")
+    if RH_WRITE_SHAPE.search(text) or any(re.search(rf"\b{t}\b", text) for t in RH_WRITE_TOOLS):
+        out.append(f"{filename}:{node.lineno} built Robinhood write tool name {text[:40]!r}")
+    if PUB_BANNED_RE.search(text) or PUB_MODULE_RE.search(text):
+        out.append(f"{filename}:{node.lineno} built Public sidecar or SDK name {text[:40]!r}")
+    if PUB_WRITE_RE.search(text) or PUB_ROUTE_PREFIX.search(text):
+        out.append(f"{filename}:{node.lineno} built Public sidecar route {text[:40]!r}")
+    return out
+
+
+def _verb(node):
+    """The HTTP method a call names: folded upper-case text, or '?' when it is computed at run time."""
+    t = _fold(node)
+    return t.strip().upper() if t is not None else "?"
+
+
+def _call_shape_violations(tree, filename):
+    """A write verb on the wire outside NON_GET_SENDERS: httpx/requests-style .post/.put/.patch/.delete, .request or .stream or
+    .build_request with a method that is not a constant GET/HEAD, urllib Request with data or a write method, urlopen with
+    data, and subprocess (curl, wget) outside SUBPROCESS_ALLOWED. FastAPI's @app.post decorators are route definitions, not
+    sends, and are skipped."""
+    out = []
+    decorators = set()
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            decorators |= {id(d) for d in n.decorator_list}
+    sender = filename in NON_GET_SENDERS
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.Import, ast.ImportFrom)):
+            mods = [a.name for a in n.names] + ([n.module] if isinstance(n, ast.ImportFrom) and n.module else [])
+            if any(m.split(".")[0] == "subprocess" for m in mods) and filename not in SUBPROCESS_ALLOWED:
+                out.append(f"{filename}:{n.lineno} imports subprocess")
+            if any(PUB_MODULE_RE.search(m) for m in mods):
+                out.append(f"{filename}:{n.lineno} imports {mods} (Public is read-only here)")
+        if not isinstance(n, ast.Call) or id(n) in decorators or sender:
+            continue
+        f = n.func
+        attr = f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else None
+        kw = {k.arg: k.value for k in n.keywords if k.arg}
+        first = _fold(n.args[0]) if n.args else None
+        projectx_read = attr == "post" and first is not None and PROJECTX_PATH.match(first) and not WRITE_ENDPOINT.search(first)
+        if attr in ("post", "put", "patch", "delete") and isinstance(f, ast.Attribute) and not projectx_read:
+            out.append(f"{filename}:{n.lineno} sends .{attr}() (non-GET HTTP outside the allowed senders)")
+        if attr in ("request", "stream", "build_request") and isinstance(f, ast.Attribute):
+            m = n.args[0] if n.args else kw.get("method")
+            if m is None or _verb(m) not in ("GET", "HEAD"):
+                out.append(f"{filename}:{n.lineno} .{attr}() with method {_verb(m) if m is not None else '?'}")
+        if attr == "Request":
+            m = kw.get("method")
+            if "data" in kw or len(n.args) > 1 or (m is not None and _verb(m) not in ("GET", "HEAD")):
+                out.append(f"{filename}:{n.lineno} urllib Request with a body or a write method")
+        if attr == "urlopen" and ("data" in kw or len(n.args) > 1):
+            out.append(f"{filename}:{n.lineno} urlopen with data")
+        if attr in ("system", "popen", "spawnl", "spawnv", "execv", "execl") and isinstance(f, ast.Attribute) \
+                and isinstance(f.value, ast.Name) and f.value.id == "os":
+            out.append(f"{filename}:{n.lineno} os.{attr}")
+    return out
 MONEY_ALLOWED_FILES = {f"{PKG}/app.py"}       # guard.py itself is exempt from every rule
 EXTRA_ALLOWED = {"arm_trail": {f"{PKG}/mcp.py"}}   # the MCP tool is the one other caller of arm_trail, gated by PX_MCP_TRAIL and the human-typed window
 
@@ -55,7 +202,14 @@ def violations(source: str, filename: str):
     if filename in GUARD_FILES or filename in SERVER_SIDE_MOCKS:
         return []
     out, tree = [], ast.parse(source)
+    out += _call_shape_violations(tree, filename)
     for node in ast.walk(tree):
+        if isinstance(node, (ast.BinOp, ast.JoinedStr, ast.Call)):
+            out += _built_text_violations(node, filename)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)):
+            t = node.value.decode("utf-8", "ignore") if isinstance(node.value, bytes) else node.value
+            if PUB_ROUTE_PREFIX.search(t):
+                out.append(f"{filename}:{node.lineno} Public sidecar route prefix in {t[:40]!r}")
         if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)):
             text = node.value.decode("utf-8", "ignore") if isinstance(node.value, bytes) else node.value
             if WRITE_ENDPOINT.search(text):
@@ -167,6 +321,35 @@ def test_detector_catches_the_indirect_shapes():
         "sidecar wheel record": 'u = "/api/wheel/record"',
         "sidecar wheel sync": 'u = "/api/wheel/sync"',
         "defining a writer": "def place_multileg(x):\n    pass",
+        # review of Round 36: strings built from constants, and write verbs on the wire
+        "getattr concat": 'getattr(x, "place_" + "order")(o)',
+        "importlib concat": 'import importlib\nimportlib.import_module("public_" + "desk")',
+        "__import__ concat": '__import__("public_" + "desk")',
+        "implicit concat route": 'u = "/api/desk/pl" "ace"',
+        "fstring route with a variable": 'v = "place"\nu = f"/api/desk/{v}"',
+        "fstring const": "u = f\"/api/desk/{'pla'}ce\"",
+        "concat route": 'u = "/api/desk/" + "place"',
+        "join route": 'u = "/".join(["", "api", "desk", "place"])',
+        "base64 route": 'import base64\nu = base64.b64decode("L2FwaS9kZXNrL3BsYWNl").decode()',
+        "chr route": 'u = "/api/" + "".join(map(chr, [100, 101, 115, 107])) + "/x"',
+        "chr name": 'n = "".join(map(chr, [112, 108, 97, 99, 101, 95, 111, 114, 100, 101, 114]))',
+        "rot13 name": 'import codecs\ncodecs.decode("cynpr_beqre", "rot13")',
+        "httpx post": 'import httpx\nhttpx.post("http://127.0.0.1:8701/x", json={})',
+        "client post to a computed url": "await c.post(u)",
+        "request POST": 'await c.request("POST", u)',
+        "request computed method": "await c.request(m, u)",
+        "stream POST": 'c.stream("POST", u)',
+        "stream concat POST": 'c.stream("PO" + "ST", u)',
+        "build_request PUT": 'c.build_request("PUT", u)',
+        "client delete": "await c.delete(u)",
+        "urllib Request with data": 'import urllib.request\nurllib.request.urlopen(urllib.request.Request(u, data=b"{}"))',
+        "urllib Request write method": 'import urllib.request\nurllib.request.Request(u, method="PO" + "ST")',
+        "urlopen with data": 'import urllib.request\nurllib.request.urlopen(u, b"{}")',
+        "subprocess curl": 'import subprocess\nsubprocess.run(["curl", "-X", "POST", u])',
+        "os.system": 'import os\nos.system("curl -X POST " + u)',
+        "alt module spelling": "import publicdesk",
+        "alt sdk spelling": "from publicapi import Client",
+        "sys.modules lookup": 'import sys\nsys.modules["public_desk"]',
     }
     for label, src in cases.items():
         assert violations(src, f"{PKG}/mcp.py"), f"detector missed: {label}"
@@ -218,6 +401,20 @@ def test_no_static_file_names_a_sidecar_write_route_or_port():
         assert not PUB_WRITE_RE.search(text), f.name
         assert not PUB_BANNED_RE.search(text), f.name
         assert ":8700" not in text, f.name
+
+
+def test_call_shapes_allow_what_the_desk_does_today():
+    ok = [
+        '@app.post("/api/place")\nasync def f():\n    pass',                       # a FastAPI route, not a send
+        'async with c.stream("GET", url) as r:\n    pass',
+        'rows = await client.post("/api/Order/searchOpen", {})',                    # a ProjectX read through PXClient
+        'r = urllib.request.urlopen(BASE + path, timeout=10)',
+    ]
+    for src in ok:
+        assert violations(src, f"{PKG}/state.py") == [], src
+    assert violations('async with c.stream("POST", url) as r:\n    pass', f"{PKG}/llm_chat.py") == []   # an allowed sender
+    assert violations("import subprocess", f"{PKG}/llm_providers.py") == []
+    assert violations("import subprocess", f"{PKG}/digest.py")
 
 
 def test_detector_allows_what_it_should():

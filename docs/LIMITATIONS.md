@@ -24,6 +24,13 @@ but it is not the real thing. Not yet confirmed on a real account:
   including the fill event that triggers the stop, rests on them.
 - the gateway's rate limits (the client stays under the documented 50 per 30 s for bars and 200 per 60 s otherwise)
 
+**How to settle the unverified items.** [SIM_PROBE.md](SIM_PROBE.md) is a human-run runbook for one simulated account and one MES
+contract; each step names the item above (or in `docs/DECISIONS.md` Rounds 25 and 35) that it settles and its pass or fail
+observation. `scripts/probe_report.py` (read-only, standalone) reads `data/audit.jsonl` and a saved order search and prints PASS,
+FAIL or UNKNOWN per step. Nothing on this page changes until a probe has been run and its table read; until then every item above
+stays unverified. Some items are not settled by the probe at all (the crossed-stop reply, a cancel on a partial fill, a modify of a
+live trail); the runbook says which.
+
 ## Known limitations
 
 **On loopback (the default) the HTTP API has no operator login.** `GET /api/csrf` is open and the `Origin` header can be set by any

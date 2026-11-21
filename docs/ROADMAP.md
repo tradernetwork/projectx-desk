@@ -12,17 +12,24 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
 
 ## Next, in order
 
+**Gate: the sim probe.** Items 1, 2 (its probe) and the throughput test in 4 are settled only by a run of
+[SIM_PROBE.md](SIM_PROBE.md) and its `scripts/probe_report.py` table (steps S1, S9 to S12, S14), not by reading the code. Nothing
+below is ticked until that table shows PASS for the steps the item names; an UNKNOWN row is not a pass.
+
 1. **Restart the desk and clear the latched `gateway_logout` halt.** Human step, flat only. Check the digest shows a seeded
    `POS:` and `ORD:` before trusting it, then watch one session.
+   - Gate: SIM_PROBE.md step S1 PASS (audit `halt code=cleared` after the last `gateway_logout`, none after it).
 2. **Trailing stops as the default entry stop.** A trade run with a hand-placed trailing stop is the case for it: the trail
    distance equals the initial stop distance, so 1R sizing is unchanged and the stop only ever tightens.
    - First a one-lot sim probe while flat: how the broker reads `trailPrice` (`docs/RESEARCH.md` says "absolute price"), whether
      `Order/modify` can change a live trail, how it behaves on a gap. Spec before any change to `guard.py`.
+   - Gate: SIM_PROBE.md steps S9 to S12 PASS. The modify and gap questions are step S13, which the probe cannot settle from the
+     desk (it never modifies a trail, and flat-by forbids holding a gap): they stay open after the probe.
    - Then a default-OFF switch (`PX_TRAIL_STOP`). Entry stops go in as type 5. Everything else keeps working as in Round 24.
 3. **Raw tape log.** Append-only prints (time, price, size, aggressor side) so any tick size can be rebuilt after the fact; the gateway
    has no tick history. Measure the daily size per root before enabling it for all of them. Write with `print(..., file=f)`.
 4. **Tick charts.** Set `PX_TICK_BARS` to include 500 and 1000 (minimum 50, at most 4 sizes). Throughput test at the Sunday open:
-   prints per second, hub-to-browser lag, CPU. Then a larger main-size tick chart with a 5m overlay (`trend.js` already maps one
+   prints per second, hub-to-browser lag, CPU (SIM_PROBE.md step S14, recorded by hand; the desk has no hub-to-browser timer). Then a larger main-size tick chart with a 5m overlay (`trend.js` already maps one
    timeframe's lines onto another chart through time).
 5. **Trade-event detector in the desk.** Read-only background task like `notify.py`: no stop after N seconds, re-entry after a loss,
    scale-in, late entry, entry against the BIAS read. Fixed templates, a banner and chime on the desk. No model needed to detect.

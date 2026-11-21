@@ -27,6 +27,15 @@ GUARD_FILES = {GUARD_FILE, RH_GUARD_FILE}
 # must be on this list (test_every_live_rh_write_tool_is_pinned), so a new Robinhood tool forces a decision here.
 RH_WRITE_TOOLS = {"place_equity_order", "cancel_equity_order", "review_equity_order", "place_option_order", "cancel_option_order", "replace_equity_order", "replace_option_order", "exercise_option", "cancel_option_exercise", "decline_trade_approval", "approve_trade_approval", "place_crypto_order", "cancel_crypto_order", "preview_crypto_order", "place_advanced_order", "cancel_advanced_order", "review_advanced_order", "review_option_order", "create_watchlist", "update_watchlist", "delete_watchlist", "add_to_watchlist", "remove_from_watchlist", "add_option_to_watchlist", "remove_option_from_watchlist", "follow_watchlist", "unfollow_watchlist", "create_alert", "update_alert", "delete_alert", "mark_alerts_read", "create_scan", "update_scan_config", "update_scan_filters", "run_scan", "preview_scan", "add_legend_indicator", "update_legend_indicator", "remove_legend_indicator", "set_legend_chart_settings", "save_scanner", "delete_scanner"}
 RH_WRITE_SHAPE = re.compile(r"\b(place|cancel|replace|modify)_[a-z_]*order\b", re.I)
+# Round 36: the Public tab is a READ-ONLY link to a separate sidecar process. Nothing in this tree may import its code or its broker
+# SDK, name its writer machinery or a Public write method, or carry one of the sidecar's write routes as a literal. Checked as names,
+# imports, attributes and string constants (docstrings included) everywhere the order-path pin looks, outside the two guards.
+PUB_BANNED = {"public_desk", "public_api_sdk", "PublicApiClient", "harden_no_retry", "claim_writer",
+              "place_order", "cancel_order", "place_multileg", "cancel_and_replace"}
+PUB_BANNED_RE = re.compile(r"\b(" + "|".join(sorted(PUB_BANNED)) + r")\b")
+PUB_WRITE_PATHS = ("/api/desk/place", "/api/desk/cancel", "/api/desk/halt", "/api/wheel/confirm", "/api/wheel/stage",
+                   "/api/wheel/record", "/api/wheel/sync")
+PUB_WRITE_RE = re.compile("|".join(re.escape(x) for x in PUB_WRITE_PATHS), re.I)
 MONEY_ALLOWED_FILES = {f"{PKG}/app.py"}       # guard.py itself is exempt from every rule
 EXTRA_ALLOWED = {"arm_trail": {f"{PKG}/mcp.py"}}   # the MCP tool is the one other caller of arm_trail, gated by PX_MCP_TRAIL and the human-typed window
 
@@ -53,13 +62,27 @@ def violations(source: str, filename: str):
                 out.append(f"{filename}:{node.lineno} endpoint literal {text!r}")
             if RH_WRITE_SHAPE.search(text) or any(re.search(rf"\b{t}\b", text) for t in RH_WRITE_TOOLS):
                 out.append(f"{filename}:{node.lineno} Robinhood write tool name in {text[:40]!r}")
+            if PUB_BANNED_RE.search(text):
+                out.append(f"{filename}:{node.lineno} Public sidecar or SDK name in {text[:40]!r}")
+            if PUB_WRITE_RE.search(text):
+                out.append(f"{filename}:{node.lineno} Public sidecar write route in {text[:40]!r}")
         if isinstance(node, ast.Name) and node.id in GUARD_ONLY_NAMES | DYNAMIC_NAMES:
             out.append(f"{filename}:{node.lineno} uses {node.id}")
+        if isinstance(node, ast.Name) and node.id in PUB_BANNED:
+            out.append(f"{filename}:{node.lineno} uses {node.id} (Public is read-only here)")
+        if isinstance(node, ast.alias) and any(part in PUB_BANNED for part in node.name.split(".")):
+            out.append(f"{filename} imports {node.name} (Public is read-only here)")
+        if isinstance(node, ast.ImportFrom) and node.module and any(part in PUB_BANNED for part in node.module.split(".")):
+            out.append(f"{filename} imports from {node.module} (Public is read-only here)")
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in PUB_BANNED:
+            out.append(f"{filename}:{node.lineno} defines {node.name} (Public is read-only here)")
         if isinstance(node, ast.alias) and node.name in GUARD_ONLY_NAMES | DYNAMIC_NAMES:
             out.append(f"{filename} imports {node.name}")
         if isinstance(node, ast.Attribute):
             if node.attr in GUARD_ONLY_NAMES | DYNAMIC_NAMES:                      # px_guard.ORDER_PLACE, operator.methodcaller
                 out.append(f"{filename}:{node.lineno} touches .{node.attr}")
+            if node.attr in PUB_BANNED:
+                out.append(f"{filename}:{node.lineno} touches .{node.attr} (Public is read-only here)")
             if node.attr in MONEY_ATTRS and not money_ok(node.attr, filename):
                 out.append(f"{filename}:{node.lineno} touches .{node.attr}")
             if node.attr in BANNED_ATTRS and filename not in WRITE_ALLOWED_FILES:
@@ -122,6 +145,28 @@ def test_detector_catches_the_indirect_shapes():
         "getattribute": 'c.__getattribute__("wr" + "ite")',
         "eval": 'eval("c.wr" + "ite")',
         "import_module": "import importlib\nimportlib.import_module('px_guard')",
+        # Round 36: the Public sidecar link
+        "public desk import": "import public_desk",
+        "public desk submodule import": "from public_desk.desk import guard",
+        "public desk dotted import": "import public_desk.desk.guard as g",
+        "public sdk import": "from public_api_sdk import PublicApiClient",
+        "public sdk alias": "import public_api_sdk as sdk",
+        "public client name": "c = PublicApiClient()",
+        "retry switch": "client.harden_no_retry(c)",
+        "writer claim": "claim_writer()",
+        "public place": "await c.place_order(o)",
+        "public cancel": "c.cancel_order(i)",
+        "public multileg": "c.place_multileg(o)",
+        "public replace": "c.cancel_and_replace(o)",
+        "public name in a string": 'm = "public_desk.desk.guard"',
+        "sidecar place route": 'u = "http://127.0.0.1:8700/api/desk/place"',
+        "sidecar cancel route": 'u = base + "/api/desk/cancel"',
+        "sidecar halt resolve": 'u = "/api/desk/halt/resolve"',
+        "sidecar wheel confirm": 'u = "/api/wheel/confirm"',
+        "sidecar wheel stage": 'u = "/API/WHEEL/STAGE"',
+        "sidecar wheel record": 'u = "/api/wheel/record"',
+        "sidecar wheel sync": 'u = "/api/wheel/sync"',
+        "defining a writer": "def place_multileg(x):\n    pass",
     }
     for label, src in cases.items():
         assert violations(src, f"{PKG}/mcp.py"), f"detector missed: {label}"
@@ -135,6 +180,44 @@ def test_scan_is_recursive_and_ignores_tests_and_hidden_dirs(tmp_path):
         rel = f.relative_to(tmp_path)
         hits += violations(f.read_text(encoding="utf-8"), rel.as_posix())
     assert hits and "pkg/sneaky.py" in hits[0]
+
+
+def test_public_rules_hold_in_every_file_but_the_guards():
+    for f in ("pub/link.py", "pub/view.py", "digest.py", "app.py", "mcp.py", "rh/state.py"):
+        assert violations("import public_desk", f"{PKG}/{f}"), f
+        assert violations('u = "/api/desk/place"', f"{PKG}/{f}"), f
+
+
+def test_the_public_link_reads_get_only():
+    """pub/link.py and pub/view.py carry no HTTP method but GET: no POST/PUT/DELETE/PATCH literal, no attribute that sends a
+    request another way, and every `.stream(...)` call names GET as a constant."""
+    pub = ROOT / PKG / "pub"
+    files = sorted(pub.glob("*.py"))
+    assert {f.name for f in files} >= {"link.py", "view.py"}
+    streams = 0
+    for f in files:
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Constant) and isinstance(n.value, str):
+                v = n.value.strip()
+                # "options" (lower case) is the sidecar's options switch in the mode block; the HTTP verb is upper case
+                assert v.upper() not in ("POST", "PUT", "DELETE", "PATCH", "CONNECT", "TRACE") and v != "OPTIONS", (f.name, v)
+            if isinstance(n, ast.Attribute):
+                assert n.attr not in ("post", "put", "delete", "patch", "request", "send", "build_request", "options"), (f.name, n.attr)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "stream":
+                streams += 1
+                assert n.args and isinstance(n.args[0], ast.Constant) and n.args[0].value == "GET", f.name
+    assert streams == 1
+
+
+def test_no_static_file_names_a_sidecar_write_route_or_port():
+    for f in sorted((ROOT / PKG / "static").glob("*")):
+        if f.suffix not in (".js", ".html", ".css"):
+            continue
+        text = f.read_text(encoding="utf-8")
+        assert not PUB_WRITE_RE.search(text), f.name
+        assert not PUB_BANNED_RE.search(text), f.name
+        assert ":8700" not in text, f.name
 
 
 def test_detector_allows_what_it_should():

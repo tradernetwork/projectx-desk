@@ -803,8 +803,11 @@ from before this round except for ONE exclusion, `Guard._dead_entry(t, active)`:
 `ttl_cancelled`) that never owned a fill or a stop (`filled_size == 0`, `stop_state is None`) is skipped as a fill owner while ANOTHER
 active ticket on the contract already owns a fill or a stop (a second stop for one position: never), or a NEWER entry was placed after
 it (the next fill is that entry's; it arms the one stop, sized to the position, and resizes it if the cancelled entry's raced fill
-shows up too). Alone on its contract a cancelled entry is never skipped, so a fill that won the cancel race is protected exactly as
-before. `protect_open_positions` skips the same tickets when it picks a contract's owner, so the resync judges the newer ticket and
+shows up too). A REJECTED ticket on the contract that armed a stop counts as an owner too, until a fill carries that stop's id (a
+newer entry whose fill reached the hub while its POST was in flight, and whose POST then came back `success:false` with an order id,
+leaves `active` but still owns the position and its stop; without this the lone cancelled entry armed a second stop on the next
+position event, pre-push review). Alone on its contract a cancelled entry is never skipped, so a fill that won the cancel race is
+protected exactly as before. `protect_open_positions` skips the same tickets when it picks a contract's owner, so the resync judges the newer ticket and
 does not take the cancelled one for a naked owner. No I/O, no new state, no ranking. The unclear-cancel path checks `_entry_has_fill`
 before declaring cancelled: a fill returns the fixed code `filled`, audits `state=FILLED`, sets no cancelled flag, and the fill is
 protected by the normal path.
@@ -830,8 +833,12 @@ rule now is one predicate on top of code that was safe in every one of those sce
   entry's fill still arms that entry's own stop through `handle_position`. If a resync is the first to see that fill, the stale ticket
   is picked as owner, its stop is missing from the book and filled, it is closed, and the position is flattened and halted as ours
   (fail closed, as before this round).
+- A REJECTED ticket that armed a stop keeps a cancelled entry on its contract skipped until that stop provably FILLS. Liveness is not
+  judged from the book listing on purpose (a just-ACKed stop is not listed yet, which broke the larger design). If that stop is instead
+  cancelled (a flatten, a manual cancel), the cancelled entry stays skipped: a late raced fill on it then gets no stop from
+  `handle_position`, and the resync flattens and halts it as ours while its intent is open, else reports it `EXTERNAL_UNPROTECTED`.
 
 Tests: `test_px_guard_one_owner.py` (the human and TTL re-entries arm exactly one stop, owned by the new ticket; a quick re-entry and the
 resync; a raced fill on the cancelled entry still arms one stop only; the lone race fill is protected; `filled`; the stale owner from a
-missed size-0 event; the third review's three scenarios). The race tests in `test_px_guard_cancel.py` and `test_px_guard_protect.py`
+missed size-0 event; the third review's three scenarios; a newer entry rejected after its fill, human and TTL). The race tests in `test_px_guard_cancel.py` and `test_px_guard_protect.py`
 are unchanged.

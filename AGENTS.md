@@ -101,7 +101,7 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 - **One protection owner per net position.** The `contract_flat` check refuses a second entry while the contract has a position,
   a working order or an entry in flight. No scale-in. Open stop risk of live tickets is subtracted from the budget used for sizing.
   A cancelled entry (`user_cancelled`/`ttl_cancelled`) that never owned a fill or stop is skipped as a fill owner, in `handle_position`
-  and in the `protect_open_positions` owner pick, once another ticket on the contract owns a fill or stop or a newer entry was placed
+  and in the `protect_open_positions` owner pick, once another ticket on the contract owns a fill or stop (a REJECTED ticket that armed a stop included, until that stop fills) or a newer entry was placed
   (`Guard._dead_entry`, Round 35); alone it still protects its raced fill. Keep it that one predicate: a larger ranking design was
   abandoned after three review rounds found regressions. Never let two tickets arm a stop for one position.
 - **Every open position must be protected.** `Guard.protect_open_positions()` runs after boot and every resync: known ticket arms or

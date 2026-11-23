@@ -58,6 +58,7 @@ below is ticked until that table shows PASS for the steps the item names; an UNK
 - Edits from chat: a branch on the home box that the trader reviews here, or a patch applied from this checkout.
 - Where scheduled output is delivered. A chat platform conflicts with the LAN-only decision, so nothing is wired until it is decided.
 - Whether dollars belong in the trade-memory MCP tool (the AI surface otherwise carries no balances).
+- Prettier desk UI: three directions live in `design/prettier-desk/` (A conservative re-skin, B strong-fit re-composition, C divergent editorial), with screenshots and a slop audit in its README. Pick one to port into `projectx_desk/static/`; B is the recommendation.
 
 ## Known gaps
 

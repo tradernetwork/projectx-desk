@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PX Desk : A conservative re-skin (prototype)</title>
+<meta name="color-scheme" content="dark light">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --surface:#070b14;--surface-2:#0b111c;--surface-3:#121a29;
+  --ink:#f2f5fa;--ink-2:#b4c0d4;--muted:#7d8aa1;
+  --border:#182033;--border-strong:#2a3550;
+  --accent:#5fb3d9;--accent-ink:#8fcbe6;
+  --pos:#3fcf80;--neg:#f2566f;--warn:#d6a73a;
+  --pad:14px;--gap:8px;--row:30px;
+  /* type scale: 11 label / 12 body / 13 row / 15 emphasis / 22 figure / 34 hero figure */
+  --t-label:11px;--t-body:12px;--t-row:13px;--t-em:15px;--t-fig:22px;--t-hero:34px;
+}
+[data-theme="graphite"]{--surface:#101114;--surface-2:#17181c;--surface-3:#1f2127;--ink:#f1f2f4;--ink-2:#b9bcc4;--muted:#8a8e99;--border:#25272e;--border-strong:#383b45}
+[data-theme="light"]{color-scheme:light;--surface:#f3f4f6;--surface-2:#fff;--surface-3:#eceef2;--ink:#12151c;--ink-2:#3a4150;--muted:#5d6678;--border:#dde0e6;--border-strong:#bfc4ce;--accent:#1e6f95;--accent-ink:#175a7b;--pos:#13803f;--neg:#c1273f;--warn:#8a6208}
+[data-density="compact"]{--pad:10px;--gap:6px;--row:26px;--t-fig:19px;--t-hero:28px}
+*{box-sizing:border-box}
+html{background:var(--surface)}
+body{margin:0;background:var(--surface);color:var(--ink);font:400 var(--t-body)/1.45 var(--sans);-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono,.v{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.na{color:var(--muted)}
+.pos{color:var(--pos)}.neg{color:var(--neg)}
+.lbl{font-size:var(--t-label);letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.dim{color:var(--muted)}
+
+/* ribbon */
+.ribbon{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;padding:10px var(--pad);border-bottom:1px solid var(--border);background:var(--surface-2)}
+.brand{font-weight:600;letter-spacing:.14em;font-size:13px}.brand em{font-style:normal;color:var(--accent-ink);font-weight:500}
+.sym{display:flex;align-items:baseline;gap:8px}
+.sym b{font:500 var(--t-em)/1 var(--mono)}
+.price{font:500 28px/1 var(--mono);letter-spacing:-.01em}
+.ba{display:flex;gap:10px;font:400 var(--t-body)/1 var(--mono);color:var(--ink-2)}.ba i{font-style:normal;color:var(--muted);margin-right:4px}
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{font:500 var(--t-label)/1 var(--sans);letter-spacing:.06em;padding:5px 8px;border:1px solid var(--border-strong);border-radius:4px;color:var(--ink-2);text-transform:uppercase}
+.pill.up{color:var(--pos);border-color:color-mix(in srgb,var(--pos) 45%,var(--border))}
+.pill.off{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,var(--border))}
+.sp{flex:1}
+.btn{background:transparent;border:1px solid var(--border-strong);border-radius:4px;padding:6px 10px;font:500 var(--t-label)/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);cursor:pointer;min-height:30px}
+.btn:hover:not(:disabled){background:var(--surface-3);color:var(--ink)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.danger{color:var(--neg);border-color:color-mix(in srgb,var(--neg) 45%,var(--border))}
+.btn[aria-pressed="true"]{border-color:var(--accent);color:var(--ink)}
+
+/* KPI strip: hairline cells, no boxes */
+.kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-bottom:1px solid var(--border)}
+.kpi{padding:var(--pad);border-right:1px solid var(--border);min-width:0}
+.kpi:last-child{border-right:0}
+.kpi .v{display:block;font-size:var(--t-fig);font-weight:500;line-height:1.1;margin:6px 0 4px;letter-spacing:-.01em}
+.kpi small{font-size:var(--t-label);color:var(--muted)}
+.kpi .v small{font-size:var(--t-body);margin-left:3px}
+.ss{color:var(--warn)}
+
+/* grid */
+.grid{display:grid;grid-template-columns:minmax(260px,300px) minmax(0,1fr) minmax(280px,340px);gap:0;min-height:calc(100vh - 150px)}
+.col{display:flex;flex-direction:column;min-width:0}
+.col-l{border-right:1px solid var(--border)}.col-r{border-left:1px solid var(--border)}
+.panel{padding:var(--pad);border-bottom:1px solid var(--border)}
+.panel h2{margin:0 0 10px;font:500 var(--t-label)/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px}
+.panel h2 .push{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:400}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:0 14px}
+.kv>*{padding:5px 0;min-height:var(--row);border-bottom:1px solid var(--border);display:flex;align-items:center}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;justify-content:flex-end;font:500 var(--t-row)/1.2 var(--mono)}
+.kv>*:nth-last-child(-n+2){border-bottom:0}
+.rows{display:flex;flex-direction:column}
+.row{display:flex;align-items:center;gap:10px;min-height:var(--row);padding:4px 6px;margin:0 -6px;border-radius:4px;font-size:var(--t-row)}
+.row:hover{background:var(--surface-3)}
+.row .v{margin-left:auto}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 7px;border:1px solid var(--border-strong);border-radius:4px;font:500 var(--t-label)/1.2 var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-2)}
+.chip.good{color:var(--pos);border-color:color-mix(in srgb,var(--pos) 40%,var(--border))}
+.chip.bad{color:var(--neg);border-color:color-mix(in srgb,var(--neg) 40%,var(--border))}
+.chip.acc{color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
+.bar{height:4px;background:var(--surface-3);border-radius:2px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
+.note{color:var(--muted);font-size:var(--t-label);line-height:1.5;margin:8px 0 0}
+
+/* size box */
+.big{display:flex;align-items:baseline;gap:8px}
+.big .num{font:500 var(--t-hero)/1 var(--mono);letter-spacing:-.02em}
+.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:4px;overflow:hidden}
+.seg button{background:transparent;border:0;padding:6px 10px;cursor:pointer;font:500 var(--t-label)/1 var(--sans);letter-spacing:.06em;color:var(--muted);min-height:28px}
+.seg button+button{border-left:1px solid var(--border-strong)}
+.seg button:hover{background:var(--surface-3);color:var(--ink)}
+.seg button[aria-pressed="true"]{color:var(--ink);background:var(--surface-3);box-shadow:inset 0 -2px 0 var(--accent)}
+.empty{color:var(--muted);padding:8px 0}
+.place{width:100%;margin-top:8px;padding:11px;border:1px dashed var(--border-strong);border-radius:4px;background:transparent;color:var(--muted);font:500 var(--t-label)/1 var(--sans);letter-spacing:.08em;text-transform:uppercase}
+
+/* chart */
+.chartbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px var(--pad);border-bottom:1px solid var(--border)}
+.chartbox{position:relative;padding:0 0 0 0;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.chartbox svg{display:block;width:100%;height:clamp(240px,42vh,460px)}
+svg .gl{stroke:var(--border);stroke-width:1;vector-effect:non-scaling-stroke}
+svg .ax,svg .lt{font:400 10px var(--mono);fill:var(--muted)}
+svg .lv{stroke:var(--muted);stroke-dasharray:3 4;stroke-width:1;vector-effect:non-scaling-stroke}
+svg .lv.entry{stroke:var(--accent)}svg .lv.stop{stroke:var(--neg)}
+svg .lt.entry{fill:var(--accent-ink)}svg .lt.stop{fill:var(--neg)}
+svg .up line{stroke:var(--pos)}svg .up rect{fill:var(--pos)}svg .dn line{stroke:var(--neg)}svg .dn rect{fill:var(--neg)}
+svg line{vector-effect:non-scaling-stroke}
+svg .last{stroke:var(--ink-2);stroke-dasharray:1 3;vector-effect:non-scaling-stroke}svg .lastbox{fill:var(--ink)}svg .lasttx{font:500 10px var(--mono);fill:var(--surface)}
+.ph{position:absolute;left:var(--pad);top:8px;font-size:var(--t-label);color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
+.strips{display:grid;grid-template-columns:1fr 1fr}
+.strips>.panel:first-child{border-right:1px solid var(--border)}
+.road{display:grid;grid-template-columns:48px 1fr;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:var(--t-row)}
+.road:last-of-type{border-bottom:0}
+.road b{font:500 var(--t-label)/1.6 var(--sans);letter-spacing:.08em;color:var(--ink-2)}
+.pips{display:flex;gap:4px}.pips span{flex:1;text-align:center;padding:4px 0;border:1px solid var(--border);border-radius:3px;font:500 var(--t-label)/1 var(--mono);color:var(--muted)}
+.pips .p{color:var(--pos);border-color:color-mix(in srgb,var(--pos) 40%,var(--border))}.pips .m{color:var(--neg);border-color:color-mix(in srgb,var(--neg) 40%,var(--border))}
+.eq svg{display:block;width:100%;height:72px}.eq .zero{stroke:var(--border-strong);stroke-dasharray:2 3;vector-effect:non-scaling-stroke}.eq .fill{fill:color-mix(in srgb,var(--accent) 14%,transparent)}.eq .ln{fill:none;stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke}.eq .dot{fill:var(--accent)}
+.flash{animation:fl .8s ease-out}@keyframes fl{from{background:color-mix(in srgb,var(--accent) 28%,transparent)}to{background:transparent}}
+.foot{padding:10px var(--pad);color:var(--muted);font-size:var(--t-label);border-top:1px solid var(--border)}
+
+@media (max-width:1099px){
+  .grid{grid-template-columns:minmax(0,1fr)}
+  .col-l,.col-r{border:0}
+  .col-c{order:-1}
+  .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .kpi{border-bottom:1px solid var(--border)}
+}
+@media (max-width:640px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .strips{grid-template-columns:1fr}.strips>.panel:first-child{border-right:0}
+  .price{font-size:24px}.sp{display:none}
+}
+</style>
+<style id="tw-css">/* Tweaks control + accents (shared) */
+[data-accent="amber"]{--accent:#d6a73a;--accent-ink:#e3be62}
+[data-accent="coral"]{--accent:#e0775a;--accent-ink:#ee9a82}
+[data-accent="bone"]{--accent:#d9d6cc;--accent-ink:#f2efe6}
+[data-theme="light"][data-accent="amber"]{--accent:#9a6f0c;--accent-ink:#8a6208}
+[data-theme="light"][data-accent="coral"]{--accent:#b8452a;--accent-ink:#a43b22}
+[data-theme="light"][data-accent="bone"]{--accent:#3a3830;--accent-ink:#1d1c17}
+.tw{position:fixed;right:12px;bottom:12px;z-index:50;font:500 11px/1 var(--sans);display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.tw[hidden]{display:none}
+.tw-tab,.tw-seg button,.tw-foot button{font:inherit;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:6px 9px;cursor:pointer;letter-spacing:.02em;min-height:28px}
+.tw-tab:hover,.tw-seg button:hover,.tw-foot button:hover{color:var(--ink);border-color:var(--border-strong);background:var(--surface-3)}
+.tw-tab:focus-visible,.tw-seg button:focus-visible,.tw-foot button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tw-pane{background:var(--surface-2);border:1px solid var(--border-strong);border-radius:6px;padding:10px;display:grid;gap:8px;min-width:230px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.tw-pane[hidden]{display:none}
+.tw-row{display:grid;grid-template-columns:62px 1fr;align-items:center;gap:8px}
+.tw-l{color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:10px}
+.tw-seg{display:flex;flex-wrap:wrap;gap:3px}
+.tw-seg button{padding:4px 7px;min-height:24px}
+.tw-seg button[aria-pressed="true"]{color:var(--ink);border-color:var(--accent);background:var(--surface-3)}
+.tw-foot{display:flex;justify-content:space-between;gap:6px;padding-top:2px}
+@media (max-width:600px){.tw{right:8px;bottom:8px}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head><body>
+<header class="ribbon" role="banner">
+  <strong class="brand">PX<em>DESK</em></strong>
+  <div class="sym"><b data-ai="contract.name"></b><output class="price" data-ai="quote.last" data-fmt="px" data-flash="1" aria-label="Last price"></output></div>
+  <div class="ba"><span><i>B</i><span data-ai="quote.bid" data-fmt="px"></span></span><span><i>A</i><span data-ai="quote.ask" data-fmt="px"></span></span><span class="dim">age <span data-ai="quote.age_s" data-fmt="n1"></span>s</span></div>
+  <div class="pills">
+    <span class="pill up" title="market data hub">MKT <span data-ai="mode.market"></span></span>
+    <span class="pill up" title="user hub">USER <span data-ai="mode.user"></span></span>
+    <span class="pill up">ENGINE <span data-ai="mode.engine"></span></span>
+    <span class="pill off">TRADING <span data-ai="mode.trading"></span></span>
+    <span class="pill">ACCT <span data-ai="mode.acct"></span></span>
+  </div>
+  <span class="sp"></span>
+  <span class="dim mono" data-ai="asof"></span>
+  <button class="btn" type="button" aria-pressed="false" title="Prototype: inert">Stream</button>
+  <button class="btn danger" type="button" disabled title="Prototype: inert">Halt</button>
+  <button class="btn danger" type="button" disabled title="Prototype: inert">Flatten</button>
+</header>
+
+<section class="kpis" aria-label="Session KPIs">
+  <div class="kpi"><span class="lbl">Live P&amp;L</span><span class="v" data-ai="kpi.pnl_day" data-fmt="susd" data-sign="1"></span><small>n=<span data-ai="kpi.n" data-fmt="int"></span> closed</small></div>
+  <div class="kpi"><span class="lbl">Win rate</span><span class="v" data-ai="kpi.win_rate" data-fmt="pct1"></span><small>n=<span data-ai="kpi.n"></span>, <span class="ss">no rate under 30</span></small></div>
+  <div class="kpi"><span class="lbl">Break-even</span><span class="v"><span data-ai="kpi.breakeven_win_rate" data-fmt="pct1"></span></span><small>payoff <span data-ai="kpi.payoff" data-fmt="n2"></span></small></div>
+  <div class="kpi"><span class="lbl">Expectancy</span><span class="v" data-ai="kpi.expectancy" data-fmt="susd" data-sign="1"></span><small>n=<span data-ai="kpi.n"></span> <span class="ss">small sample</span></small></div>
+  <div class="kpi"><span class="lbl">Profit factor</span><span class="v" data-ai="kpi.profit_factor" data-fmt="n2"></span><small>n=<span data-ai="kpi.n"></span> <span class="ss">small sample</span></small></div>
+  <div class="kpi"><span class="lbl">Orders today</span><span class="v"><span data-ai="risk.orders_today"></span><small>/ <span data-ai="risk.orders_max"></span></small></span><div class="bar" aria-hidden="true"><i style="width:40%"></i></div></div>
+  <div class="kpi"><span class="lbl">Open contracts</span><span class="v"><span data-ai="risk.open_contracts"></span><small>/ <span data-ai="risk.max_contracts"></span></small></span><div class="bar" aria-hidden="true"><i style="width:33%"></i></div></div>
+</section>
+
+<main class="grid">
+  <aside class="col col-l" aria-label="Order tools">
+    <section class="panel" aria-label="Size box">
+      <h2>Size <span class="chip acc push" title="binding source">binds ATR</span></h2>
+      <div class="big"><span class="num">3</span><span class="mono dim" data-ai="contract.root"></span>
+        <span class="seg push" role="group" aria-label="Side" style="margin-left:auto"><button type="button" aria-pressed="true">LONG</button><button type="button" aria-pressed="false">SHORT</button></span></div>
+      <p class="note mono" style="font-size:11px">10% of loss room, 1.5 ATR = 26t, so 3 MES, binds ATR</p>
+      <dl class="kv" style="margin-top:8px">
+        <dt>Stop</dt><dd>26 ticks <span class="dim">&nbsp;6.50 pt</span></dd>
+        <dt>Risk if stopped</dt><dd>$97.50</dd>
+        <dt>Budget used</dt><dd>10.1%</dd>
+      </dl>
+    </section>
+    <section class="panel" aria-label="Ticket">
+      <h2>Ticket <span class="chip push">NONE</span></h2>
+      <p class="empty">No ticket. Stage a preview: the bracket draws here before anything is sent.</p>
+      <button class="btn" type="button" style="width:100%" disabled>Stage (preview, places nothing)</button>
+      <button class="place" type="button" disabled>Place (hold) &middot; human only</button>
+      <p class="note">Prototype: every order control is inert. The hold is anti-fat-finger friction, not security.</p>
+    </section>
+    <section class="panel" aria-label="Behavior">
+      <h2>Behavior rail</h2>
+      <dl class="kv"><dt>Losses in a row</dt><dd><span data-ai="behavior.consecutive_losses"></span> / <span data-ai="behavior.max_losses"></span></dd><dt>Cooldown</dt><dd><span data-ai="behavior.cooldown_s"></span></dd></dl>
+    </section>
+  </aside>
+
+  <section class="col col-c" aria-label="Chart">
+    <div class="chartbar">
+      <span class="seg" role="group" aria-label="Timeframe"><button type="button" aria-pressed="false">1m</button><button type="button" aria-pressed="true">5m</button><button type="button" aria-pressed="false">15m</button><button type="button" aria-pressed="false">1h</button></span>
+      <span class="chip acc">EMA <span data-ai="ema.state"></span> &middot; slope21 <span data-ai="ema.slope21"></span></span>
+      <span class="chip" id="bias-chip">BIAS <span data-ai="bias.direction"></span> <span data-ai="bias.grade"></span></span>
+      <span class="chip">REGIME <span data-ai="regime.state"></span></span>
+      <span class="sp"></span><span class="dim">VWAP <span class="mono" data-ai="vwap" data-fmt="px"></span></span>
+    </div>
+    <div class="chartbox"><span class="ph">placeholder candles, synthetic</span><div id="chart"></div></div>
+    <div class="strips">
+      <section class="panel" aria-label="Dealer map">
+        <h2>Tomorrow's map <span class="push dim"><span data-ai="map.source"></span> &rarr; <span data-ai="map.root"></span> &middot; age <span data-ai="map.age_min"></span> min</span></h2>
+        <div id="roads"></div>
+        <p class="note"><span class="mono">flip <span data-ai="map.flip" data-fmt="px"></span> &middot; pin <span data-ai="map.pin" data-fmt="px"></span></span> &middot; record: <span data-ai="map.record.sessions"></span> of <span data-ai="map.record.min_sessions"></span> sessions graded, no rate until then. Positioning, not targets.</p>
+      </section>
+      <section class="panel" aria-label="Day equity">
+        <h2>Day P&amp;L by closed trade <span class="push dim">n=<span data-ai="kpi.n"></span></span></h2>
+        <div class="eq" id="eq"></div>
+        <p class="note">Hypothetical chart shape from placeholder trades.</p>
+      </section>
+    </div>
+  </section>
+
+  <aside class="col col-r" aria-label="State">
+    <section class="panel" aria-label="Risk">
+      <h2>Risk budget <span class="push dim">binds <b data-ai="risk.binding" style="color:var(--ink-2);font-weight:500"></b></span></h2>
+      <dl class="kv">
+        <dt>RISK_DAILY limit</dt><dd data-ai="risk.daily_limit" data-fmt="usd"></dd>
+        <dt>RISK_DAILY room</dt><dd data-ai="risk.daily_room" data-fmt="usd"></dd>
+        <dt>RISK_DD buffer</dt><dd data-ai="risk.dd_buffer" data-fmt="usd"></dd>
+        <dt>Remaining</dt><dd data-ai="risk.remaining" data-fmt="usd"></dd>
+      </dl>
+      <div class="bar" style="margin-top:10px" aria-hidden="true"><i style="width:3.3%"></i></div>
+      <p class="note">Daily limit used <span class="mono" data-ai="risk.daily_used_pct" data-fmt="pct1"></span></p>
+    </section>
+    <section class="panel" aria-label="Positions and orders">
+      <h2>Positions <span class="push dim">fills <span data-ai="kpi.fills_today"></span></span></h2>
+      <div class="rows"><div class="row"><span class="chip good" data-ai="pos.side"></span><span class="mono"><span data-ai="pos.size"></span> <span data-ai="pos.contract"></span> @ <span data-ai="pos.avg" data-fmt="px"></span></span><span class="v" data-ai="risk.open_pnl" data-fmt="susd" data-sign="1"></span></div></div>
+      <h2 style="margin-top:14px">Working orders</h2>
+      <div class="rows"><div class="row"><span class="chip bad">SELL STOP</span><span class="mono">1 MESZ6 stop <span data-ai="pos.stop" data-fmt="px"></span></span><span class="v dim">px-7c41e0</span></div></div>
+    </section>
+    <section class="panel" aria-label="Bias and regime">
+      <h2>Bias <span class="push dim">advisory, not a signal</span></h2>
+      <dl class="kv">
+        <dt>BIAS</dt><dd><span data-ai="bias.direction"></span> &nbsp;grade <span data-ai="bias.grade"></span> &nbsp;<span data-ai="bias.score" data-fmt="n1"></span>/<span data-ai="bias.max" data-fmt="n1"></span></dd>
+        <dt>Agree</dt><dd><span data-ai="bias.agree"></span>/<span data-ai="bias.reads"></span> &nbsp;<span data-ai="bias.entry"></span></dd>
+        <dt>EMA 8 / 21 / 34</dt><dd><span data-ai="ema.e8" data-fmt="px"></span> / <span data-ai="ema.e21" data-fmt="px"></span> / <span data-ai="ema.e34" data-fmt="px"></span></dd>
+        <dt>ATR pctile</dt><dd>p<span data-ai="ind.atr_pctile"></span> &nbsp;<span class="dim">atr <span data-ai="ind.atr" data-fmt="n2"></span>pt</span></dd>
+        <dt>ADX <span class="dim">(<span data-ai="regime.tf"></span>)</span></dt><dd><span data-ai="regime.adx" data-fmt="n1"></span> &nbsp;<span class="dim">thr <span data-ai="regime.threshold"></span></span></dd>
+      </dl>
+      <div class="pips" style="margin-top:10px" aria-label="Votes"><span class="p">5m +</span><span class="p">15m +</span><span class="p">1h +</span><span class="p">VWAP +</span><span>tape 0</span></div>
+    </section>
+    <section class="panel" aria-label="Session">
+      <h2>Session <span class="push dim">SESSION_CTX</span></h2>
+      <dl class="kv">
+        <dt>Hi / Lo</dt><dd><span data-ai="session.hi" data-fmt="px"></span> / <span data-ai="session.lo" data-fmt="px"></span></dd>
+        <dt>Volume</dt><dd data-ai="session.volume" data-fmt="int"></dd>
+        <dt>Opening range</dt><dd><span data-ai="ctx.or_low" data-fmt="px"></span>&ndash;<span data-ai="ctx.or_high" data-fmt="px"></span> <span class="dim">(<span data-ai="ctx.or" data-fmt="n1"></span>)</span></dd>
+        <dt>Gap / first break</dt><dd><span data-ai="ctx.gap"></span> / <span data-ai="ctx.first_break"></span></dd>
+      </dl>
+      <h2 style="margin-top:14px">Watch</h2>
+      <div class="rows" id="watch"></div>
+    </section>
+    <section class="panel" aria-label="Paper book">
+      <h2>Paper book <span class="push dim">hypothetical</span></h2>
+      <div id="paper"></div>
+      <p class="note">No win rate or mean R under n=30. The opposite side is the baseline.</p>
+    </section>
+    <section class="panel" aria-label="Analyst callouts">
+      <h2>Analyst callouts <span class="push dim">opinion, not signal</span></h2>
+      <div class="rows" id="callouts"></div>
+    </section>
+  </aside>
+</main>
+<div class="foot">Prototype A &middot; conservative re-skin &middot; placeholder data shaped like the digest &middot; nothing here is wired to the desk.</div>
+<script>
+/* PLACEHOLDER DATA: invented values shaped like the digest (digest.py line formats). Nothing here is a real balance, P&L or account. */
+const DATA = {
+  asof: "09:47:12CT",
+  mode: { engine: "READY", trading: "OFF", acct: "SIM", market: "UP", user: "UP" },
+  contract: { root: "MES", name: "MESZ6", tick: 0.25, tickval: 1.25, pt: 5 },
+  quote: { last: 6012.75, bid: 6012.50, ask: 6012.75, age_s: 0.4 },
+  kpi: { n: 6, wins: 4, losses: 2, win_rate: null, breakeven_win_rate: 38.5, payoff: 1.6, profit_factor: 2.4, expectancy: 68.75, pnl_day: 412.50, fills_today: 12 },
+  risk: { daily_limit: 1000, daily_room: 967.50, daily_used_pct: 3.3, dd_buffer: 1840.00, remaining: 967.50, binding: "DAILY",
+          open_contracts: 1, max_contracts: 3, orders_today: 4, orders_max: 10, open_pnl: 23.75 },
+  behavior: { consecutive_losses: 1, max_losses: 3, cooldown_s: null },
+  pos: { side: "LONG", size: 1, contract: "MESZ6", avg: 6008.00, stop: 6001.50 },
+  orders: [{ side: "SELL", type: "STOP", size: 1, contract: "MESZ6", stop: 6001.50, limit: null, tag: "px-7c41e0" }],
+  bias: { direction: "LONG", grade: "B", score: 2.0, max: 3.5, agree: 4, reads: 5, entry: "PULLBACK", flags: [],
+          votes: { "5m": 1, "15m": 1, "1h": 1, vwap: 1, tape: 0 } },
+  ema: { state: "BULL", e8: 6011.90, e21: 6010.20, e34: 6008.80, slope21: "UP" },
+  ind: { atr: 4.25, atr_pctile: 38, adx: 26.4, tf: "5m" },
+  regime: { state: "TRENDING", adx: 26.4, threshold: 20, tf: "5m" },
+  vwap: 6009.40,
+  session: { hi: 6021.50, lo: 5994.25, volume: 184230 },
+  ctx: { or_high: 6004.00, or_low: 5998.50, or: 5.5, gap: "FLAT", first_break: "UP" },
+  watch: [ { t: "09:42", text: "FLIP RECLAIMED", px: 6010.0 }, { t: "09:31", text: "ACCELERANT CLEARED", px: 6003.5 } ],
+  map: { source: "SPY", root: "MES", age_min: 12, regime: "POSITIVE", spot: 6012.75, flip: 6010.0, pin: 6025.0, typical_move: 31,
+         roads: [
+           { key: "UP",   cond: "up through 6021.5", rule: "a brake sits at 6025, expect it to slow there." },
+           { key: "DOWN", cond: "below 6003.5",      rule: "dealers stop braking under the flip, moves can run." },
+           { key: "ELSE", cond: "between",           rule: "quiet drift into the 6025 pin." } ],
+         record: { sessions: 3, min_sessions: 10 } },
+  paper: [
+    { name: "Bias leans (B or better)", n: 34, win_pct: 47.1, mean_r: 0.12, mean_r_opp: -0.08, total_r: 4.1, missed: 0 },
+    { name: "Analyst ENTRY callouts",   n: 22, win_pct: null, mean_r: null, mean_r_opp: -0.05, total_r: 1.3, missed: 3 } ],
+  paper_min_n: 30,
+  callouts: [ { age_s: 410, analyst: "NA", sym: "MES", side: "LONG", event: "ENTRY", entry: 6008.0, stop: 6001.5, tp1: 6016.0 } ],
+  equity: [0, -87.5, 112.5, 62.5, 237.5, 188.0, 388.75]   /* cumulative day P&L at each closed trade */
+};
+
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const get = (o, p) => p.split(".").reduce((a, k) => (a == null ? undefined : a[k]), o);
+const ok = v => v !== null && v !== undefined && !(typeof v === "number" && !isFinite(v));
+const FMT = {
+  usd:  v => (v < 0 ? "-" : "") + "$" + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  susd: v => (v < 0 ? "-" : "+") + "$" + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  px:   v => v.toFixed(2),
+  n1:   v => v.toFixed(1),
+  n2:   v => v.toFixed(2),
+  int:  v => Math.round(v).toLocaleString("en-US"),
+  pct1: v => v.toFixed(1) + "%",
+  sr:   v => (v < 0 ? "-" : "+") + Math.abs(v).toFixed(2) + "R",
+  txt:  v => String(v)
+};
+/* NA is unknown, never 0 */
+function bind(root) {
+  $$("[data-ai]", root).forEach(el => {
+    const v = get(DATA, el.dataset.ai), f = FMT[el.dataset.fmt || "txt"];
+    const next = ok(v) ? f(v) : "NA";
+    if (el.textContent !== next) {
+      el.textContent = next;
+      if (!ok(v)) el.classList.add("na"); else el.classList.remove("na");
+      if (el.dataset.sign && ok(v)) { el.classList.toggle("pos", v > 0); el.classList.toggle("neg", v < 0); }
+      if (el.dataset.flash) { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
+    }
+  });
+}
+/* deterministic placeholder candles (clearly a placeholder, drawn in SVG) */
+function candles(n, seed) {
+  let s = seed || 7; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  let p = 6001, out = [];
+  for (let i = 0; i < n; i++) {
+    const o = p, c = o + (r() - 0.44) * 3.2, h = Math.max(o, c) + r() * 1.6, l = Math.min(o, c) - r() * 1.6;
+    out.push({ o, h, l, c }); p = c;
+  }
+  const k = DATA.quote.last - out[n - 1].c; out.forEach(b => { b.o += k; b.h += k; b.l += k; b.c += k; });
+  return out;
+}
+function candleSVG(host, o) {
+  o = o || {}; const n = o.n || 72, W = 800, H = o.h || 360, padR = 54, padB = 18;
+  const cs = candles(n, o.seed), lv = o.levels || [];
+  const all = cs.flatMap(b => [b.h, b.l]).concat(lv.map(l => l.p));
+  const hi = Math.max.apply(null, all) + 1, lo = Math.min.apply(null, all) - 1;
+  const x = i => 6 + i * ((W - padR - 6) / n), y = v => 6 + (hi - v) / (hi - lo) * (H - padB - 12), bw = Math.max(2, (W - padR) / n * 0.55);
+  let g = "";
+  for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4; g += `<line class="gl" x1="0" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${W - padR + 6}" y="${y(v) + 3}">${v.toFixed(1)}</text>`; }
+  lv.forEach(l => { g += `<line class="lv ${l.k || ""}" x1="0" x2="${W - padR}" y1="${y(l.p)}" y2="${y(l.p)}"/><text class="lt ${l.k || ""}" x="${W - padR - 4}" y="${y(l.p) - 3}" text-anchor="end">${l.t} ${l.p.toFixed(2)}</text>`; });
+  cs.forEach((b, i) => { const up = b.c >= b.o, cx = x(i) + bw / 2;
+    g += `<g class="${up ? "up" : "dn"}"><line x1="${cx}" x2="${cx}" y1="${y(b.h)}" y2="${y(b.l)}"/><rect x="${x(i)}" y="${y(Math.max(b.o, b.c))}" width="${bw}" height="${Math.max(1, Math.abs(y(b.o) - y(b.c)))}"/></g>`; });
+  const ly = y(DATA.quote.last);
+  g += `<line class="last" x1="0" x2="${W - padR}" y1="${ly}" y2="${ly}"/><rect class="lastbox" x="${W - padR + 1}" y="${ly - 8}" width="${padR - 2}" height="16"/><text class="lasttx" x="${W - padR + 5}" y="${ly + 4}">${DATA.quote.last.toFixed(2)}</text>`;
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Placeholder candle chart, synthetic bars, not market data">${g}</svg>`;
+}
+function areaSVG(host, series, o) {
+  o = o || {}; const W = 600, H = o.h || 120, pad = 4;
+  const lo = Math.min(0, ...series), hi = Math.max(0, ...series), span = (hi - lo) || 1;
+  const x = i => pad + i * ((W - 2 * pad) / (series.length - 1)), y = v => pad + (hi - v) / span * (H - 2 * pad);
+  const pts = series.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Day P&L by closed trade, n=${series.length - 1}"><line class="zero" x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}"/><polygon class="fill" points="${x(0)},${y(0)} ${pts} ${x(series.length - 1)},${y(0)}"/><polyline class="ln" points="${pts}"/><circle class="dot" cx="${x(series.length - 1)}" cy="${y(series[series.length - 1])}" r="3"/></svg>`;
+}
+/* simulated tick so the monitor shows state changing; off under prefers-reduced-motion or the Sim toggle */
+function startSim(render) {
+  const q = DATA.quote; let t = 0;
+  return setInterval(() => {
+    if (document.documentElement.dataset.sim === "off") return;
+    t++; const step = [0.25, -0.25, 0.5, -0.25, 0.25, 0][t % 6];
+    q.last = Math.round((q.last + step) * 4) / 4; q.bid = q.last - 0.25; q.ask = q.last; q.age_s = 0.2 + (t % 5) * 0.1;
+    DATA.risk.open_pnl = Math.round((q.last - DATA.pos.avg) * DATA.contract.pt * DATA.pos.size * 100) / 100;
+    DATA.kpi.pnl_day = DATA.equity[DATA.equity.length - 1] + DATA.risk.open_pnl; render();
+  }, 2200);
+}
+/* Tweaks: theme / density / accent / sim. Persists to localStorage; hides to a small tab, or away entirely (Shift+T brings it back). */
+function tweaks(ns, themes) {
+  const K = k => "pxdesign." + ns + "." + k, H = document.documentElement;
+  const safe = { get: k => { try { return localStorage.getItem(K(k)); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(K(k), v); } catch (e) {} } };
+  const defs = { theme: themes[0], density: "comfortable", accent: "default", sim: "on" };
+  const opts = { theme: themes, density: ["comfortable", "compact"], accent: ["default", "amber", "coral", "bone"], sim: ["on", "off"] };
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  Object.keys(defs).forEach(k => { let v = safe.get(k); if (!v || opts[k].indexOf(v) < 0) v = (k === "sim" && reduce) ? "off" : defs[k]; H.dataset[k] = v; });
+  const box = document.createElement("div"); box.className = "tw";
+  box.innerHTML = `<button type="button" class="tw-tab" aria-expanded="false" aria-controls="tw-pane">Tweaks</button>
+  <div class="tw-pane" id="tw-pane" role="group" aria-label="Design tweaks" hidden>
+  ${Object.keys(opts).map(k => `<div class="tw-row"><span class="tw-l" id="twl-${k}">${k}</span><span class="tw-seg" role="group" aria-labelledby="twl-${k}">${opts[k].map(v => `<button type="button" data-k="${k}" data-v="${v}" aria-pressed="false">${v}</button>`).join("")}</span></div>`).join("")}
+  <div class="tw-foot"><button type="button" data-act="reset">Reset</button><button type="button" data-act="hide">Hide (Shift+T)</button></div></div>`;
+  document.body.appendChild(box);
+  const tab = $(".tw-tab", box), pane = $(".tw-pane", box);
+  const sync = () => $$("[data-k]", box).forEach(b => b.setAttribute("aria-pressed", H.dataset[b.dataset.k] === b.dataset.v));
+  const open = o => { pane.hidden = !o; tab.setAttribute("aria-expanded", String(o)); };
+  const gone = g => { box.hidden = g; safe.set("hidden", g ? "1" : "0"); };
+  box.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b === tab) return open(pane.hidden);
+    if (b.dataset.k) { H.dataset[b.dataset.k] = b.dataset.v; safe.set(b.dataset.k, b.dataset.v); sync(); return; }
+    if (b.dataset.act === "reset") { Object.keys(defs).forEach(k => { H.dataset[k] = defs[k]; safe.set(k, defs[k]); }); sync(); }
+    if (b.dataset.act === "hide") { open(false); gone(true); }
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !pane.hidden) { open(false); tab.focus(); }
+    if (e.shiftKey && e.key.toLowerCase() === "t" && !/^(INPUT|SELECT|TEXTAREA)$/.test((e.target.tagName || ""))) { gone(!box.hidden); }
+  });
+  gone(safe.get("hidden") === "1"); sync();
+}
+
+function renderLists(){
+  $("#roads").innerHTML = DATA.map.roads.map(r=>`<div class="road"><b>${r.key}</b><span>${r.cond}: <span class="dim">${r.rule}</span></span></div>`).join("");
+  $("#watch").innerHTML = DATA.watch.map(w=>`<div class="row"><span class="mono dim">${w.t}</span><span>${w.text}</span><span class="v">${w.px.toFixed(1)}</span></div>`).join("");
+  $("#paper").innerHTML = DATA.paper.map(p=>{const e=p.n>=DATA.paper_min_n;return `<dl class="kv"><dt style="grid-column:1/-1;color:var(--ink-2)">${p.name}</dt>
+   <dt>n graded</dt><dd>${p.n}${p.missed?` <span class="dim">&nbsp;missed ${p.missed}</span>`:""}</dd>
+   <dt>Win %</dt><dd class="${e?"":"na"}">${e?FMT.pct1(p.win_pct):"NA"}</dd>
+   <dt>Mean R</dt><dd class="${e?"":"na"}">${e?FMT.sr(p.mean_r):"NA"}</dd>
+   <dt>Opposite side</dt><dd>${FMT.sr(p.mean_r_opp)}</dd></dl>`}).join("");
+  $("#callouts").innerHTML = DATA.callouts.map(c=>`<div class="row"><span class="chip good">${c.side}</span><span class="mono">${c.sym} ${c.event} ${c.entry.toFixed(2)}</span><span class="v dim">${Math.round(c.age_s/60)}m ago</span></div>`).join("");
+  areaSVG($("#eq"), DATA.equity, {h:72});
+}
+function render(){ bind(document); }
+candleSVG($("#chart"), {levels:[{p:DATA.pos.avg,t:"ENTRY",k:"entry"},{p:DATA.pos.stop,t:"STOP",k:"stop"},{p:DATA.vwap,t:"VWAP"}],h:360});
+renderLists(); render(); tweaks("a", ["dark","graphite","light"]); startSim(render);
+</script>
+</body></html>

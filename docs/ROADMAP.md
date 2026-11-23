@@ -27,6 +27,10 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
 - Read-only MCP tool `get_trade_memory` for the trade memory (roadmap item 9 prerequisite): dollars withheld unless
   `PX_MCP_MEMORY_DOLLARS=1`, `notes.md` only behind `PX_MCP_MEMORY_NOTES=1`, size-capped.
 
+- Agent-set display toggles (Round 38): MCP tool `set_view(key, value)` over seven allowlisted chart flags, prefs in `data/view_prefs.json`,
+  read-only `view` in `/state.json`, applied by `static/viewprefs.js`; `PX_AGENT_VIEW=1` lets the desk agent call it. Next: retire the
+  toolbar buttons the trader no longer touches.
+
 ## Next, in order
 
 **Gate: the sim probe.** Items 1, 2 (its probe) and the throughput test in 4 are settled only by a run of

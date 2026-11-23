@@ -123,6 +123,15 @@ def test_time_maps_to_the_right_candle_on_a_chart_of_a_different_size():
         assert run_js("T.indexAt(d.ts, d.t, 300000)", {"ts": ts, "t": t}) == want, t
 
 
+def test_time_lines_report_the_age_of_the_last_touch_in_bars():
+    bars = channel(220, 0.25)
+    for i, b in enumerate(bars):
+        b["timestamp"] = 1_000_000 + i * 60_000
+    res = fit(bars)
+    tl = run_js("T.timeLines(T.fit(d.bars), d.bars, 60000)", {"bars": bars})
+    assert tl["support"]["age"] == res["last"] - res["support"]["lastTouch"]
+
+
 def test_no_claim_without_a_fit_or_with_a_bad_bar_size():
     assert run_js("T.timeLines(null, d.b, 60000)", {"b": []}) is None
     assert run_js("T.timeLines({offset: 0, support: null, resistance: null}, d.b, 0)", {"b": [1]}) is None

@@ -1706,8 +1706,7 @@ function drawTrend(force){
       const arrow = ln => Math.abs(ln.slope) < 0.03 * r.atr ? '▬' : ln.slope > 0 ? '▲' : '▼';
       const pt = (ln, i, off) => ({dataIndex: abs(i), value: ln.p1 + ln.slope * (i - ln.i1) + (off || 0)});
       const seg = (ln, col, off, dash) => ov('trendSeg', [pt(ln, ln.i1, off), pt(ln, r.last + TR_EXT, off)], {color: col, size: dash ? 1 : 2, dash: !!dash});
-      const own = B >= 60000 && B % 60000 === 0 ? (B >= 3600000 && B % 3600000 === 0 ? B / 3600000 + 'h' : B / 60000 + 'm') + ' ' : '';      // the chart's own lines say which timeframe they came from
-      const tag = (ln, col, text, off) => {if(tagOk(ln.p1 + ln.slope * (r.last - ln.i1) + (off || 0))) ov('trendTag', [pt(ln, Math.max(ln.i1, r.last - 40), off)], {color: col, label: own + text})};      // at the start of the line: the right edge belongs to the map
+      const tag = (ln, col, text, off) => {if(tagOk(ln.p1 + ln.slope * (r.last - ln.i1) + (off || 0))) ov('trendTag', [pt(ln, Math.max(ln.i1, r.last - 40), off)], {color: col, label: text})};      // at the start of the line: the right edge belongs to the map
       const fill = (a, b, col) => ov('trendFill', [{dataIndex: abs(a.i1), value: a.p1}, {dataIndex: iEnd, value: a.p1 + a.slope * (r.last + TR_EXT - a.i1)},
                                                     {dataIndex: abs(b.i1), value: b.p1 + (b.off || 0)}, {dataIndex: iEnd, value: b.p1 + b.slope * (r.last + TR_EXT - b.i1) + (b.off || 0)}], {color: col});
       if(r.support && r.resistance && r.parallel){            // two independent lines that run together: a confirmed channel
@@ -1729,18 +1728,27 @@ function drawTrend(force){
       }
     }
     if(B > 0 && CH.more){                                      // the other timeframes' lines, in time, on this chart (More only)
-      const stamps = data.map(d => d.timestamp), tEnd = last.timestamp + TR_EXT * B;
+      const stamps = data.map(d => d.timestamp), tEnd = last.timestamp + TR_EXT * B, tPast = last.timestamp - 40 * B, cands = [], extras = [];
+      if(r) for(const ln of [r.support, r.resistance]) if(ln) cands.push({id: 'own' + ln.kind, own: true, kind: ln.kind, now: ln.p1 + ln.slope * (r.last - ln.i1), past: ln.p1 + ln.slope * (r.last - 40 - ln.i1), touches: ln.touches, recency: 1 - Math.min(1, (r.last - ln.lastTouch) / 60)});
       for(const tf of ['1m', '5m', '15m']){
         if(!TRX.tfs.has(tf) || TRX_MIN[tf] * 60000 === B) continue;
         const bars = TRX.bars[tf]; if(!bars){trxFetch(tf); continue}
         trxFetch(tf);                                          // refresh when its cache has expired (a no-op inside the TTL)
         const fr = PXTrend.fit(bars), tl = fr && PXTrend.timeLines(fr, bars, TRX_MIN[tf] * 60000); if(!tl) continue;
         for(const ln of [tl.support, tl.resistance]) if(ln){
-          const t0 = Math.max(ln.t1, stamps[0]), col = TR_COL[ln.kind], up = ln.slopeMs * 60000 > 0.03 * (tl.atr || 1) / TRX_MIN[tf];
-          ov('trendSeg', [{dataIndex: PXTrend.indexAt(stamps, t0, B), value: PXTrend.valueAt(ln, t0)}, {dataIndex: PXTrend.indexAt(stamps, tEnd, B), value: PXTrend.valueAt(ln, tEnd)}], {color: col, size: 1, dash: true, dots: tf === '1m'});
-          if(tagOk(PXTrend.valueAt(ln, last.timestamp), tl.atr)) ov('trendTag', [{dataIndex: PXTrend.indexAt(stamps, Math.max(t0, last.timestamp - 40 * B), B), value: PXTrend.valueAt(ln, Math.max(t0, last.timestamp - 40 * B))}], {color: col, label: tf + ' ' + (Math.abs(ln.slopeMs * 60000) < 0.03 * (tl.atr || 1) / TRX_MIN[tf] ? '▬' : up ? '▲' : '▼') + ' ' + ln.kind + ' · ' + ln.touches});
-          drew = true;
+          extras.push({tf, ln, tl});
+          cands.push({id: tf + ln.kind, kind: ln.kind, now: PXTrend.valueAt(ln, last.timestamp), past: PXTrend.valueAt(ln, tPast), touches: ln.touches, recency: 1 - Math.min(1, (ln.age || 0) / 60)});
         }
+      }
+      // which of the other-timeframe lines are worth the ink: near price, not a near-parallel copy of a stronger one, at most 4 lines on the chart with its own
+      const keep = PXDeclutter.pickTrendLines(cands, lp, r && r.atr, {far: 3, dup: 0.3, cap: 4});
+      for(const {tf, ln, tl} of extras){
+        if(!keep.has(tf + ln.kind)) continue;
+        const t0 = Math.max(ln.t1, stamps[0]), col = TR_COL[ln.kind], flat = Math.abs(ln.slopeMs * 60000) < 0.03 * (tl.atr || 1) / TRX_MIN[tf];
+        // dashed (1m dotted) is how another timeframe's line reads, so its tag carries no timeframe text
+        ov('trendSeg', [{dataIndex: PXTrend.indexAt(stamps, t0, B), value: PXTrend.valueAt(ln, t0)}, {dataIndex: PXTrend.indexAt(stamps, tEnd, B), value: PXTrend.valueAt(ln, tEnd)}], {color: col, size: 1, dash: true, dots: tf === '1m'});
+        if(tagOk(PXTrend.valueAt(ln, last.timestamp), tl.atr)) ov('trendTag', [{dataIndex: PXTrend.indexAt(stamps, Math.max(t0, last.timestamp - 40 * B), B), value: PXTrend.valueAt(ln, Math.max(t0, last.timestamp - 40 * B))}], {color: col, label: (flat ? '▬' : ln.slopeMs > 0 ? '▲' : '▼') + ' ' + ln.kind + ' · ' + ln.touches});
+        drew = true;
       }
     }
     if(!drew){applyRoom(); return}

@@ -144,3 +144,31 @@ def test_no_em_or_en_dashes_in_the_new_copy():
     assert "—" not in DC and "–" not in DC
     block = JS.split("function declutterPlan()")[1].split("function deskLines()")[0]
     assert "—" not in block and "–" not in block
+
+
+def _c(id, kind="support", now=100, past=100, touches=3, rec=0.5, own=False):
+    return {"id": id, "kind": kind, "now": now, "past": past, "touches": touches, "recency": rec, "own": own}
+
+
+@needs_node
+def test_trend_pick_drops_far_lines_and_near_parallel_duplicates_and_caps_at_four():
+    cs = [_c("near", now=100.5), _c("far", now=110), _c("dup", now=100.6, past=100.2, touches=3), _c("res", "resistance", now=101, touches=4)]
+    got = js("[...T.pickTrendLines(d.c, 100, 1)].sort()", {"c": cs})
+    assert got == ["near", "res"]                                  # far is 10 ATR away; dup sits on near at both ends
+    many = [_c(f"k{i}", now=100 + i * 0.4, past=100 + i * 0.4 + 2 * i, touches=3 + i) for i in range(8)]
+    assert len(js("[...T.pickTrendLines(d.c, 100, 1, {far: 9})]", {"c": many})) == 4
+
+
+@needs_node
+def test_trend_pick_prefers_touches_and_recency_and_never_drops_an_own_line():
+    cs = [_c("weak", "support", now=100.5, past=105, touches=3, rec=0.1), _c("strong", "support", now=100.6, past=106, touches=6, rec=0.9)]
+    assert js("[...T.pickTrendLines(d.c, 100, 1, {cap: 1})]", {"c": cs}) == ["strong"]
+    own = [_c("own", now=200, own=True), _c("x", now=100.2)]
+    assert js("[...T.pickTrendLines(d.c, 100, 1, {cap: 0})]", {"c": own}) == ["own"]   # own is kept past the cap, even far
+    assert js("[...T.pickTrendLines(d.c, null, null, {cap: 1})]", {"c": cs}) == ["strong"]       # blind: only the cap applies
+
+
+def test_other_timeframe_tags_carry_no_timeframe_text():
+    seg = JS[JS.index("const keep = PXDeclutter.pickTrendLines"):JS.index("if(!drew){applyRoom()")]
+    assert "label: tf" not in seg and "dots: tf === '1m'" in seg
+    assert "label: own" not in JS

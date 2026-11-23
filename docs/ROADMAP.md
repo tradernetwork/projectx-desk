@@ -26,6 +26,9 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
 
 - Read-only MCP tool `get_trade_memory` for the trade memory (roadmap item 9 prerequisite): dollars withheld unless
   `PX_MCP_MEMORY_DOLLARS=1`, `notes.md` only behind `PX_MCP_MEMORY_NOTES=1`, size-capped.
+- Trendline declutter (display only): other-timeframe lines lose the timeframe text in their tag (dashed, 1m dotted, says it);
+  `PXDeclutter.pickTrendLines` drops lines over 3 ATR from price and near-parallel copies of a stronger line, ranks by touches
+  and recency, and caps the other-timeframe extras so at most 4 lines draw beside the chart's own. Per-timeframe toggles unchanged.
 
 ## Next, in order
 

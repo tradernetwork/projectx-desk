@@ -118,7 +118,7 @@
     const conv = ln => {
       if(!ln) return null;
       const b = bars[res.offset + ln.i1]; if(!b || !fin(b.timestamp)) return null;
-      return {kind: ln.kind, t1: b.timestamp, v1: ln.p1, slopeMs: ln.slope / barMs, touches: ln.touches, breaks: ln.breaks, rail: ln.rail ? {offset: ln.rail.offset, touches: ln.rail.touches, width: ln.rail.width} : null};
+      return {kind: ln.kind, t1: b.timestamp, v1: ln.p1, slopeMs: ln.slope / barMs, touches: ln.touches, breaks: ln.breaks, age: res.last - ln.lastTouch, rail: ln.rail ? {offset: ln.rail.offset, touches: ln.rail.touches, width: ln.rail.width} : null};
     };
     return {support: conv(res.support), resistance: conv(res.resistance), parallel: !!res.parallel, atr: res.atr};
   }

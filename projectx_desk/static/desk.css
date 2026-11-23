@@ -926,3 +926,11 @@ body.streaming .chat-fab,body.streaming .chat-dock{display:none}   /* the agent 
 .mqd>summary{display:inline;cursor:pointer}
 .tm-keyline{font:600 var(--fs-xs)/1.5 var(--mono,monospace);color:var(--text-2);overflow-wrap:anywhere}
 .tm-narr{display:block}
+.thesis-fab{position:fixed;z-index:55;left:14px;bottom:48px;min-height:34px;padding:0 16px;border-radius:17px;background:var(--bg-card);border:1px solid var(--cyan-line);color:var(--cyan-ink)}
+.thesis-card{position:fixed;z-index:56;left:14px;bottom:48px;width:min(340px,calc(100vw - 28px));max-height:calc(100dvh - 120px);overflow:auto;display:flex;flex-direction:column;gap:6px;padding:12px;background:var(--bg-card);border:1px solid var(--cyan-line);border-radius:10px}
+.thesis-card[hidden]{display:none}
+.thesis-h{display:flex;gap:8px;align-items:center}.thesis-h .ghost{margin-left:auto}
+.thesis-row{display:flex;flex-wrap:wrap;gap:6px}
+.thesis-card .chip.on{border-color:var(--cyan-ink);color:var(--cyan-ink)}
+.thesis-fact{color:var(--amber,#e0a040)}
+body.streaming .thesis-fab,body.streaming .thesis-card{display:none}

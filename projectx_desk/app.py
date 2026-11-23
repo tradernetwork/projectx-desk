@@ -47,6 +47,7 @@ from projectx_desk import llm_login as px_llm_login
 from projectx_desk import llm_providers as px_llm
 from projectx_desk import journal as px_journal
 from projectx_desk import tradewatch as px_tradewatch
+from projectx_desk import thesis as px_thesis
 from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
 from projectx_desk import ticks as px_ticks
@@ -57,7 +58,7 @@ from projectx_desk.guard import Guard, GuardError
 from projectx_desk.limits import Limits
 from projectx_desk.client import live_data, PXAuthError, PXClient, PXError, PXNotConfigured, PXRateLimited
 from projectx_desk.hub import SignalRHub
-from projectx_desk.state import DOWN, RESYNC, LiveState, order_view, position_view, ts_ms
+from projectx_desk.state import DOWN, RESYNC, LiveState, is_protective_stop, order_view, position_view, ts_ms
 from projectx_desk.tradeday import session_start
 
 from projectx_desk import PKG_DIR, ROOT
@@ -1014,6 +1015,48 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
     @app.get("/api/llm/login/status")
     async def llm_login_status(request: Request, pending_id: str = ""):
         return {"status": llm_login_of(request.app).status(pending_id)}
+
+    # ---- thesis card (thesis.py): the trader's stated idea and plain-number checks. Full desk only, same POST gate, no path to the guard ----
+
+    def thesis_of(a):
+        t = getattr(a.state, "thesis", None)
+        if t is None:
+            t = a.state.thesis = px_thesis.Store(px_thesis.store_path(ROOT))
+        return t
+
+    def thesis_view(a, th):
+        if th is None:
+            return {"thesis": None, "checks": None, "facts": []}
+        live = a.state.live
+        last = (live.quotes.get(th["contract"]) or {}).get("lastPrice")
+        stop = None
+        for p in list(live.positions.values()):
+            if p.get("contractId") != th["contract"]:
+                continue
+            side = {1: "long", 2: "short"}.get(p.get("type"))
+            for o in list(live.orders.values()):
+                if is_protective_stop(o, side, p.get("size"), th["contract"]) and isinstance(o.get("stopPrice"), (int, float)):
+                    stop = o["stopPrice"]
+                    break
+        chk = px_thesis.check(th, last, stop, int(time.time() * 1000))
+        return {"thesis": th, "checks": chk, "facts": px_thesis.facts(th, chk)}
+
+    @app.get("/api/thesis")
+    async def thesis_get(request: Request, contract: str = Query("", max_length=60)):
+        if not px_thesis.CONTRACT.match(contract):
+            raise HTTPException(400, "bad contract")
+        a = request.app
+        return {**thesis_view(a, thesis_of(a).latest(contract)), "types": list(px_thesis.TYPES), "presets": px_thesis.PRESETS}
+
+    @app.post("/api/thesis")
+    async def thesis_post(request: Request):
+        b = await body(request)
+        row = px_thesis.clean(b)
+        if row is None:
+            raise HTTPException(400, "bad thesis")
+        a = request.app
+        thesis_of(a).add(row)
+        return thesis_view(a, row)
 
     mimetypes.add_type("text/javascript", ".js")   # Windows reads the registry, which can say text/plain
     mimetypes.add_type("application/manifest+json", ".webmanifest")

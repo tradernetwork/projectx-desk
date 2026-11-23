@@ -21,6 +21,7 @@ LLM_POSTS = {"/api/llm/config", "/api/llm/clear", "/api/llm/test", "/api/llm/log
 # desk (PX_RH unset) keeps the exact set above. Deliberately listed here so adding one is a conscious edit.
 RH_POSTS = {"/api/rh/preview", "/api/rh/place", "/api/rh/cancel", "/api/rh/release", "/api/rh/reconcile", "/api/rh/discard", "/api/rh/halt/resolve"}
 CHAT_POSTS = {"/api/chat", "/api/ag-ui"}                    # the relay to the read-only desk agent (chat.py); tests/test_px_chat.py covers it
+THESIS_POSTS = {"/api/thesis"}                # the thesis card notebook (thesis.py); tests/test_thesis.py covers it
 
 
 def make_app(tmp_path, **over):
@@ -50,7 +51,7 @@ def post(c, path, token, json=None, **hdr):
 def test_the_post_surface_is_exactly_the_expected_set_and_not_reachable_by_get(tmp_path):
     app, *_ = make_app(tmp_path)
     posts = {r.path for r in app.routes if "POST" in getattr(r, "methods", set())}
-    assert posts == EXPECTED_POSTS | PUSH_POSTS | CHAT_POSTS | LLM_POSTS
+    assert posts == EXPECTED_POSTS | PUSH_POSTS | CHAT_POSTS | LLM_POSTS | THESIS_POSTS
     with TestClient(app) as c:
         for p in EXPECTED_POSTS:
             assert c.get(p).status_code == 405

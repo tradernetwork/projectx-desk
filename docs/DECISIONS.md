@@ -983,3 +983,29 @@ Docs: `docs/PUBLIC.md`. Tests: `tests/test_pub_link.py`, `tests/test_pub_app.py`
   A streak is a count, so it prints under 30 trips with its n; the average slippage is withheld under `MIN_N`.
 - **Preview text with the audit: NOT done.** The audit file is written only by `guard.py` from a fixed key allowlist (`AUDIT_KEYS`), so
   storing the displayed numbers or an arrival quote needs a guard change. Recorded as a follow-up in `docs/ROADMAP.md`.
+
+## Round 40: stop-widened, correlated-roots and loss-room detectors (2026-11-23)
+
+- **Why.** Mining other brokers' MCP repos (idea 5, concept only, nothing copied) showed three read-only account detectors worth having:
+  the trader widening a stop in the broker UI after it was set, two correlated index futures open at once against one shared loss room,
+  and a line when most of the day's loss room is gone. None can refuse or move anything.
+- **STOP_WIDENED** (`tradewatch.py`, default OFF with the rest of the detector). Compared per (contract, order id) on a working
+  fixed stop (type 4) that `state.is_protective_stop` accepts: long, lower trigger; short, higher. The desk only ever tightens
+  (`move_stop`) and re-sends the current price on a resize, so a widening is the trader's own edit. Never fires for a TRAIL (its trigger
+  moves by design), a new order id (a replacement is a new baseline), an unreadable or non-positive trigger, or the first look, and the
+  remembered triggers are dropped on an unseeded look so a stream gap is not read as an edit. The text is a fixed template with the
+  points moved: no dollars, no order id. The ticket's original risk is NOT consulted (the detector imports nothing from the guard).
+- **CORRELATED.** `CORR_GROUPS` is the one table: `EQUITY_INDEX` = MES, MNQ, M2K, MYM and the full-size ES, NQ, RTY, YM. Two or more
+  distinct ROOTS with a readable open position make a group exposure; one root twice does not. Told once per set of roots (and again
+  after the set clears and returns); the first look is silent but the snapshot `correlated` and `TRADEWATCH_CORR:` digest lines still show
+  the state. Metals and energy are deliberately not grouped: add a group here, with a test, if wanted.
+- **LOSS_ROOM** (`digest.loss_room_line`, always on, a plain function of numbers already in the state). Daily used percent is
+  (limit - room) / limit from `risk.daily_limit` and `risk.daily_room`; in stream mode, where those are redacted, the existing coarse
+  `daily_used_pct`. `AT_OR_ABOVE_80PCT` at 80.0 or more (unrounded: 79.9 prints 80 but reads BELOW), `NA` for a missing, non-finite,
+  non-numeric or non-positive limit, never 0. The drawdown (MLL) room has no limit on this surface to divide by, so no percentage is
+  invented for it; the line says "daily" in its name.
+- **Wording.** Events say what happened ("stop moved away from price by 10 points after it was set", "open at once"), never what to do;
+  a test pins that no advice or dollar word appears. The banner path (`PXWatch.freshEvents`, "an alert, not a signal") and its
+  existing no-trade-wording test are unchanged.
+- **Not done.** No phone push for these (notify.py untouched), no use of the ticket's recorded stop as the "original" risk, no MLL percentage.
+

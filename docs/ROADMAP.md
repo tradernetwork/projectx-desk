@@ -27,6 +27,8 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
   (`PX_TRADEWATCH_NOSTOP_S`, 15), re-entry within 10 minutes of a losing exit, scale-in, entry after 14:55 CT, entry against the BIAS
   read. Habit definitions are `journal.py`'s. Fixed templates, a banner and chime (`watch.js` `freshEvents`) and `TRADEWATCH:` digest
   lines. Read-only, no path to the guard. Not yet seen against a live session; the coach (item 7 below) can speak first on these events.
+  Round 39 adds STOP_WIDENED (a fixed stop moved away from price in the broker UI), CORRELATED (open positions on two roots of the
+  equity-index group) and a `LOSS_ROOM:` digest line at 80 percent of the daily room used. Same status: unseen against a live session.
 
 - Thesis card and quick buttons, first slice (item 6): `thesis.py` (allowlisted rows, append-only `data/thesis.jsonl`, pure fact checks:
   invalidation broken, scalp past its limit, stop wider than the invalidation), `GET/POST /api/thesis` (full desk only, same POST gate),

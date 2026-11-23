@@ -68,7 +68,7 @@ def test_the_rh_posts_are_added_only_with_a_robinhood_runtime_and_never_in_recor
                          user_hub=None if kw.get("record_only") else SignalRHub(fake, "user", url="ws://127.0.0.1:1/y"),
                          allowed_hosts={"testserver"}, connect=False, **kw)
         return {r.path for r in app.routes if "POST" in getattr(r, "methods", set())}
-    base = EXPECTED_POSTS | PUSH_POSTS | CHAT_POSTS | LLM_POSTS
+    base = EXPECTED_POSTS | PUSH_POSTS | CHAT_POSTS | LLM_POSTS | THESIS_POSTS
     assert posts() == base
     assert posts(rh=mock_rt()[0]) == base | RH_POSTS
     assert posts(rh=mock_rt()[0], record_only=True) == set()

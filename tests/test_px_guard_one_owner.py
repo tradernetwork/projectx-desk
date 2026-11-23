@@ -155,7 +155,9 @@ async def _stale_a_then_b(tmp_path, stop_fill_seen=True):
     await g.handle_position(fill(live))
     assert a.stop_state == "ACKED" and a.filled_size == 1
     live.positions.clear()
-    gw.working = []                  # the stop filled: the broker no longer lists it
+    # The Broker stub now lists every stop it ACKs (as a real gateway does), so a filled stop must be removed explicitly: this encodes the
+    # truth that a filled stop is no longer listed.
+    gw.working = []
     if stop_fill_seen:
         live.trades.append({"id": 50, "orderId": a.stop_order_id, "contractId": CID, "size": 1, "voided": False})
     clock.t += 60

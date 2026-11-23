@@ -2069,12 +2069,13 @@ class Guard:
         """After a fixed stop is ACKed, read it back from the broker and check it (Round 39, 41). A stop that is provably wrong is a fill
         with no effective stop: flatten and halt (`stop_readback`). A mismatch that slippage alone explains, or a market that ran through
         the planned stop, is audited (`STOP_READBACK_DRIFT`). A position that GREW since the ACK goes through the ordinary resize first,
-        and a stop that still reads too small is re-read (a stale list) before it is judged. A stop that never lists is re-checked once and
-        then flattened like a TRAIL that does not read back. An unreadable fill price, tick size or quote is only audited
-        (`STOP_READBACK_UNREAD`). The position is re-checked right before any flatten: flat means nothing to do."""
+        and a stop that still reads too small is re-read (a stale list) before it is judged. A stop absent from a list that WAS read is
+        re-checked once, checked against the user hub, and only then flattened like a TRAIL that does not read back; a REST failure is
+        never "unlisted" (audited `STOP_READBACK_UNREAD`, left to protect_open_positions). The position is re-checked right before any
+        flatten: flat means nothing to do."""
         if not self._exposed(t):
             return          # flat or already handled: nothing to judge (checked BEFORE the order-read retries)
-        got = await self._read_order(oid)
+        got, listed_ok = await self._read_order_ex(oid)
         tick = None
         try:
             rec = await asyncio.wait_for(self._contract(t.contract_id, stale_ok=True), 2)
@@ -2082,7 +2083,7 @@ class Guard:
         except Exception:  # noqa: BLE001
             pass
         unlisted_rechecked = False
-        for _ in range(6):
+        for attempt in range(6):
             size = self._open_size(t)
             if not self._exposed(t):
                 return
@@ -2091,29 +2092,46 @@ class Guard:
                 if t.abandoned or t.state == "CLOSED":
                     return
                 await self.sleep(self.verify_interval)
-                got = await self._read_order(oid)       # judge the resized stop, not the old size
+                got, ok2 = await self._read_order_ex(oid)       # judge the resized stop, not the old size
+                listed_ok = listed_ok or ok2
                 continue
             if got is None:
                 if not unlisted_rechecked:
                     unlisted_rechecked = True
                     await self.sleep(self.verify_interval)
-                    got = await self._read_order(oid)
+                    got, ok2 = await self._read_order_ex(oid)
+                    listed_ok = listed_ok or ok2
                     continue
                 if not self._exposed(t):
                     return
+                if not listed_ok:                       # every read errored: that is not evidence the stop is missing
+                    self._audit("stop", ticket=t.hash8, state="STOP_READBACK_UNREAD")
+                    return
+                if self._hub_shows_working(t, oid):     # the user hub says it works: a lagging REST list is not proof
+                    self._audit("stop", ticket=t.hash8, state="STOP_READBACK_UNREAD")
+                    return
                 self._audit("stop", ticket=t.hash8, state="STOP_READBACK_UNLISTED")
                 t.stop_order_id = oid
-                try:                                    # the sweep sees only LISTED orders; a stop the list lags on needs its own cancel
-                    await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id, "orderId": oid})
-                except Exception:  # noqa: BLE001 - flatten sweeps and verifies the book anyway
-                    pass
+                cancelled = False
+                if self.limits.account_kind == "sim":   # Order/cancel works on simulated accounts only
+                    try:
+                        r = await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id, "orderId": oid})
+                        cancelled = isinstance(r, dict) and r.get("success") is True
+                    except Exception:  # noqa: BLE001 - flatten sweeps and verifies the book anyway
+                        pass
+                if not cancelled:                       # a live account cannot cancel it: it may be working, and could open a reverse position
+                    try:
+                        self._set_intent(f"px-{t.hash8}-2", state="ORPHAN", order_id=oid)
+                    except OSError:
+                        pass
+                    self._audit("stop", ticket=t.hash8, state="UNLISTED_STOP_ORPHAN")
                 if self._exposed(t):
                     await self._naked(t, "stop_readback")
                 return
             problem = self._judge_fixed_stop(t, got, size, tick)
-            if problem == "too_small" and size <= (t.stop_size or 0) and _ < 4:
+            if problem == "too_small" and size <= (t.stop_size or 0) and attempt < 4:
                 await self.sleep(self.verify_interval)  # our resize ACKed: a stale list may still show the old size; read again
-                got = await self._read_order(oid)
+                got, ok2 = await self._read_order_ex(oid)
                 continue
             break
         else:
@@ -2135,31 +2153,50 @@ class Guard:
         await self._naked(t, "stop_readback")
 
     def _judge_fixed_stop(self, t: Ticket, got, size, tick):
-        """Fixed word, None for OK, or "UNREAD" when the fill price or tick size cannot be read (then only audited)."""
+        """Fixed word, None for OK, or "UNREAD" when the fill price or tick size cannot be read (then only audited). The checks that need
+        neither (type, working, side, size) always run first, so an unreadable price never hides a wrong stop."""
         pos = [q for q in self.live.positions.values() if q.get("contractId") == t.contract_id and abs(q.get("size") or 0)]
         fill_px = pos[0].get("averagePrice") if len(pos) == 1 else None
-        if (not _finite_pos(fill_px)) or not _finite_pos(tick):
-            return "UNREAD"
         q = self.live.quotes.get(t.contract_id) or {}
         fresh = self.clock() - q.get("_rx", -1e9) <= self.limits.max_quote_age_s
         planned = (t.readback or {}).get("entry_ref")
-        return self._fixed_stop_problem(got, t.stop_plan["side"], size, float(fill_px), float(tick),
-                                        None if t.one_lot else self.limits.max_stop_ticks,
-                                        planned_px=float(planned) if _finite_pos(planned) else None,
-                                        book=_book(q) if fresh else None,
-                                        plan_stop=t.stop_plan.get("stop_price"))
+        # The stop the desk currently means: the trader may have tightened it (move_stop) while the read-back waited.
+        cur, plan = t.stop_current, t.stop_plan.get("stop_price")
+        trig = got.get("stopPrice") if isinstance(got, dict) else None
+        plan_stop = trig if (_finite_pos(trig) and trig in [x for x in (cur, plan) if x is not None]) else (cur if cur is not None else plan)
+        r = self._fixed_stop_problem(got, t.stop_plan["side"], size, float(fill_px) if _finite_pos(fill_px) else None,
+                                     float(tick) if _finite_pos(tick) else None,
+                                     None if t.one_lot else self.limits.max_stop_ticks,
+                                     planned_px=float(planned) if _finite_pos(planned) else None,
+                                     book=_book(q) if fresh else None, plan_stop=plan_stop)
+        if r == "unreadable" and (not _finite_pos(fill_px) or not _finite_pos(tick)):
+            return "UNREAD"
+        return r
 
     async def _read_order(self, order_id):
         """The broker's own record of one working order (REST), retried a few times because a new order can lag the list. None = not seen."""
+        return (await self._read_order_ex(order_id))[0]
+
+    async def _read_order_ex(self, order_id):
+        """(row or None, listed_ok). `listed_ok` is True when at least one REST read of the order list SUCCEEDED, so None with
+        listed_ok False means "could not read", never "not in the list" (Round 41)."""
+        ok = False
         for _ in range(max(1, self.verify_tries)):
             try:
                 hit = next((o for o in await self.client.open_orders(self.live.account_id) if o.get("id") == order_id), None)
+                ok = True
             except Exception:  # noqa: BLE001
                 hit = None
             if hit is not None:
-                return hit
+                return hit, True
             await self.sleep(self.verify_interval)
-        return None
+        return None, ok
+
+    def _hub_shows_working(self, t: Ticket, oid) -> bool:
+        """The user hub as a second witness: the stop id is in the live order cache, working, and has not filled."""
+        row = self.live.orders.get(oid)
+        return (isinstance(row, dict) and (row.get("status") is None or row.get("status") in WORKING_STATUSES)
+                and not self._stop_filled(t))
 
     async def _drop_order(self, order_id) -> bool:
         """Cancel and PROVE it is gone from the broker's book. False = could not prove it."""

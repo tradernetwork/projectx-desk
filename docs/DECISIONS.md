@@ -1049,6 +1049,12 @@ Docs: `docs/PUBLIC.md`. Tests: `tests/test_pub_link.py`, `tests/test_pub_app.py`
   only the read-back and boot/resync runs remain. (3c) An unreadable `averagePrice`, tick size or quote only audits `STOP_READBACK_UNREAD`
   (the quote also skips the market check, which then relies on the plan check). (4) `Guard.ttl_s` reads both clocks, so the desk, MCP and
   digest never show time left on a ticket that is expired; `_oversize_seen` keeps only contracts with a position and is capped at 200.
+- **Review round 3 (Round 41).** An unlisted verdict needs a list that was actually READ: if every REST read errored, it is
+  `STOP_READBACK_UNREAD` (left to `protect_open_positions`), never "unlisted". The user hub is a second witness (the stop id working in
+  `live.orders` and not filled reads as listed; the delay is not lengthened). On a live account Order/cancel is refused, so an unlisted stop
+  that could not be cancelled gets an ORPHAN intent and an audit `UNLISTED_STOP_ORPHAN` besides the flatten and halt. The trigger is compared
+  with the CURRENT stop (`stop_current`, else the plan, and either when the broker shows one of them), so a move_stop tighten that the market
+  runs through is drift. Type, working, side and size are judged even when the fill price or tick size is unreadable.
 - **What this does not settle.** `averagePrice` on a position is the broker's average, so after a partial fill at two prices the
   check is against the average. The read-back runs after the watchdog is cancelled, so a broker that never lists the stop is caught by
   the resync, not by the watchdog.

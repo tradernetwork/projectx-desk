@@ -193,14 +193,14 @@ async def test_a_position_that_grew_at_readback_is_resized_not_flattened(tmp_pat
     t = await staged(g, risk_dollars=200.0)
     await go(g, t)
     gw.working = [{**STOPROW, "size": 1}]
-    real = g._read_order
+    real = g._read_order_ex
 
     async def grow_then_read(oid):
         live.positions[1]["size"] = 3                   # the rest of the entry filled between the ACK and the read-back
         gw.working = [{**STOPROW, "size": 3}]           # the modify (resize) is what makes the broker row match
         return await real(oid)
 
-    g._read_order = grow_then_read
+    g._read_order_ex = grow_then_read
     t.stop_state, t.stop_order_id, t.stop_size = "ACKED", 900, 1
     fill(live, size=1)
     await g._fixed_stop_readback(t, 900)
@@ -230,6 +230,111 @@ async def test_a_stop_that_never_lists_is_rechecked_then_flattened_like_a_trail(
     assert g.halted() and t.abandoned
     assert any(a.get("state") == "STOP_READBACK_UNLISTED" for a in audits(g))
     assert g.auto_action()["kind"] == "stop_readback"
+
+
+async def _armed(tmp_path, **over):
+    g, live, clock, gw = build2(tmp_path, **over)
+    t = await staged(g)
+    await go(g, t)
+    t.stop_state, t.stop_order_id, t.stop_size = "ACKED", 900, 1
+    fill(live)
+    return g, live, clock, gw, t
+
+
+async def test_a_rest_failure_is_not_unlisted(tmp_path):
+    g, live, clock, gw, t = await _armed(tmp_path)
+    calls = {"n": 0}
+
+    async def boom(account_id):
+        calls["n"] += 1
+        raise RuntimeError("rest down")
+
+    gw.open_orders = boom
+    await g._fixed_stop_readback(t, 900)
+    assert calls["n"] >= 20 and not g.halted() and not t.abandoned
+    st = [a.get("state") for a in audits(g)]
+    assert "STOP_READBACK_UNREAD" in st and "STOP_READBACK_UNLISTED" not in st
+
+
+async def test_a_list_that_lags_fifteen_reads_does_not_flatten(tmp_path):
+    g, live, clock, gw, t = await _armed(tmp_path)
+    calls = {"n": 0}
+
+    async def lag(account_id):
+        calls["n"] += 1
+        return [dict(STOPROW)] if calls["n"] > 15 else []
+
+    gw.open_orders = lag
+    await g._fixed_stop_readback(t, 900)
+    assert not g.halted() and not t.abandoned and any(a.get("state") == "STOP_READBACK_OK" for a in audits(g))
+
+
+async def test_an_absent_stop_that_the_user_hub_shows_working_is_not_flattened(tmp_path):
+    g, live, clock, gw, t = await _armed(tmp_path)
+    gw.working = []
+    gw.list_acked = False
+    live.orders[900] = {"id": 900, "contractId": CID, "type": 4, "status": 1}
+    await g._fixed_stop_readback(t, 900)
+    assert not g.halted() and not t.abandoned
+    assert any(a.get("state") == "STOP_READBACK_UNREAD" for a in audits(g))
+
+
+async def test_a_tightened_stop_the_market_ran_through_is_drift_not_a_flatten(tmp_path):
+    g, live, clock, gw, t = await _armed(tmp_path)
+    ref = float(t.readback["entry_ref"])
+    tight = ref - 0.5
+    t.stop_current = tight                                  # move_stop tightened it while the read-back slept
+    live.quotes[CID]["bestBid"], live.quotes[CID]["bestAsk"] = tight - 0.5, tight
+    live.quotes[CID]["_rx"] = clock()
+    gw.working = [{**STOPROW, "stopPrice": tight}]
+    live.positions[1]["averagePrice"] = ref
+    await g._fixed_stop_readback(t, 900)
+    assert not g.halted() and not t.abandoned
+    assert any(a.get("state") == "STOP_READBACK_DRIFT" and a.get("code") == "market_through_plan" for a in audits(g))
+
+
+async def test_a_live_account_unlisted_stop_leaves_a_recorded_orphan_and_halts(tmp_path):
+    g, live, clock, gw, t = await _armed(tmp_path)
+    g.limits = g.limits.__class__(**{**g.limits.__dict__, "account_kind": "live"})
+    gw.working = []
+    gw.list_acked = False
+    await g._fixed_stop_readback(t, 900)
+    assert g.halted() and t.abandoned
+    assert g._intents[f"px-{t.hash8}-2"]["state"] == "ORPHAN"
+    assert any(a.get("state") == "UNLISTED_STOP_ORPHAN" for a in audits(g))
+    assert not [w for w in gw.writes if w[0] == "/api/Order/cancel"]          # a live account cannot cancel
+
+
+def test_wrong_side_and_not_working_are_judged_even_with_an_unreadable_fill_price():
+    from projectx_desk.guard import Guard as G
+
+    class T:
+        stop_current = None
+        stop_plan = {"side": 1, "stop_price": 4994.0}
+        readback = {"entry_ref": 5000.0}
+        one_lot = False
+        contract_id = CID
+
+    class Live:
+        positions = {1: {"contractId": CID, "size": 1}}       # no averagePrice
+        quotes = {}
+
+    g = G.__new__(G)
+    g.live = Live()
+    g.clock = lambda: 0.0
+    g.limits = type("L", (), {"max_quote_age_s": 2, "max_stop_ticks": 200})()
+    for over, want in [({"side": 0}, "wrong_side"), ({"status": 3}, "not_working"), ({"size": 0}, "too_small")]:
+        assert g._judge_fixed_stop(T(), {**STOPROW, **over}, 1, 0.25) == want
+    assert g._judge_fixed_stop(T(), dict(STOPROW), 1, 0.25) == "UNREAD"
+
+
+async def test_the_default_stub_lists_its_stop_so_a_normal_fill_never_takes_the_unlisted_path(tmp_path):
+    g, live, clock, gw = build2(tmp_path)                       # list_acked defaults True
+    t = await staged(g)
+    await go(g, t)
+    await g.handle_position(fill(live))
+    st = [a.get("state") for a in audits(g)]
+    assert "STOP_READBACK_OK" in st and "STOP_READBACK_UNLISTED" not in st and not g.halted()
 
 
 async def test_an_unlisted_stop_on_a_position_that_is_already_flat_does_nothing(tmp_path):

@@ -964,15 +964,60 @@ Docs: `docs/PUBLIC.md`. Tests: `tests/test_pub_link.py`, `tests/test_pub_app.py`
 - **Not done.** Indicator groups and the Robinhood/LETF panels are not in the set: their state is server-chosen (`indicators.py`)
   or lives in the URL hash. The buttons are not removed yet; that waits on the trader using the tool for a while.
 
-## Round 39: ticket lifecycle, over-size stop, fixed-stop read-back (2026-11-23)
+## Round 39: execution facts in the journal (2026-11-23)
+
+- **Why.** Reading other desks' MCP repos (concepts only, nothing copied) turned up three cheap journal figures that fit our
+  no-rate-under-30 rule: slippage against the price on arrival, size drift against the trader's own habit, and the longest run of
+  losses. All three are one pass over trips the journal already builds.
+- **What.** `journal.py` gains `read_arrivals`/`attach_slippage`/`slippage_stats`, `size_drift` and `loss_streaks`; `summarize` carries
+  them as `streak`, `size_drift`, `slippage`; `trades.md` and `scalp.md` (`## Execution`) print them; `scripts/scalp_report.py` attaches
+  arrivals. No change to `guard.py`, the audit, any default or the pin.
+- **Slippage is NA unless an arrival quote was recorded.** Nothing in the desk records one today: the audit carries no quote and a
+  fill row carries none. So the figure reads from an OPTIONAL `data/arrivals.jsonl` (`PX_ARRIVALS_FILE`, lines `{ts, contract, side,
+  price}`) that no desk code writes yet. With no file every slippage line says `NA ... (n=0)`. A quote counts only when it is on the
+  same contract and entry side, at or before the entry (no lookahead) and within 120 s of it; a scaled-in trip, an unknown tick size
+  or a garbled line is NA, never 0. Sign: positive is adverse. Entry only, not exit.
+- **Size drift** compares each closed trip's qty with the median of the previous 50 closed trips (needs 30 earlier, else NA; the trip
+  never moves its own baseline). It reports how many ran at 2x or more, with n judged. A count, not advice.
+- **Loss streak** is the longest run of consecutive losing closed trips by exit time (a scratch ends it) and the run now; n beside it.
+  A streak is a count, so it prints under 30 trips with its n; the average slippage is withheld under `MIN_N`.
+- **Preview text with the audit: NOT done.** The audit file is written only by `guard.py` from a fixed key allowlist (`AUDIT_KEYS`), so
+  storing the displayed numbers or an arrival quote needs a guard change. Recorded as a follow-up in `docs/ROADMAP.md`.
+
+## Round 40: stop-widened, correlated-roots and loss-room detectors (2026-11-23)
+
+- **Why.** Mining other brokers' MCP repos (idea 5, concept only, nothing copied) showed three read-only account detectors worth having:
+  the trader widening a stop in the broker UI after it was set, two correlated index futures open at once against one shared loss room,
+  and a line when most of the day's loss room is gone. None can refuse or move anything.
+- **STOP_WIDENED** (`tradewatch.py`, default OFF with the rest of the detector). Compared per (contract, order id) on a working
+  fixed stop (type 4) that `state.is_protective_stop` accepts: long, lower trigger; short, higher. The desk only ever tightens
+  (`move_stop`) and re-sends the current price on a resize, so a widening is the trader's own edit. Never fires for a TRAIL (its trigger
+  moves by design), a new order id (a replacement is a new baseline), an unreadable or non-positive trigger, or the first look, and the
+  remembered triggers are dropped on an unseeded look so a stream gap is not read as an edit. The text is a fixed template with the
+  points moved: no dollars, no order id. The ticket's original risk is NOT consulted (the detector imports nothing from the guard).
+- **CORRELATED.** `CORR_GROUPS` is the one table: `EQUITY_INDEX` = MES, MNQ, M2K, MYM and the full-size ES, NQ, RTY, YM. Two or more
+  distinct ROOTS with a readable open position make a group exposure; one root twice does not. Told once per set of roots (and again
+  after the set clears and returns); the first look is silent but the snapshot `correlated` and `TRADEWATCH_CORR:` digest lines still show
+  the state. Metals and energy are deliberately not grouped: add a group here, with a test, if wanted.
+- **LOSS_ROOM** (`digest.loss_room_line`, always on, a plain function of numbers already in the state). Daily used percent is
+  (limit - room) / limit from `risk.daily_limit` and `risk.daily_room`; in stream mode, where those are redacted, the existing coarse
+  `daily_used_pct`. `AT_OR_ABOVE_80PCT` at 80.0 or more (unrounded: 79.9 prints 80 but reads BELOW), `NA` for a missing, non-finite,
+  non-numeric or non-positive limit, never 0. The drawdown (MLL) room has no limit on this surface to divide by, so no percentage is
+  invented for it; the line says "daily" in its name.
+- **Wording.** Events say what happened ("stop moved away from price by 10 points after it was set", "open at once"), never what to do;
+  a test pins that no advice or dollar word appears. The banner path (`PXWatch.freshEvents`, "an alert, not a signal") and its
+  existing no-trade-wording test are unchanged.
+- **Not done.** No phone push for these (notify.py untouched), no use of the ticket's recorded stop as the "original" risk, no MLL percentage.
+
+## Round 41: ticket lifecycle, over-size stop, fixed-stop read-back (2026-11-23)
 
 - **Why.** A read of other brokers' MCP repos (concepts only; nothing copied) gave three hazards to check against `guard.py`. Checked
   first: a refused attempt on the hash, origin or kill switch left the ticket STAGED (a place that failed the payload hash, the re-check
   or the broker already consumed it); expiry read only the monotonic clock, which stops while a laptop sleeps; a stop resize to the
   position size existed only on the position event path; trails were read back after the ACK but fixed stops were not.
-- **(a) Ticket lifecycle.** Any refusal inside `place()` after the ticket is found (wrong confirm hash, invalid origin, MCP not allowed,
-  kill switch off) now sets REJECTED, so the same ticket cannot be probed or reused; restage. A typo in the hash costs a restage, which is
-  the price of not leaving a live ticket to guess against. Tickets carry `expires_wall` as well as the monotonic `expires`;
+- **(a) Ticket lifecycle.** A wrong confirm hash from the ticket's OWN origin sets REJECTED (restage): no guessing the hash on a live
+  ticket. A hash miss from another origin, an invalid origin, MCP not allowed and kill switch off leave the ticket STAGED (review of the first
+  version: burning on every failure let any caller holding a ticket id kill a staged desk ticket, and made a kill-switch-off attempt a UX loss). Tickets carry `expires_wall` as well as the monotonic `expires`;
   `Guard._expired` is true when either fires and when the wall clock cannot be read. Not done: pruning abandoned tickets on preview,
   and binding the ticket to a (method, path).
 - **`customTag` is pinned.** `TAG_RE` = `px-<8 lowercase hex>-<1 digit>` (13 characters). `place()` refuses a ticket whose tag, or whose
@@ -984,14 +1029,15 @@ Docs: `docs/PUBLIC.md`. Tests: `tests/test_pub_link.py`, `tests/test_pub_app.py`
   `stop` / `OVERSIZE_STOP` once per (order, sizes), `mode.oversize_stops` in `/ai/state`, `ALERT: OVERSIZE_STOP` in the digest. The
   existing event path already resized an owned stop whenever the position size differed from the ticket's `stop_size`; the new case is
   the broker showing a bigger stop than the ticket believes, which is resized down by the same `_resize_stop` (its own price, only a
-  smaller size, no new order type). A stop the desk does not own (external, adopted) is reported and never touched. No new order path.
-- **(c) Fixed stop read-back.** After a fixed stop is ACKed and the size matches, `_fixed_stop_readback` reads the order from the broker
-  and checks type 4, working, closing side, size at least the position, a numeric trigger on the loss side of the FILL (average price)
-  and within `PX_MAX_STOP_TICKS` of it (the distance check is skipped for a 1-lot ticket, which has its own room rule). A readable
-  mismatch flattens and halts (`stop_readback`, in `AUTO_KINDS`, audit `STOP_READBACK_BAD` with a fixed code). An order the broker does
-  not list yet, or a fill price or tick size the desk cannot read, is audited `STOP_READBACK_UNREAD` and NOT halted: the stop was ACKed
-  with an order id, and `protect_open_positions` already flattens an owned position whose stop is missing from the book. This is the one
-  place unknown does not refuse, because refusing means flattening a protected position on a slow list.
+  smaller size, no new order type) when the row is a FIXED stop; a TRAIL is flagged only (`_resize_stop` halts `trail_resize` on one). A stop the desk does not own (external, adopted) is reported and never touched. No new order path.
+- **(c) Fixed stop read-back.** After a fixed stop is ACKed, `_fixed_stop_readback` reads the order from the broker. A position that
+  grew since the ACK (entries fill in pieces) is first resized by the normal `_resize_stop`, then judged. Provably wrong flattens and halts
+  (`stop_readback`, in `AUTO_KINDS`, audit `STOP_READBACK_BAD` with a fixed code): not type 4, not working, wrong side, size below the position
+  after the resize, trigger at or past the live bid (long) or ask (short), trigger on the wrong side of the PLANNED entry, or further than
+  `PX_MAX_STOP_TICKS` from the planned entry (where preview enforced it). Measured from the FILL, `wrong_side_of_fill` and `too_far` can come
+  from a tick or two of slippage alone, so they are audited `STOP_READBACK_DRIFT` and never flatten. An order the broker does not list yet, or a
+  fill price or tick size the desk cannot read, is audited `STOP_READBACK_UNREAD` and NOT halted (`protect_open_positions` flattens an owned
+  position whose stop is missing from the book). The distance check is skipped for a 1-lot ticket.
 - **What this does not settle.** `averagePrice` on a position is the broker's average, so after a partial fill at two prices the
   check is against the average. The read-back runs after the watchdog is cancelled, so a broker that never lists the stop is caught by
   the resync, not by the watchdog.

@@ -1036,20 +1036,19 @@ class Guard:
                 t.state = EXPIRED
                 return self._deny(t, ["ticket: expired"], origin, EXPIRED)
             if not isinstance(confirm_hash, str) or not hmac.compare_digest(confirm_hash.lower(), t.hash8):
-                t.state = REJECTED          # a failed attempt consumes the ticket (Round 39): no probing the hash on a live ticket
-                return self._deny(t, ["confirm: hash does not match the ticket shown"], origin, REJECTED)
+                if origin == t.origin:
+                    t.state = REJECTED      # the ticket's own origin guessed the hash wrong: burn it (Round 41). Another origin
+                    return self._deny(t, ["confirm: hash does not match the ticket shown"], origin, REJECTED)   # must not kill a staged ticket
+                return self._deny(t, ["confirm: hash does not match the ticket shown"], origin)
             if hashlib.sha256(canonical({"entry": t.payload, "stop": t.stop_plan}).encode()).hexdigest() != t.sha256:
                 t.state = REJECTED
                 return self._deny(t, ["ticket: payload no longer matches its hash"], origin, REJECTED)
             if origin not in ("ui", "mcp"):
-                t.state = REJECTED
-                return self._deny(t, ["origin: invalid"], origin, REJECTED)
+                return self._deny(t, ["origin: invalid"], origin)
             if origin == "mcp" and not lim.mcp_place:
-                t.state = REJECTED
-                return self._deny(t, ["origin: MCP may not place (PX_MCP_PLACE=0)"], origin, REJECTED)
+                return self._deny(t, ["origin: MCP may not place (PX_MCP_PLACE=0)"], origin)
             if not lim.trading:
-                t.state = REJECTED
-                return self._deny(t, ["kill_switch: PX_TRADING is off"], origin, REJECTED)
+                return self._deny(t, ["kill_switch: PX_TRADING is off"], origin)
 
             ev = await self._evaluate(contract_id=t.contract_id, side=t.side, stop_price=t.stop_price,
                                       risk_dollars=t.risk_requested, order_type=t.order_type,
@@ -1354,10 +1353,11 @@ class Guard:
                 owner = None
             if owner is not None:
                 row = next((o for o in (working or []) if o.get("id") == owner.stop_order_id), None) if owner.stop_state == "ACKED" else None
-                if row is not None and owner.stop_size == size and isinstance(row.get("size"), (int, float)) and abs(row["size"]) > size \
+                if row is not None and row.get("type") == 4 and not getattr(owner, "trail", False) \
+                        and owner.stop_size == size and isinstance(row.get("size"), (int, float)) and abs(row["size"]) > size \
                         and not owner.abandoned and owner.state != "CLOSED":
                     # The broker's stop is bigger than the position though the ticket believes it matches (a reduction the events missed):
-                    # shrink it, at its current price (Round 39). _resize_stop only ever sends the stop's own price and the position's size.
+                    # shrink it, at its current price (Round 39; a TRAIL is flagged only, Round 41: _resize_stop halts on one). _resize_stop only ever sends the stop's own price and the position's size.
                     self._audit("stop", ticket=owner.hash8, size=size, state="OVERSIZE_RESIZE")
                     await self._resize_stop(owner, size)
                     if owner.stop_size == size and not owner.abandoned:
@@ -1392,7 +1392,7 @@ class Guard:
         return out
 
     def _flag_oversize(self, positions, working) -> None:
-        """Round 39: a working protective stop LARGER than the position (after a partial or external reduction) flips the account to
+        """Round 41: a working protective stop LARGER than the position (after a partial or external reduction) flips the account to
         the other side when it fills. Read-only: set the flag the digest and /ai/state show and audit it once per (stop, sizes). A stop
         the desk owns is resized by protect_open_positions; one it does not own is only reported, never touched."""
         found = {}
@@ -1999,11 +1999,17 @@ class Guard:
 
     # ---- trailing stop: swap the fixed stop for a TRAIL, read back, then drop the fixed one -------------
 
+    # Problems that prove the stop is wrong NOW; the rest (SOFT) can come from slippage alone and are only audited (Round 41).
+    SOFT_READBACK = frozenset({"wrong_side_of_fill", "too_far"})
+
     @staticmethod
-    def _fixed_stop_problem(got, close_side, pos_size, fill_px, tick, max_ticks):
-        """Round 39: what is wrong with the broker's own record of a FIXED post-fill stop, as a fixed word, or None when it checks out.
-        A working type 4 on the closing side, at least the position's size, a numeric trigger on the loss side of the FILL price and no
-        further than PX_MAX_STOP_TICKS from it. Anything unreadable is a problem, never a pass. `max_ticks` None skips only the distance."""
+    def _fixed_stop_problem(got, close_side, pos_size, fill_px, tick, max_ticks, planned_px=None, book=None):
+        """Round 39/41: what is wrong with the broker's own record of a FIXED post-fill stop, as a fixed word, or None when it checks out.
+        A working type 4 on the closing side, at least the position's size, a numeric trigger. Provably wrong (flatten): `not_a_stop`,
+        `not_working`, `wrong_side`, `too_small`, `unreadable`, `wrong_side_of_market` (a long's stop at or over the bid, a short's at or
+        under the ask), `wrong_side_of_plan` (wrong side of the PLANNED entry) and `too_far_plan` (further than PX_MAX_STOP_TICKS from the
+        planned entry, where preview enforced it). `wrong_side_of_fill` and `too_far` are measured from the FILL, so a slip of a tick or two
+        can cause them alone: they are SOFT (`SOFT_READBACK`), audited as drift, never a flatten. `max_ticks` None skips only the distance."""
         if not isinstance(got, dict) or got.get("type") != 4:
             return "not_a_stop"
         if got.get("status") is not None and got.get("status") not in WORKING_STATUSES:
@@ -2016,22 +2022,45 @@ class Guard:
         trig = got.get("stopPrice")
         if not _finite_pos(trig) or not _finite_pos(fill_px) or not _finite_pos(tick):
             return "unreadable"
-        loss_side = trig < fill_px if close_side == 1 else trig > fill_px       # closing SELL = long: the stop belongs under the fill
-        if not loss_side:
+        long_ = close_side == 1                                              # closing SELL = long: the stop belongs under the price
+        if book is not None:
+            bid, ask = book
+            if (Decimal(str(trig)) >= bid) if long_ else (Decimal(str(trig)) <= ask):
+                return "wrong_side_of_market"
+        if _finite_pos(planned_px) and ((trig >= planned_px) if long_ else (trig <= planned_px)):
+            return "wrong_side_of_plan"
+        if not ((trig < fill_px) if long_ else (trig > fill_px)):
             return "wrong_side_of_fill"
         if max_ticks is not None and abs(Decimal(str(fill_px)) - Decimal(str(trig))) / Decimal(str(tick)) > max_ticks:
+            if _finite_pos(planned_px) and abs(Decimal(str(planned_px)) - Decimal(str(trig))) / Decimal(str(tick)) > max_ticks:
+                return "too_far_plan"
             return "too_far"
         return None
 
     async def _fixed_stop_readback(self, t: Ticket, oid) -> None:
-        """After a fixed stop is ACKed, read it back from the broker and check it against the FILL (Round 39). A readable stop that does
-        not match is a fill with no effective stop: flatten and halt (`stop_readback`). A stop or fill price the desk cannot read is
-        audited (`STOP_READBACK_UNREAD`) and left to protect_open_positions, which proves the stop is listed on every resync."""
+        """After a fixed stop is ACKed, read it back from the broker and check it (Round 39, 41). A stop that is provably wrong is a fill
+        with no effective stop: flatten and halt (`stop_readback`). A mismatch that slippage alone explains is audited
+        (`STOP_READBACK_DRIFT`), as is a stop or price the desk cannot read (`STOP_READBACK_UNREAD`); protect_open_positions proves the
+        stop is listed on every resync. A position that GREW since the ACK (partial fills) goes through the ordinary resize first."""
         got = await self._read_order(oid)
+        for _ in range(2):
+            size = sum(abs(q.get("size") or 0) for q in self.live.positions.values()
+                       if q.get("contractId") == t.contract_id and abs(q.get("size") or 0))
+            if not size:
+                return          # already flat: the close path retires the stop
+            if t.abandoned or t.state == "CLOSED":
+                return
+            if size > (t.stop_size or 0):
+                await self._resize_stop(t, size)        # the normal path: it flattens and halts on its own failure
+                if t.abandoned or t.state == "CLOSED":
+                    return
+                got = await self._read_order(oid)       # judge the resized stop, not the old size
+                continue
+            break
+        else:
+            self._audit("stop", ticket=t.hash8, state="STOP_READBACK_UNREAD")
+            return
         pos = [q for q in self.live.positions.values() if q.get("contractId") == t.contract_id and abs(q.get("size") or 0)]
-        size = sum(abs(q.get("size") or 0) for q in pos)
-        if not size:
-            return              # already flat: the close path retires the stop
         fill_px = pos[0].get("averagePrice") if len(pos) == 1 else None
         tick = None
         try:
@@ -2042,10 +2071,18 @@ class Guard:
         if got is None or (not _finite_pos(fill_px)) or not _finite_pos(tick):
             self._audit("stop", ticket=t.hash8, state="STOP_READBACK_UNREAD")
             return
+        q = self.live.quotes.get(t.contract_id) or {}
+        fresh = self.clock() - q.get("_rx", -1e9) <= self.limits.max_quote_age_s
+        planned = (t.readback or {}).get("entry_ref")
         problem = self._fixed_stop_problem(got, t.stop_plan["side"], size, float(fill_px), float(tick),
-                                           None if t.one_lot else self.limits.max_stop_ticks)
+                                           None if t.one_lot else self.limits.max_stop_ticks,
+                                           planned_px=float(planned) if _finite_pos(planned) else None,
+                                           book=_book(q) if fresh else None)
         if problem is None:
             self._audit("stop", ticket=t.hash8, state="STOP_READBACK_OK")
+            return
+        if problem in self.SOFT_READBACK:
+            self._audit("stop", ticket=t.hash8, state="STOP_READBACK_DRIFT", code=problem)
             return
         self._audit("stop", ticket=t.hash8, state="STOP_READBACK_BAD", code=problem)
         if t.abandoned or t.state == "CLOSED":

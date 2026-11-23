@@ -1,6 +1,7 @@
-"""Round 39: ticket lifecycle (two clocks, a failed attempt burns the ticket, the customTag form), the over-size stop flag and resize,
+"""Round 39: ticket lifecycle (two clocks, a hash miss from the own origin burns the ticket, the customTag form), the over-size stop flag and resize,
 and the read-back of every fixed post-fill stop against the fill."""
 import json
+from decimal import Decimal
 from datetime import timedelta
 
 import pytest
@@ -50,15 +51,25 @@ async def test_a_wrong_confirm_hash_burns_the_ticket(tmp_path):
     assert not r2.ok and gw.writes == []
 
 
-async def test_other_refused_attempts_burn_the_ticket_too(tmp_path):
+async def test_a_foreign_origin_cannot_burn_a_staged_ticket(tmp_path):
+    g, live, clock, gw = build(tmp_path)               # mcp_place off by default
+    t = await staged(g)                                 # a UI ticket
+    r = await g.place(t.ticket_id, origin="mcp", confirm_hash=t.hash8)
+    assert not r.ok and t.state == "STAGED" and gw.writes == []
+    r = await g.place(t.ticket_id, origin="mcp", confirm_hash="00000000")      # a wrong hash from the wrong origin
+    assert not r.ok and t.state == "STAGED"
+    assert (await go(g, t)).ok                          # the desk's own confirm still works
+
+
+async def test_pre_send_refusals_leave_the_ticket_staged(tmp_path):
     g, live, clock, gw = build(tmp_path, trading=False)
     t = await staged(g)
     r = await g.place(t.ticket_id, origin="ui", confirm_hash=t.hash8)
-    assert not r.ok and t.state == "REJECTED" and gw.writes == []
+    assert not r.ok and t.state == "STAGED" and gw.writes == []
     g2, live2, clock2, gw2 = build(tmp_path / "b")
     t2 = await staged(g2)
     assert not (await g2.place(t2.ticket_id, origin="bogus", confirm_hash=t2.hash8)).ok
-    assert t2.state == "REJECTED" and gw2.writes == []
+    assert t2.state == "STAGED" and gw2.writes == []
 
 
 async def test_custom_tag_has_one_fixed_form_and_a_bad_tag_is_never_sent(tmp_path):
@@ -88,9 +99,9 @@ STOPROW = {"id": 900, "accountId": 7, "contractId": CID, "type": 4, "side": 1, "
     ({"size": 0}, 1, "too_small"),
     ({"stopPrice": None}, 1, "unreadable"),
     ({"stopPrice": float("nan")}, 1, "unreadable"),
-    ({"stopPrice": 5010.0}, 1, "wrong_side_of_fill"),          # a long's stop above the fill
+    ({"stopPrice": 5010.0}, 1, "wrong_side_of_fill"),          # a long's stop above the fill (soft unless the market or plan says so)
     ({"stopPrice": 5000.25}, 1, "wrong_side_of_fill"),         # on the fill is not protection
-    ({"stopPrice": 4900.0}, 1, "too_far"),                     # 401 ticks
+    ({"stopPrice": 4900.0}, 1, "too_far"),                     # 401 ticks (soft: no planned entry to measure against)
     ({"side": 0, "stopPrice": 5006.0}, 0, None),
     ({"side": 0, "stopPrice": 4994.0}, 0, "wrong_side_of_fill"),
 ])
@@ -105,6 +116,29 @@ def test_fixed_stop_problem_unknown_inputs_are_problems_never_passes():
     assert Guard._fixed_stop_problem(STOPROW, 1, 1, None, 0.25, 200) == "unreadable"
     assert Guard._fixed_stop_problem(STOPROW, 1, 1, 5000.25, 0, 200) == "unreadable"
     assert Guard._fixed_stop_problem({**STOPROW, "stopPrice": 4900.0}, 1, 1, 5000.25, 0.25, None) is None   # one-lot skips only the distance
+
+
+BOOK = (Decimal("4999.75"), Decimal("5000.25"))
+
+
+@pytest.mark.parametrize("over,close_side,planned,want", [
+    ({"stopPrice": 4994.0}, 1, 5000.0, None),
+    ({"stopPrice": 5010.0}, 1, 5000.0, "wrong_side_of_market"),         # at or over the bid
+    ({"stopPrice": 4999.75}, 1, 5000.0, "wrong_side_of_market"),
+    ({"side": 0, "stopPrice": 5000.25}, 0, 4999.0, "wrong_side_of_market"),
+    ({"stopPrice": 4900.0}, 1, 5000.0, "too_far_plan"),                 # beyond the ceiling from the PLANNED entry too
+    ({"stopPrice": 4950.25}, 1, 5000.0, None),                          # 199 ticks from the plan, and from the fill
+])
+def test_fixed_stop_problem_hard_cases_use_market_and_plan(over, close_side, planned, want):
+    got = {**STOPROW, **over}
+    assert Guard._fixed_stop_problem(got, close_side, 1, 5000.25, 0.25, 200, planned_px=planned, book=BOOK) == want
+
+
+def test_slippage_alone_is_soft_not_a_flatten_reason():
+    # planned entry 5000.0, stop 4950.0 = exactly 200 ticks from the plan; a 2-tick slip to a fill of 5000.5 makes it 202 from the fill
+    got = {**STOPROW, "stopPrice": 4950.0}
+    assert Guard._fixed_stop_problem(got, 1, 1, 5000.5, 0.25, 200, planned_px=5000.0, book=(Decimal("5000.25"), Decimal("5000.5"))) == "too_far"
+    assert "too_far" in Guard.SOFT_READBACK and "wrong_side_of_fill" in Guard.SOFT_READBACK
 
 
 async def test_a_matching_fixed_stop_passes_the_readback(tmp_path):
@@ -124,8 +158,58 @@ async def test_a_stop_on_the_wrong_side_of_the_fill_flattens_and_halts(tmp_path)
     gw.working = [{**STOPROW, "stopPrice": 5010.0}]
     await g.handle_position(fill(live))
     assert g.halted() and t.abandoned
-    assert any(a.get("state") == "STOP_READBACK_BAD" and a.get("code") == "wrong_side_of_fill" for a in audits(g))
+    assert any(a.get("state") == "STOP_READBACK_BAD" and a.get("code") in ("wrong_side_of_market", "wrong_side_of_plan") for a in audits(g))
     assert g.auto_action()["kind"] == "stop_readback"
+
+
+async def test_a_slipped_fill_with_a_stop_near_the_ceiling_is_flagged_as_drift_never_flattened(tmp_path):
+    g, live, clock, gw = build2(tmp_path)
+    t = await staged(g)
+    await go(g, t)
+    ref = float(t.readback["entry_ref"])
+    live.quotes[CID]["bestBid"], live.quotes[CID]["bestAsk"] = ref + 0.5, ref + 1.0
+    live.quotes[CID]["_rx"] = clock()
+    gw.working = [{**STOPROW, "stopPrice": 4994.0}]
+    g.limits = g.limits.__class__(**{**g.limits.__dict__, "max_stop_ticks": int(round(abs(ref - 4994.0) / 0.25))})
+    p = fill(live)
+    p["averagePrice"] = ref + 0.5                       # 2 ticks of slippage: the fill-to-trigger distance is 2 ticks over the ceiling
+    await g.handle_position(p)
+    assert not g.halted() and not t.abandoned and t.stop_state == "ACKED"
+    assert any(a.get("state") == "STOP_READBACK_DRIFT" and a.get("code") == "too_far" for a in audits(g))
+    assert not any(a.get("state") == "STOP_READBACK_BAD" for a in audits(g))
+
+
+async def test_a_position_that_grew_at_readback_is_resized_not_flattened(tmp_path):
+    g, live, clock, gw = build2(tmp_path, max_qty_order=3, max_qty_symbol=3, max_qty_total=3)
+    t = await staged(g, risk_dollars=200.0)
+    await go(g, t)
+    gw.working = [{**STOPROW, "size": 1}]
+    real = g._read_order
+
+    async def grow_then_read(oid):
+        live.positions[1]["size"] = 3                   # the rest of the entry filled between the ACK and the read-back
+        gw.working = [{**STOPROW, "size": 3}]           # the modify (resize) is what makes the broker row match
+        return await real(oid)
+
+    g._read_order = grow_then_read
+    t.stop_state, t.stop_order_id, t.stop_size = "ACKED", 900, 1
+    fill(live, size=1)
+    await g._fixed_stop_readback(t, 900)
+    mods = [b for p_, b in gw.writes if p_ == ORDER_MODIFY]
+    assert mods and mods[-1]["size"] == 3 and mods[-1]["stopPrice"] == 4994.0
+    assert t.stop_size == 3 and not g.halted() and not t.abandoned
+    assert not any(a.get("state") == "STOP_READBACK_BAD" for a in audits(g))
+
+
+async def test_a_resized_stop_the_broker_still_shows_too_small_flattens(tmp_path):
+    g, live, clock, gw = build2(tmp_path, max_qty_order=3, max_qty_symbol=3, max_qty_total=3)
+    t = await staged(g, risk_dollars=200.0)
+    await go(g, t)
+    t.stop_state, t.stop_order_id, t.stop_size = "ACKED", 900, 1
+    fill(live, size=3)
+    gw.working = [{**STOPROW, "size": 1}]               # the broker never took the resize
+    await g._fixed_stop_readback(t, 900)
+    assert g.halted() and any(a.get("state") == "STOP_READBACK_BAD" and a.get("code") == "too_small" for a in audits(g))
 
 
 async def test_an_unlisted_stop_is_audited_and_an_undersized_one_halts(tmp_path):
@@ -200,8 +284,33 @@ async def test_an_owned_stop_bigger_than_the_position_is_resized_down_at_its_own
     assert g.oversize_flags() == []
 
 
+async def test_an_oversize_trail_is_flagged_only_never_resized_or_flattened(tmp_path):
+    g, live, clock, gw = build2(tmp_path, max_qty_order=3, max_qty_symbol=3, max_qty_total=3)
+    t = await staged(g, risk_dollars=200.0)
+    await go(g, t)
+    fill(live, size=3)
+    t.stop_state, t.stop_order_id, t.stop_size, t.trail, t.stop_current = "ACKED", 900, 3, True, 4994.0
+    live.positions[1]["size"] = 1                       # the trader closed two; the trail still says 3
+    t.stop_size = 1                                     # the ticket believes it matches (the case the new branch targets)
+    gw.working = [{**BIG, "id": 900, "type": 5, "size": 3, "stopPrice": 4994.0}]
+    n = len(gw.writes)
+    await g.protect_open_positions()
+    assert not [w for w in gw.writes[n:] if w[0] == ORDER_MODIFY] and not g.halted() and not t.abandoned
+    assert g.oversize_flags() == [{"contract": CID, "stop": 3, "pos": 1}]
+
+
 def test_the_digest_shows_the_oversize_flag_and_is_quiet_without_it():
     s = digest_state()
     assert "OVERSIZE_STOP" not in format_digest(s)
     s["mode"] = {**s["mode"], "oversize_stops": [{"contract": CID, "stop": 3, "pos": 1}]}
     assert f"ALERT: OVERSIZE_STOP contract={CID} stop_size=3 position=1" in format_digest(s)
+
+
+def test_the_oversize_alert_survives_stream_mode_with_no_dollar_or_account_text():
+    from projectx_desk.digest import redact_stream
+    s = digest_state()
+    s["mode"] = {**s["mode"], "oversize_stops": [{"contract": CID, "stop": 3, "pos": 1}]}
+    out = format_digest(redact_stream(s))
+    line = next(x for x in out.splitlines() if x.startswith("ALERT: OVERSIZE_STOP"))
+    assert line == f"ALERT: OVERSIZE_STOP contract={CID} stop_size=3 position=1 (a stop fill would flip the position)"
+    assert "$" not in line

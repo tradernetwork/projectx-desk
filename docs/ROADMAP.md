@@ -3,6 +3,15 @@
 What is done, what is next, in dependency order, and what is waiting on a decision. Update it in the same change that
 moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are in `docs/DECISIONS.md`.
 
+## Follow-ups from the broker-MCP reading (2026-11-23)
+
+- Journal execution facts are in (Round 39): entry slippage in ticks, size drift, longest loss streak. Slippage reads NA until
+  something records an arrival quote.
+- FOLLOW-UP, needs a `guard.py` change (do it as its own reviewed round, not from the journal): write the arrival quote (bid, ask, last
+  and quote time at the commit point) and the displayed preview numbers (stop ticks, risk, size) with the `place` audit line, by adding
+  allowlisted numeric keys to `AUDIT_KEYS`. Then a small journal reader can fill `data/arrivals.jsonl` or read the audit directly, and
+  slippage stops being NA. Numbers only, never free text or the rendered sentence.
+
 ## Done (2026-10-30)
 
 - A gateway logout no longer leaves a blind cache: unseed, REST reseed every `PX_RESEED_S`, one forced reconnect per 300 s, digest
@@ -18,6 +27,8 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
   (`PX_TRADEWATCH_NOSTOP_S`, 15), re-entry within 10 minutes of a losing exit, scale-in, entry after 14:55 CT, entry against the BIAS
   read. Habit definitions are `journal.py`'s. Fixed templates, a banner and chime (`watch.js` `freshEvents`) and `TRADEWATCH:` digest
   lines. Read-only, no path to the guard. Not yet seen against a live session; the coach (item 7 below) can speak first on these events.
+  Round 39 adds STOP_WIDENED (a fixed stop moved away from price in the broker UI), CORRELATED (open positions on two roots of the
+  equity-index group) and a `LOSS_ROOM:` digest line at 80 percent of the daily room used. Same status: unseen against a live session.
 
 - Thesis card and quick buttons, first slice (item 6): `thesis.py` (allowlisted rows, append-only `data/thesis.jsonl`, pure fact checks:
   invalidation broken, scalp past its limit, stop wider than the invalidation), `GET/POST /api/thesis` (full desk only, same POST gate),
@@ -33,7 +44,7 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
 - Agent-set display toggles (Round 38): MCP tool `set_view(key, value)` over seven allowlisted chart flags, prefs in `data/view_prefs.json`,
   read-only `view` in `/state.json`, applied by `static/viewprefs.js`; `PX_AGENT_VIEW=1` lets the desk agent call it. Next: retire the
   toolbar buttons the trader no longer touches.
-- Guard hardening from a read of other brokers' MCP repos (Round 39): a failed place attempt burns the ticket, expiry on the monotonic
+- Guard hardening from a read of other brokers' MCP repos (Round 41): a hash miss from the ticket's own origin burns the ticket, expiry on the monotonic
   AND wall clock, `customTag` form pinned, a working stop bigger than the position is flagged (`ALERT: OVERSIZE_STOP`) and an owned
   one is resized down, every fixed post-fill stop is read back against the fill. Still open from that report: ticket pruning on each
   preview, binding the ticket to the (method, path), a shared decimal check before `write()`, the journal and stop-widening detectors.

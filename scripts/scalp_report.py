@@ -38,6 +38,7 @@ def paths(root):
     mem = Path(os.getenv("PX_MEMORY_DIR") or root / "data" / "memory")
     return {"ledger": Path(os.getenv("PX_JOURNAL_FILE") or root / "data" / "trades.jsonl"),
             "bias": Path(os.getenv("PX_BIAS_LOG_FILE") or root / "data" / "bias_log.jsonl"),
+            "arrivals": Path(os.getenv("PX_ARRIVALS_FILE") or root / "data" / "arrivals.jsonl"),
             "cache": root / "data" / "scalp_cache.json", "mem": mem, "charts": mem / "charts"}
 
 
@@ -108,6 +109,7 @@ def build(root, days, charts, keep, client=None):
     p = paths(root)
     ledger = journal.Ledger(p["ledger"])
     trips = journal.attach_context(journal.round_trips(ledger.rows), journal.read_bias(p["bias"]))
+    journal.attach_slippage(trips, journal.read_arrivals(p["arrivals"]))
     closed = [t for t in trips if not t["open"]]
     cache = load_cache(p["cache"])
     horizon = datetime.now(timezone.utc).timestamp() * 1000 - days * 86_400_000

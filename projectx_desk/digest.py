@@ -1094,6 +1094,27 @@ def redact_stream(s):
     return s
 
 
+LOSS_ROOM_WARN_PCT = 80
+
+
+def loss_room_line(r):
+    """`LOSS_ROOM:` digest line from the risk numbers the guard already exposes (daily_limit, daily_room; in stream mode only the coarse
+    daily_used_pct). Daily room only: the drawdown room has no limit to divide by here, so it is never turned into a percentage.
+    Unreadable or non-finite input, or a limit that is not above zero, is NA, never 0 percent. States facts, gives no advice."""
+    def num(v):
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and abs(v) != float("inf") else None
+    lim, room, coarse = num(r.get("daily_limit")), num(r.get("daily_room")), num(r.get("daily_used_pct"))
+    if lim is not None and lim > 0 and room is not None:
+        used = max(0.0, 100.0 * (lim - room) / lim)
+    elif coarse is not None and coarse >= 0:
+        used = coarse
+    else:
+        return "LOSS_ROOM: NA daily_used_pct=NA (daily limit or room not readable)"
+    pct = int(round(used))
+    state = "AT_OR_ABOVE_80PCT" if used >= LOSS_ROOM_WARN_PCT else "BELOW_80PCT"
+    return f"LOSS_ROOM: {state} daily_used_pct={pct}"
+
+
 def _f(v):
     if v is None:
         return "NA"
@@ -1223,6 +1244,7 @@ def format_digest(s) -> str:
     L.append(f"RISK_DAILY: limit={_f(r.get('daily_limit'))} room={_f(r.get('daily_room'))}"
              + (f" used_pct={_f(r.get('daily_used_pct'))}" if "daily_used_pct" in r else ""))
     L.append(f"RISK_DD: buffer={_f(r.get('dd_buffer'))} remaining={_f(r.get('remaining'))} binds={_f(r.get('binding'))}")
+    L.append(loss_room_line(r))
     L.append(f"RISK_OPEN: contracts={r['open_contracts']}/{r['max_contracts']} orders_today={r['orders_today']}/{r['orders_max']}"
              + ("" if s.get("stream") else f" open_pnl={_f(r.get('open_pnl'))} draw={_f(r.get('draw'))}"))
     if s.get("respect"):

@@ -35,7 +35,7 @@
   /* Trade events from the server's detector (/ai/state tradewatch.events: [{id, kind, ts, text}]). Returns the ones not announced before and
      younger than maxAgeMs. `seen` is a Set the caller keeps, so a page load announces nothing older than maxAgeMs: a reload never replays
      history. Only kind and text are drawn; text is a fixed server template. */
-  const KINDS = ['NO_STOP', 'REENTRY', 'SCALE_IN', 'LATE_ENTRY', 'COUNTER_BIAS'];
+  const KINDS = ['NO_STOP', 'REENTRY', 'SCALE_IN', 'LATE_ENTRY', 'COUNTER_BIAS', 'STOP_WIDENED', 'CORRELATED'];
   function freshEvents(events, seen, now, maxAgeMs){
     const out = [];
     if(!Array.isArray(events)) return out;

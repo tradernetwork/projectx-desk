@@ -32,6 +32,7 @@ from projectx_desk import respect as px_respect
 from projectx_desk import feed as px_feed
 from projectx_desk import tapewatch as px_tapewatch
 from projectx_desk import flow as px_flow
+from projectx_desk import tapelog as px_tapelog
 from projectx_desk import tradeday as px_tradeday
 from projectx_desk import lock as px_lock
 from projectx_desk import datacheck as px_datacheck
@@ -130,7 +131,8 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
                 hub.quiet = lambda: _quiet(app)
         app.state.live = LiveState(m, u, flow_path=(os.getenv("PX_FLOW_DB") or str(ROOT / "data" / "flow.db")) if connect else None,
                                    flow_legacy=(os.getenv("PX_FLOW_FILE") or str(ROOT / "data" / "flow.json")) if connect else None,
-                                   ticks_path=(os.getenv("PX_TICKS_FILE") or str(ROOT / "data" / "ticks.json")) if connect else None)
+                                   ticks_path=(os.getenv("PX_TICKS_FILE") or str(ROOT / "data" / "ticks.json")) if connect else None,
+                                   tape=px_tapelog.from_env(ROOT) if connect else None)
         app.state.recorder = None
         if not rec:
             app.state.user = u
@@ -203,6 +205,8 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
                 deadline.cancel()
         app.state.live.flow.save()               # a clean stop must not lose the last 30 s of tape (the file is rewritten every 30 s)
         app.state.live.ticks.save()
+        if app.state.live.tape is not None:
+            app.state.live.tape.close()
         for h in (m, u):
             if h is not None:
                 await h.stop()

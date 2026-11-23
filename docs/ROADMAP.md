@@ -10,6 +10,11 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
 - A trailing stop (order type 5) counts as protection under the same conditions as a plain stop; `move_stop` refuses it; every
   cancel sweep cancels it (Round 24). `Guard.arm_trail` can place one (default OFF, Round 25); first sim probe still to do.
 
+- Raw tape log (`tapelog.py`): every print as `ms,price,size,side,contract` in `data/tape/<ROOT>_<trading day>.tape`, default OFF
+  (`PX_TAPE_LOG=1` plus `PX_TAPE_ROOTS`, nothing logged until roots are named), per-file and total caps, age prune, errors swallowed
+  and counted, allowed in `PX_RECORD_ONLY`. `scripts/tape_size.py` reports bytes per day per root: enable one root first, measure,
+  then widen. (Item numbers below are left as they were so references stay valid.)
+
 ## Next, in order
 
 **Gate: the sim probe.** Items 1, 2 (its probe) and the throughput test in 4 are settled only by a run of
@@ -26,8 +31,6 @@ below is ticked until that table shows PASS for the steps the item names; an UNK
    - Gate: SIM_PROBE.md steps S9 to S12 PASS. The modify and gap questions are step S13, which the probe cannot settle from the
      desk (it never modifies a trail, and flat-by forbids holding a gap): they stay open after the probe.
    - Then a default-OFF switch (`PX_TRAIL_STOP`). Entry stops go in as type 5. Everything else keeps working as in Round 24.
-3. **Raw tape log.** Append-only prints (time, price, size, aggressor side) so any tick size can be rebuilt after the fact; the gateway
-   has no tick history. Measure the daily size per root before enabling it for all of them. Write with `print(..., file=f)`.
 4. **Tick charts.** Set `PX_TICK_BARS` to include 500 and 1000 (minimum 50, at most 4 sizes). Throughput test at the Sunday open:
    prints per second, hub-to-browser lag, CPU (SIM_PROBE.md step S14, recorded by hand; the desk has no hub-to-browser timer). Then a larger main-size tick chart with a 5m overlay (`trend.js` already maps one
    timeframe's lines onto another chart through time).

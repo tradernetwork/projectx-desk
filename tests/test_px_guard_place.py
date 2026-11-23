@@ -77,20 +77,22 @@ async def test_kill_switch_off_and_mcp_gate_deny_without_sending(tmp_path):
     g, live, clock, gw = build(tmp_path, trading=False)
     t = await staged(g)
     r = await go(g, t)
-    assert not r.ok and "kill_switch" in r.reasons[0] and gw.writes == [] and t.state == "STAGED"
+    assert not r.ok and "kill_switch" in r.reasons[0] and gw.writes == [] and t.state == "REJECTED"      # Round 39: a failed attempt burns the ticket
     g2, live2, clock2, gw2 = build(tmp_path)
     t2 = await staged(g2, origin="mcp")
     r2 = await go(g2, t2, origin="mcp")
     assert not r2.ok and "MCP may not place" in r2.reasons[0] and gw2.writes == []
 
 
-async def test_wrong_confirm_hash_denied_ticket_survives(tmp_path):
+async def test_wrong_confirm_hash_denied_and_burns_the_ticket(tmp_path):
     g, live, clock, gw = build(tmp_path)
     t = await staged(g)
     assert not (await go(g, t, h="deadbeef")).ok
-    assert not (await go(g, t, h="")).ok
-    assert gw.writes == [] and t.state == "STAGED"
-    assert (await go(g, t, h=t.hash8.upper())).ok          # case-insensitive match is fine
+    assert gw.writes == [] and t.state == "REJECTED"
+    assert not (await go(g, t)).ok and gw.writes == []     # Round 39: even the right hash is refused now
+    g2, live2, clock2, gw2 = build(tmp_path / "b")
+    t2 = await staged(g2)
+    assert (await go(g2, t2, h=t2.hash8.upper())).ok       # case-insensitive match is fine
 
 
 async def test_ticket_is_single_use_even_under_concurrency(tmp_path):

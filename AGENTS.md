@@ -105,6 +105,14 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
   and in the `protect_open_positions` owner pick, once another ticket on the contract owns a fill or stop (a REJECTED ticket that armed a stop included, until that stop fills) or a newer entry was placed
   (`Guard._dead_entry`, Round 35); alone it still protects its raced fill. Keep it that one predicate: a larger ranking design was
   abandoned after three review rounds found regressions. Never let two tickets arm a stop for one position.
+- **A failed place attempt burns the ticket, and a ticket expires on two clocks** (Round 39). Inside `place()` every refusal after the ticket
+  is found (confirm hash, origin, MCP gate, kill switch, payload hash, checks, commit gate) leaves it REJECTED, never STAGED; `Guard._expired`
+  is the monotonic `expires` OR the wall `expires_wall` (an unreadable wall clock counts as expired). `TAG_RE` pins every `customTag` to
+  `px-<8 hex>-<digit>`; `place()` refuses another form. `protect_open_positions` flags a working stop bigger than the position
+  (`Guard.oversize_flags()`, `mode.oversize_stops`, digest `ALERT: OVERSIZE_STOP`, audit `OVERSIZE_STOP`) and resizes an OWNED one down with the
+  existing `_resize_stop`; an external stop is only reported. `_fixed_stop_readback` checks every ACKed fixed stop against the fill (closing
+  side, size at least the position, loss side of the average price, within `PX_MAX_STOP_TICKS`); a readable mismatch flattens and halts
+  (`stop_readback`), an unreadable one is audited `STOP_READBACK_UNREAD` and left to the resync. Pinned by `tests/test_px_guard_round39.py`.
 - **Every open position must be protected.** `Guard.protect_open_positions()` runs after boot and every resync: known ticket arms or
   resizes the stop, a broker stop that covers it is fine, our own persisted intent with no provable stop is flattened and halts,
   anything else is reported `EXTERNAL_UNPROTECTED` and never touched.

@@ -38,6 +38,9 @@ POSITION_PARTIAL_CLOSE = "/api/Position/partialCloseContract"
 
 CONTRACT_RE = re.compile(r"^CON\.[A-Za-z0-9._]{1,40}$")
 SAFE_AUDIT = re.compile(r"^[A-Za-z0-9_.:\-]{0,64}$")
+# Every customTag the desk sends: px-<8 hex>-<1 digit> (13 characters, lowercase hex, digits and hyphens only). Reconcile finds orders by
+# this tag, so a tag a gateway could truncate or mangle would break it. Pinned by tests; place() refuses a ticket whose tag does not match.
+TAG_RE = re.compile(r"^px-[0-9a-f]{8}-[0-9]$")
 AUDIT_KEYS = ("event", "ticket", "origin", "root", "side", "size", "risk_usd", "check", "code", "sha8", "state", "one_lot",
               "via", "lag_ms", "lookup_ms", "ms")
 SESSION_OPEN = dtime(17, 0)
@@ -74,6 +77,7 @@ class Ticket:
     verdict: list                   # [(check, ok, detail)]
     created: float
     expires: float
+    expires_wall: Optional[datetime] = None   # wall-clock expiry too: a suspended laptop stops the monotonic clock (Round 39)
     state: str = STAGED
     broker_order_id: Optional[int] = None
     acked: bool = False
@@ -237,6 +241,8 @@ class Guard:
         self._probed: set[str] = set()           # tickets that already had their one fill probe
         self._bg: set = set()                    # strong refs to fire-and-forget read-only tasks (probe, contract pre-warm)
         self.protection: dict = {}
+        self.oversize: dict = {}        # contract id -> {stop, pos}: a working protective stop larger than the position (Round 39)
+        self._oversize_seen: set = set()
         if hasattr(live, "listen"):
             live.listen(self._on_live_event)
 
@@ -866,7 +872,7 @@ class Guard:
 
         qty (UI only, the BUY/SELL buttons): a manual order of exactly `qty` contracts at `stop_price`; risk_dollars is then
         derived, not read. The same checks, ticket and place() apply; the audit records it as `manual`."""
-        if origin == "mcp" and any(t.state == STAGED and t.origin == "ui" and self.clock() < t.expires
+        if origin == "mcp" and any(t.state == STAGED and t.origin == "ui" and not self._expired(t)
                                    for t in self.tickets.values()):
             return self._refuse([("ui_ticket_pending", False, "a ticket staged at the desk is waiting; the desk owns it")], origin)
         self._prewarm(contract_id)
@@ -926,7 +932,8 @@ class Guard:
         ])
         t = Ticket(ticket_id=tid, contract_id=contract_id, root=spec.root, side=side, origin=origin, payload=body,
                    stop_plan=stop_plan, sha256=digest, custom_tag=tag, readback=readback, sizing=d, verdict=ev.verdict,
-                   created=now_m, expires=now_m + lim.ticket_ttl_s, risk_requested=float(risk_requested), qty=qty,
+                   created=now_m, expires=now_m + lim.ticket_ttl_s,
+                   expires_wall=self.wall() + timedelta(seconds=lim.ticket_ttl_s), risk_requested=float(risk_requested), qty=qty,
                    stop_price=float(stop_price), order_type=order_type,
                    entry_limit=float(entry) if order_type == "limit" else None,
                    account_suffix=str(self.live.account_id)[-3:], one_lot=ev.one_lot)
@@ -937,6 +944,18 @@ class Guard:
         return Preview(True, t, ev.verdict, dict(d), placeable)
 
     # ---- place ------------------------------------------------------------------------------
+
+    def _expired(self, t) -> bool:
+        """A ticket is expired when EITHER clock says so. The monotonic clock stops while a laptop sleeps, the wall clock does not, so
+        a preview left across a suspend reads as expired. An unreadable wall clock counts as expired (fail closed)."""
+        if self.clock() >= t.expires:
+            return True
+        if t.expires_wall is None:
+            return False
+        try:
+            return self.wall() >= t.expires_wall
+        except Exception:  # noqa: BLE001
+            return True
 
     def _deny(self, t, reasons, origin="ui", state=None):
         self._audit("reject", ticket=t.hash8 if t else None, origin=origin, state=state,
@@ -964,7 +983,7 @@ class Guard:
             return [f"recheck: ticket is {t.state} (restaged or consumed while placing)"]
         if self.halted():
             out.append("recheck: halted during the broker read")
-        if self.clock() >= t.expires:
+        if self._expired(t):
             out.append("recheck: ticket expired during the broker read")
         hub_age = self.user_hub.feed_age_s() if self.user_hub else None
         if not (self.user_hub and self.user_hub.up and hub_age is not None and hub_age <= lim.max_hub_age_s
@@ -1013,20 +1032,24 @@ class Guard:
             if t.state != STAGED:
                 return self._deny(t, [f"ticket: already {t.state}"], origin)
             self._prewarm(t.contract_id)       # so the post-fill trail never waits on a contract lookup
-            if self.clock() >= t.expires:
+            if self._expired(t):
                 t.state = EXPIRED
                 return self._deny(t, ["ticket: expired"], origin, EXPIRED)
             if not isinstance(confirm_hash, str) or not hmac.compare_digest(confirm_hash.lower(), t.hash8):
-                return self._deny(t, ["confirm: hash does not match the ticket shown"], origin)
+                t.state = REJECTED          # a failed attempt consumes the ticket (Round 39): no probing the hash on a live ticket
+                return self._deny(t, ["confirm: hash does not match the ticket shown"], origin, REJECTED)
             if hashlib.sha256(canonical({"entry": t.payload, "stop": t.stop_plan}).encode()).hexdigest() != t.sha256:
                 t.state = REJECTED
                 return self._deny(t, ["ticket: payload no longer matches its hash"], origin, REJECTED)
             if origin not in ("ui", "mcp"):
-                return self._deny(t, ["origin: invalid"], origin)
+                t.state = REJECTED
+                return self._deny(t, ["origin: invalid"], origin, REJECTED)
             if origin == "mcp" and not lim.mcp_place:
-                return self._deny(t, ["origin: MCP may not place (PX_MCP_PLACE=0)"], origin)
+                t.state = REJECTED
+                return self._deny(t, ["origin: MCP may not place (PX_MCP_PLACE=0)"], origin, REJECTED)
             if not lim.trading:
-                return self._deny(t, ["kill_switch: PX_TRADING is off"], origin)
+                t.state = REJECTED
+                return self._deny(t, ["kill_switch: PX_TRADING is off"], origin, REJECTED)
 
             ev = await self._evaluate(contract_id=t.contract_id, side=t.side, stop_price=t.stop_price,
                                       risk_dollars=t.risk_requested, order_type=t.order_type,
@@ -1051,6 +1074,8 @@ class Guard:
             # Awaited reads above can outlast a halt, the ticket's life, the hub, the quote or a restage. Re-check EVERYTHING
             # the authorization depended on, synchronously, at the commit point (no await between here and the write).
             gate = self._commit_gate(t, ev)
+            if not TAG_RE.fullmatch(str(t.custom_tag)) or t.payload.get("customTag") != t.custom_tag:
+                gate = list(gate) + ["tag: customTag is not in the px-<8 hex>-<digit> form the reconcile relies on"]
             if gate:
                 if t.state == STAGED:
                     t.state = REJECTED                  # a superseded ticket keeps its SUPERSEDED state
@@ -1290,6 +1315,8 @@ class Guard:
             working = await self.client.open_orders(self.live.account_id)
         except Exception:  # noqa: BLE001 - cannot prove coverage
             working = None
+        if working is not None:
+            self._flag_oversize(positions, working)
         for p in positions:
             cid, size = p["contractId"], abs(p["size"])
             side = self._pos_side(p)
@@ -1326,6 +1353,15 @@ class Guard:
                 self._close_intents(owner)
                 owner = None
             if owner is not None:
+                row = next((o for o in (working or []) if o.get("id") == owner.stop_order_id), None) if owner.stop_state == "ACKED" else None
+                if row is not None and owner.stop_size == size and isinstance(row.get("size"), (int, float)) and abs(row["size"]) > size \
+                        and not owner.abandoned and owner.state != "CLOSED":
+                    # The broker's stop is bigger than the position though the ticket believes it matches (a reduction the events missed):
+                    # shrink it, at its current price (Round 39). _resize_stop only ever sends the stop's own price and the position's size.
+                    self._audit("stop", ticket=owner.hash8, size=size, state="OVERSIZE_RESIZE")
+                    await self._resize_stop(owner, size)
+                    if owner.stop_size == size and not owner.abandoned:
+                        self.oversize.pop(cid, None)
                 await self.handle_position(p, via="reseed")
                 if owner.abandoned:                                       # handle_position already flattened and halted
                     out[cid] = "FLATTENED"
@@ -1354,6 +1390,35 @@ class Guard:
                 out[cid] = "EXTERNAL_UNPROTECTED"
         self.protection = out
         return out
+
+    def _flag_oversize(self, positions, working) -> None:
+        """Round 39: a working protective stop LARGER than the position (after a partial or external reduction) flips the account to
+        the other side when it fills. Read-only: set the flag the digest and /ai/state show and audit it once per (stop, sizes). A stop
+        the desk owns is resized by protect_open_positions; one it does not own is only reported, never touched."""
+        found = {}
+        for p in positions:
+            cid, size, side = p["contractId"], abs(p["size"]), self._pos_side(p)
+            if side not in ("long", "short"):
+                continue
+            for o in working:
+                if not isinstance(o, dict):
+                    continue
+                sz = o.get("size")
+                if (o.get("type") in STOP_TYPES and o.get("contractId") == cid
+                        and o.get("side") == (1 if side == "long" else 0)
+                        and (o.get("status") is None or o.get("status") in WORKING_STATUSES)
+                        and _finite_pos(sz) and abs(sz) > size):
+                    found[cid] = {"stop": int(abs(sz)), "pos": int(size)}
+                    key = (cid, o.get("id"), int(abs(sz)), int(size))
+                    if key not in self._oversize_seen:
+                        self._oversize_seen.add(key)
+                        self._audit("stop", state="OVERSIZE_STOP", size=int(abs(sz)))
+        self.oversize = found
+
+    def oversize_flags(self) -> list:
+        """Allowlisted view for /ai/state and the digest: [{contract, stop, pos}] (contract validated, sizes ints)."""
+        return [{"contract": c, "stop": v["stop"], "pos": v["pos"]} for c, v in sorted(self.oversize.items())
+                if isinstance(c, str) and SAFE_AUDIT.match(c)]
 
     @staticmethod
     def _covered_by_broker_stop(working, cid, side, size) -> bool:
@@ -1457,6 +1522,8 @@ class Guard:
                       if q.get("contractId") == t.contract_id)
             if now and now != t.stop_size:      # the position grew (partial fills) while the stop was in flight
                 await self._resize_stop(t, now)
+            elif not trailing and not t.abandoned and t.state != "CLOSED":
+                await self._fixed_stop_readback(t, oid)
         else:
             await self._naked(t, "stop_failed")
 
@@ -1607,7 +1674,7 @@ class Guard:
             await self._naked(t, "stop_timeout")
 
     AUTO_KINDS = {"stop_timeout", "stop_resize_failed", "stop_lost_after_modify", "owned_position_not_protected", "owned_position_stop_missing",
-                  "unprotected_position", "flat_by"}
+                  "unprotected_position", "flat_by", "stop_readback"}
 
     def _note_auto(self, kind: str) -> None:
         """Remember that the DESK closed a position on its own (not a stop-out, not you). The closing fill looks like any other, so
@@ -1931,6 +1998,60 @@ class Guard:
             return MoveResult(False, None, "broker did not accept the modify; the old stop is unchanged")
 
     # ---- trailing stop: swap the fixed stop for a TRAIL, read back, then drop the fixed one -------------
+
+    @staticmethod
+    def _fixed_stop_problem(got, close_side, pos_size, fill_px, tick, max_ticks):
+        """Round 39: what is wrong with the broker's own record of a FIXED post-fill stop, as a fixed word, or None when it checks out.
+        A working type 4 on the closing side, at least the position's size, a numeric trigger on the loss side of the FILL price and no
+        further than PX_MAX_STOP_TICKS from it. Anything unreadable is a problem, never a pass. `max_ticks` None skips only the distance."""
+        if not isinstance(got, dict) or got.get("type") != 4:
+            return "not_a_stop"
+        if got.get("status") is not None and got.get("status") not in WORKING_STATUSES:
+            return "not_working"
+        if got.get("side") != close_side:
+            return "wrong_side"
+        sz = got.get("size")
+        if not _finite_pos(sz) or not _finite_pos(pos_size) or abs(sz) < pos_size:
+            return "too_small"
+        trig = got.get("stopPrice")
+        if not _finite_pos(trig) or not _finite_pos(fill_px) or not _finite_pos(tick):
+            return "unreadable"
+        loss_side = trig < fill_px if close_side == 1 else trig > fill_px       # closing SELL = long: the stop belongs under the fill
+        if not loss_side:
+            return "wrong_side_of_fill"
+        if max_ticks is not None and abs(Decimal(str(fill_px)) - Decimal(str(trig))) / Decimal(str(tick)) > max_ticks:
+            return "too_far"
+        return None
+
+    async def _fixed_stop_readback(self, t: Ticket, oid) -> None:
+        """After a fixed stop is ACKed, read it back from the broker and check it against the FILL (Round 39). A readable stop that does
+        not match is a fill with no effective stop: flatten and halt (`stop_readback`). A stop or fill price the desk cannot read is
+        audited (`STOP_READBACK_UNREAD`) and left to protect_open_positions, which proves the stop is listed on every resync."""
+        got = await self._read_order(oid)
+        pos = [q for q in self.live.positions.values() if q.get("contractId") == t.contract_id and abs(q.get("size") or 0)]
+        size = sum(abs(q.get("size") or 0) for q in pos)
+        if not size:
+            return              # already flat: the close path retires the stop
+        fill_px = pos[0].get("averagePrice") if len(pos) == 1 else None
+        tick = None
+        try:
+            rec = await asyncio.wait_for(self._contract(t.contract_id, stale_ok=True), 2)
+            tick = rec["tickSize"]
+        except Exception:  # noqa: BLE001
+            pass
+        if got is None or (not _finite_pos(fill_px)) or not _finite_pos(tick):
+            self._audit("stop", ticket=t.hash8, state="STOP_READBACK_UNREAD")
+            return
+        problem = self._fixed_stop_problem(got, t.stop_plan["side"], size, float(fill_px), float(tick),
+                                           None if t.one_lot else self.limits.max_stop_ticks)
+        if problem is None:
+            self._audit("stop", ticket=t.hash8, state="STOP_READBACK_OK")
+            return
+        self._audit("stop", ticket=t.hash8, state="STOP_READBACK_BAD", code=problem)
+        if t.abandoned or t.state == "CLOSED":
+            return
+        t.stop_order_id = oid
+        await self._naked(t, "stop_readback")
 
     async def _read_order(self, order_id):
         """The broker's own record of one working order (REST), retried a few times because a new order can lag the list. None = not seen."""

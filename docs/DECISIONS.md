@@ -963,3 +963,36 @@ Docs: `docs/PUBLIC.md`. Tests: `tests/test_pub_link.py`, `tests/test_pub_app.py`
   `PX_MCP_TOKEN`; the tool is registered whenever MCP is mounted, so the host sees it but the agent cannot call it without the switch.
 - **Not done.** Indicator groups and the Robinhood/LETF panels are not in the set: their state is server-chosen (`indicators.py`)
   or lives in the URL hash. The buttons are not removed yet; that waits on the trader using the tool for a while.
+
+## Round 39: ticket lifecycle, over-size stop, fixed-stop read-back (2026-11-23)
+
+- **Why.** A read of other brokers' MCP repos (concepts only; nothing copied) gave three hazards to check against `guard.py`. Checked
+  first: a refused attempt on the hash, origin or kill switch left the ticket STAGED (a place that failed the payload hash, the re-check
+  or the broker already consumed it); expiry read only the monotonic clock, which stops while a laptop sleeps; a stop resize to the
+  position size existed only on the position event path; trails were read back after the ACK but fixed stops were not.
+- **(a) Ticket lifecycle.** Any refusal inside `place()` after the ticket is found (wrong confirm hash, invalid origin, MCP not allowed,
+  kill switch off) now sets REJECTED, so the same ticket cannot be probed or reused; restage. A typo in the hash costs a restage, which is
+  the price of not leaving a live ticket to guess against. Tickets carry `expires_wall` as well as the monotonic `expires`;
+  `Guard._expired` is true when either fires and when the wall clock cannot be read. Not done: pruning abandoned tickets on preview,
+  and binding the ticket to a (method, path).
+- **`customTag` is pinned.** `TAG_RE` = `px-<8 lowercase hex>-<1 digit>` (13 characters). `place()` refuses a ticket whose tag, or whose
+  payload tag, does not match; the resize and trail tags are built in the same form. Reconcile looks orders up by this tag, so a form a
+  gateway could truncate or mangle would break it. The strictest gateway limit is not known; 13 characters of `[a-z0-9-]` is as small
+  as the current scheme allows.
+- **(b) Over-size stop.** A working stop (type 4 or 5) on the closing side bigger than the position flips the account when it fills.
+  `protect_open_positions` (after boot and every resync, so also the `PX_RESEED_S` loop) now flags it: `Guard.oversize_flags()`, audit
+  `stop` / `OVERSIZE_STOP` once per (order, sizes), `mode.oversize_stops` in `/ai/state`, `ALERT: OVERSIZE_STOP` in the digest. The
+  existing event path already resized an owned stop whenever the position size differed from the ticket's `stop_size`; the new case is
+  the broker showing a bigger stop than the ticket believes, which is resized down by the same `_resize_stop` (its own price, only a
+  smaller size, no new order type). A stop the desk does not own (external, adopted) is reported and never touched. No new order path.
+- **(c) Fixed stop read-back.** After a fixed stop is ACKed and the size matches, `_fixed_stop_readback` reads the order from the broker
+  and checks type 4, working, closing side, size at least the position, a numeric trigger on the loss side of the FILL (average price)
+  and within `PX_MAX_STOP_TICKS` of it (the distance check is skipped for a 1-lot ticket, which has its own room rule). A readable
+  mismatch flattens and halts (`stop_readback`, in `AUTO_KINDS`, audit `STOP_READBACK_BAD` with a fixed code). An order the broker does
+  not list yet, or a fill price or tick size the desk cannot read, is audited `STOP_READBACK_UNREAD` and NOT halted: the stop was ACKed
+  with an order id, and `protect_open_positions` already flattens an owned position whose stop is missing from the book. This is the one
+  place unknown does not refuse, because refusing means flattening a protected position on a slow list.
+- **What this does not settle.** `averagePrice` on a position is the broker's average, so after a partial fill at two prices the
+  check is against the average. The read-back runs after the watchdog is cancelled, so a broker that never lists the stop is caught by
+  the resync, not by the watchdog.
+

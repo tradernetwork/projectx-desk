@@ -99,6 +99,10 @@ def test_full_flow_preview_place_with_hash_confirm(tmp_path):
         assert "payload" not in repr(p) and "accountId" not in repr(p)
         bad = post(c, "/api/place", tok, {"ticket_id": tid, "confirm_hash": "00000000"}).json()
         assert not bad["ok"] and gw.writes == []
+        # Round 39: the failed attempt consumed the ticket, so even the right hash is refused; restage and confirm again
+        assert not post(c, "/api/place", tok, {"ticket_id": tid, "confirm_hash": h8}).json()["ok"] and gw.writes == []
+        p = post(c, "/api/preview", tok, {"contract": CID, "side": "long", "stop_price": 4994.0, "risk_dollars": 50}).json()
+        tid, h8 = p["ticket"]["ticket_id"], p["ticket"]["hash8"]
         good = post(c, "/api/place", tok, {"ticket_id": tid, "confirm_hash": h8}).json()
         assert good["ok"] and good["acked"] and "not a fill" in good["note"]
         again = post(c, "/api/place", tok, {"ticket_id": tid, "confirm_hash": h8}).json()

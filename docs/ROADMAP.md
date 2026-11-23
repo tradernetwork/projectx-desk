@@ -33,6 +33,10 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
 - Agent-set display toggles (Round 38): MCP tool `set_view(key, value)` over seven allowlisted chart flags, prefs in `data/view_prefs.json`,
   read-only `view` in `/state.json`, applied by `static/viewprefs.js`; `PX_AGENT_VIEW=1` lets the desk agent call it. Next: retire the
   toolbar buttons the trader no longer touches.
+- Guard hardening from a read of other brokers' MCP repos (Round 39): a failed place attempt burns the ticket, expiry on the monotonic
+  AND wall clock, `customTag` form pinned, a working stop bigger than the position is flagged (`ALERT: OVERSIZE_STOP`) and an owned
+  one is resized down, every fixed post-fill stop is read back against the fill. Still open from that report: ticket pruning on each
+  preview, binding the ticket to the (method, path), a shared decimal check before `write()`, the journal and stop-widening detectors.
 
 ## Next, in order
 

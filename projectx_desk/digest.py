@@ -762,7 +762,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
             root = None
     quote_age = round(time.monotonic() - q["_rx"], 1) if q and "_rx" in q else None
 
-    staged = next((t for t in guard.tickets.values() if t.state == "STAGED" and guard.clock() < t.expires), None)
+    staged = next((t for t in guard.tickets.values() if t.state == "STAGED" and not guard._expired(t)), None)
     ticket = None
     if staged:
         ticket = {"id8": staged.hash8, "ttl_s": max(0, round(staged.expires - guard.clock())),
@@ -774,6 +774,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
         "v": V, "asof": now.astimezone(CT).strftime("%H:%M:%S") + "CT",
         "mode": {"max_entry_dev_ticks": int(lim.max_entry_dev_ticks), "trading": bool(lim.trading), "mcp_place": bool(lim.mcp_place), "halt": guard.halted(),
                  "unknown_order": guard.unreconciled(), "halt_cause": guard.halt_cause(), "auto": guard.auto_action(),
+                 "oversize_stops": guard.oversize_flags() if hasattr(guard, "oversize_flags") else [],
                  "windows": guard.windows(now),
                  "account_kind": lim.account_kind.upper(), "bracket_mode": lim.bracket_mode.upper(),
                  "one_lot": bool(lim.one_lot and lim.account_kind == "sim")},
@@ -1124,6 +1125,8 @@ def format_digest(s) -> str:
          f"MODE: engine={'UNKNOWN_ORDER' if m.get('unknown_order') else 'HALTED' if m['halt'] else 'READY'} trading={'ON' if m['trading'] else 'OFF'} "
          f"mcp_place={'ON' if m['mcp_place'] else 'OFF'} account={m['account_kind']} bracket={m['bracket_mode']}" + (" 1LOT" if m.get("one_lot") else ""),
          f"FEED: market={f['market']} user={f['user']} seeded={_f(f['seeded'])} market_age_s={_f(f['market_age_s'])}",
+         *[f"ALERT: OVERSIZE_STOP contract={o['contract']} stop_size={o['stop']} position={o['pos']} (a stop fill would flip the position)"
+           for o in (m.get("oversize_stops") or [])],
          *_tape_lines(f.get("tape")),
          f"CONTRACT: root={_f(c['root'])} tick={_f(c['tick'])} tickval={_f(c['tick_value'])} active={_f(c['active'])}",
          f"QUOTE: last={_f(q['last'])} bid={_f(q['bid'])} ask={_f(q['ask'])} age_s={_f(q['age_s'])}"]

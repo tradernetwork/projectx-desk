@@ -963,3 +963,23 @@ Docs: `docs/PUBLIC.md`. Tests: `tests/test_pub_link.py`, `tests/test_pub_app.py`
   `PX_MCP_TOKEN`; the tool is registered whenever MCP is mounted, so the host sees it but the agent cannot call it without the switch.
 - **Not done.** Indicator groups and the Robinhood/LETF panels are not in the set: their state is server-chosen (`indicators.py`)
   or lives in the URL hash. The buttons are not removed yet; that waits on the trader using the tool for a while.
+
+## Round 39: execution facts in the journal (2026-11-23)
+
+- **Why.** Reading other desks' MCP repos (concepts only, nothing copied) turned up three cheap journal figures that fit our
+  no-rate-under-30 rule: slippage against the price on arrival, size drift against the trader's own habit, and the longest run of
+  losses. All three are one pass over trips the journal already builds.
+- **What.** `journal.py` gains `read_arrivals`/`attach_slippage`/`slippage_stats`, `size_drift` and `loss_streaks`; `summarize` carries
+  them as `streak`, `size_drift`, `slippage`; `trades.md` and `scalp.md` (`## Execution`) print them; `scripts/scalp_report.py` attaches
+  arrivals. No change to `guard.py`, the audit, any default or the pin.
+- **Slippage is NA unless an arrival quote was recorded.** Nothing in the desk records one today: the audit carries no quote and a
+  fill row carries none. So the figure reads from an OPTIONAL `data/arrivals.jsonl` (`PX_ARRIVALS_FILE`, lines `{ts, contract, side,
+  price}`) that no desk code writes yet. With no file every slippage line says `NA ... (n=0)`. A quote counts only when it is on the
+  same contract and entry side, at or before the entry (no lookahead) and within 120 s of it; a scaled-in trip, an unknown tick size
+  or a garbled line is NA, never 0. Sign: positive is adverse. Entry only, not exit.
+- **Size drift** compares each closed trip's qty with the median of the previous 50 closed trips (needs 30 earlier, else NA; the trip
+  never moves its own baseline). It reports how many ran at 2x or more, with n judged. A count, not advice.
+- **Loss streak** is the longest run of consecutive losing closed trips by exit time (a scratch ends it) and the run now; n beside it.
+  A streak is a count, so it prints under 30 trips with its n; the average slippage is withheld under `MIN_N`.
+- **Preview text with the audit: NOT done.** The audit file is written only by `guard.py` from a fixed key allowlist (`AUDIT_KEYS`), so
+  storing the displayed numbers or an arrival quote needs a guard change. Recorded as a follow-up in `docs/ROADMAP.md`.

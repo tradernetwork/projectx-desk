@@ -14,7 +14,7 @@ import math
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from .journal import MIN_N, SMALL
+from .journal import DRIFT_FACTOR, MIN_N, SMALL, loss_streaks, size_drift, slippage_stats
 from .levels import atr_series, ema_series
 from .regime import ema_slope
 
@@ -204,6 +204,15 @@ def render_scalp(trips, now):
     for r, b in sorted(breakeven_points(c).items()):
         L.append(f"- {r}: a trip must move {b['points']} points just to pay the ${b['fees']:.2f} average fees (n={b['n']})")
     L.append("")
+    st, dr, sl = loss_streaks(c), size_drift(c), slippage_stats(c)
+    L += ["## Execution",
+          f"- Longest losing streak: {st['longest']} trips in a row (n={st['n']} closed), running now: {st['current']}",
+          (f"- Size vs own trailing median: {dr['oversized']} of {dr['n']} judged trips at {DRIFT_FACTOR}x or more, largest {dr['max_ratio']}x"
+           if dr["n"] else f"- Size vs own trailing median: NA (needs {MIN_N} earlier trips; n=0 judged of {dr['of']})"),
+          (f"- Entry slippage, ticks, positive = adverse: n={sl['n']}, "
+           + (f"average {sl['avg']}" if sl["avg"] is not None else f"average withheld (n<{MIN_N})")
+           + f", worst {sl['worst']}, adverse {sl['adverse']} of {sl['n']}"
+           if sl["n"] else "- Entry slippage: NA, no arrival quote was recorded for any trip (n=0)"), ""]
     al = _after_loss(c)
     L += ["## Slices", ""]
     L += _table("By time held", slice_rows(c, hold_bucket, [b[0] for b in HOLD_BUCKETS]))

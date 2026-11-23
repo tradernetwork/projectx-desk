@@ -3,6 +3,15 @@
 What is done, what is next, in dependency order, and what is waiting on a decision. Update it in the same change that
 moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are in `docs/DECISIONS.md`.
 
+## Follow-ups from the broker-MCP reading (2026-11-23)
+
+- Journal execution facts are in (Round 39): entry slippage in ticks, size drift, longest loss streak. Slippage reads NA until
+  something records an arrival quote.
+- FOLLOW-UP, needs a `guard.py` change (do it as its own reviewed round, not from the journal): write the arrival quote (bid, ask, last
+  and quote time at the commit point) and the displayed preview numbers (stop ticks, risk, size) with the `place` audit line, by adding
+  allowlisted numeric keys to `AUDIT_KEYS`. Then a small journal reader can fill `data/arrivals.jsonl` or read the audit directly, and
+  slippage stops being NA. Numbers only, never free text or the rendered sentence.
+
 ## Done (2026-10-30)
 
 - A gateway logout no longer leaves a blind cache: unseed, REST reseed every `PX_RESEED_S`, one forced reconnect per 300 s, digest

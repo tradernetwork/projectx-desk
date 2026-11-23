@@ -1622,6 +1622,7 @@ function tmapSync(){
   if(cid && !TM.busy && Date.now() - TM.at > (TM.res && TM.res.status === 'OK' ? 300000 : 60000)) tmapFetch(cid);
   drawTmap(false);
   try{levelAlerts(TM.res && TM.res.status === 'OK' ? TM.res.map : null)}catch(e){err(e)}
+  try{tradeAlerts(S.ai)}catch(e){err(e)}
   const nowEl = $('tm-now'), m = TM.res && TM.res.status === 'OK' ? TM.res.map : null;
   if(nowEl && m){const t = tmapNowText(m), s = nowEl.querySelector('span'); if(s && s.textContent !== t) s.textContent = t}      // follows price without rebuilding the panel
 }
@@ -1796,6 +1797,25 @@ function levelAlerts(m){
 }
 $('lv-toggle').onclick = () => {LV.on = !LV.on; LS.set('px.levelAlerts', LV.on); $('lv-toggle').setAttribute('aria-pressed', String(LV.on)); if(LV.on) lvBeep(false)};      // the click also unlocks audio
 $('lv-toggle').setAttribute('aria-pressed', String(LV.on));
+/* ================= Trade-event alerts: a flash, a chime and the tab title when the desk's detector sees how a trade was taken. Display only. =================
+   The server (tradewatch.py, default OFF) sends fixed-template facts in /ai/state tradewatch.events; this only draws them. It says what HAPPENED, never what to do. */
+const TW = {seen: new Set(), hideT: 0, titleT: 0};
+function showTradeAlert(ev){
+  const box = $('trade-alert'); if(!box) return;
+  box.replaceChildren();
+  box.append(mk('span', 'ca-main', ev.text), mk('span', 'ca-sub', ctClock.format(new Date()).replace(/^\w+\s/, '') + ' CT · an alert, not a signal'));
+  box.hidden = false; box.className = 'callout-alert trade-alert flash'; box.onclick = () => {box.hidden = true; clearInterval(TW.titleT); document.title = titleBase};
+  clearTimeout(TW.hideT); TW.hideT = setTimeout(() => box.classList.remove('flash'), 25000);
+  if(LV.on) lvBeep(true);
+  clearInterval(TW.titleT); let k = 0;
+  TW.titleT = setInterval(() => {document.title = k++ % 2 ? titleBase : 'TRADE NOTE'; if(k > 40){clearInterval(TW.titleT); document.title = titleBase}}, 800);
+}
+function tradeAlerts(ai){
+  const t = ai && ai.tradewatch;
+  if(!t || t.status !== 'OK' || typeof PXWatch === 'undefined' || !PXWatch.freshEvents) return;
+  const fresh = PXWatch.freshEvents(t.events, TW.seen, Date.now(), 120000);
+  if(fresh.length) showTradeAlert(fresh[fresh.length - 1]);
+}
 function syncDesk(){document.documentElement.dataset.pos = S.ai && Array.isArray(S.ai.positions) && S.ai.positions.length ? '1' : '';      // in a trade the blotter moves to the top of the portrait band
   try{drawTrend(false)}catch(e){err(e)} try{tmapSync()}catch(e){err(e)}      // try/catch, not typeof: both read consts defined further down, so a call before they exist throws
   try{drawRespect(false)}catch(e){err(e)}      // the respected set is filtered by distance to price, so it follows price too

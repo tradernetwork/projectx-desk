@@ -46,6 +46,7 @@ from projectx_desk import llm_config as px_llm_cfg
 from projectx_desk import llm_login as px_llm_login
 from projectx_desk import llm_providers as px_llm
 from projectx_desk import journal as px_journal
+from projectx_desk import tradewatch as px_tradewatch
 from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
 from projectx_desk import ticks as px_ticks
@@ -187,10 +188,11 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
             app.state.tapewatch_task = asyncio.create_task(px_tapewatch.loop(app, _quiet)) if roots else None
             app.state.reseed_loop_task = asyncio.create_task(_reseed_loop(app)) if connect and not rec else None
             app.state.rh_track_task = asyncio.create_task(_rh_track_loop(app)) if app.state.rh_guard is not None else None
+            app.state.tradewatch_task = asyncio.create_task(_tradewatch_loop(app)) if connect and not rec and px_tradewatch.config()[0] else None
             yield
             if app.state.rh is not None:
                 await app.state.rh.stop()
-            for name in ("bias_task", "tledger_task", "mapplan_task", "journal_task", "reseed_loop_task", "tapewatch_task", "rh_track_task"):
+            for name in ("bias_task", "tledger_task", "mapplan_task", "journal_task", "reseed_loop_task", "tapewatch_task", "rh_track_task", "tradewatch_task"):
                 if getattr(app.state, name, None) is not None:
                     getattr(app.state, name).cancel()
             if notifier_task is not None:
@@ -1462,6 +1464,28 @@ async def _reseed_tick(app):
         app.state.live.mark_unseeded()
         print(f"periodic reseed failed: {type(e).__name__}", flush=True)
         return False
+
+
+def tradewatch_tick(app, tw):
+    """One look at the desk's own fills, positions and working orders. Read-only; returns the new events."""
+    live = app.state.live
+    return tw.step(list(live.trades), list(live.positions.values()), list(live.orders.values()),
+                   bool(live.trades_seeded and live.positions_seeded), time.monotonic(), int(time.time() * 1000))
+
+
+async def _tradewatch_loop(app):
+    """Trade-event detector (tradewatch.py), default OFF (PX_TRADEWATCH=1). Display and digest only; no path to the guard."""
+    _, nostop = px_tradewatch.config()
+    bias_path = os.getenv("PX_BIAS_LOG_FILE") or (pathlib.Path(ROOT) / "data" / "bias_log.jsonl")
+    tw = app.state.tradewatch = px_tradewatch.TradeWatch(nostop, lambda: px_journal.read_bias(bias_path))
+    while True:
+        try:
+            tradewatch_tick(app, tw)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 - the detector must never break the desk
+            print(f"tradewatch failed {type(e).__name__}", flush=True)
+        await asyncio.sleep(2)
 
 
 async def _reseed_loop(app):

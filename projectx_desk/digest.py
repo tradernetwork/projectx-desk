@@ -24,6 +24,7 @@ from projectx_desk import flow as px_flow
 from projectx_desk import session as px_session
 from projectx_desk import sizing
 from projectx_desk.limits import ONE_LOT_ROOTS
+from projectx_desk import tradewatch as px_tradewatch
 from projectx_desk.indicators import rsi_series
 from projectx_desk.levels import atr_series, bounce_stats, ema_stack, percentile_rank, placebo_rate, verdict
 from projectx_desk.client import live_data, PXAuthError, PXError, PXNotConfigured, PXRateLimited
@@ -818,6 +819,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
         "positions": [position_view(p) for p in live.positions.values()],
         "orders": [order_view(o) for o in live.orders.values()],
         "fills_today": len(live.trades) if live.trades_seeded else None,
+        "tradewatch": tradewatch_state(app),
         "disclaimer": DISCLAIMER,
     }
     if not stream and isinstance(state.get("size"), dict):
@@ -832,6 +834,13 @@ def _session_ctx(app, contract_id):
         return px_session.context(hit["bars"]) if hit else None
     except Exception:  # noqa: BLE001 - advisory context never breaks the state
         return None
+def tradewatch_state(app):
+    """The trade-event detector's recent events (fixed templates, no amounts), or OFF. Display only."""
+    tw = getattr(app.state, "tradewatch", None)
+    try:
+        return tw.snapshot() if tw is not None else {"status": "OFF", "events": []}
+    except Exception:  # noqa: BLE001 - advisory
+        return {"status": "OFF", "events": []}
 
 
 async def _tomorrow_state(app, contract_id):
@@ -1236,6 +1245,7 @@ def format_digest(s) -> str:
                                   for o in s["orders"]) or ("NONE" if seeded else unk)))
     L.extend(rh_lines(s.get("rh")))
     L.extend(pub_lines(s.get("pub")))
+    L.extend(px_tradewatch.digest_lines(s.get("tradewatch")))
     L.append(f"FILLS_TODAY: {_f(s['fills_today'])}" + ("" if s.get("stream") else f" pnl_day={_f(r.get('pnl_day'))}"))
     L.append(f"ACTIONS: stage={'ENABLED' if not m['halt'] else 'BLOCKED'} place={'NEEDS_HUMAN' if t else 'NEEDS_TICKET'}")
     L.append("RULE: agent reads and stages; the operator places. Voice never confirms.")

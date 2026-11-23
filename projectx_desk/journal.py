@@ -26,6 +26,17 @@ SMALL = 5                   # below this a count is listed but never described
 REVENGE_S = 600             # an entry within 10 minutes of a losing exit on the same contract
 CONTRACT = re.compile(r"^CON\.F\.US\.[A-Z0-9]{1,8}\.[A-Z0-9]{1,8}$")
 BIAS_STALE_MS = 10 * 60 * 1000
+LATE_HM = (14, 55)          # an entry at or after this Central time is "late" (the flat-by deadline is close)
+
+
+def is_revenge(entry_ts, last_loss_exit_ts):
+    """Entry (ms) within REVENGE_S of the last losing exit (ms) on the same contract. The one definition, shared with tradewatch.py."""
+    return last_loss_exit_ts is not None and entry_ts - last_loss_exit_ts <= REVENGE_S * 1000
+
+
+def is_late(entry_ts):
+    h = datetime.fromtimestamp(entry_ts / 1000, CT)
+    return (h.hour, h.minute) >= LATE_HM
 
 
 def _num(v):
@@ -191,7 +202,7 @@ def summarize(trips):
     last_loss = {}
     for t in sorted(c, key=lambda x: x["entry_ts"]):
         ll = last_loss.get(t["contract"])
-        if ll is not None and t["entry_ts"] - ll <= REVENGE_S * 1000:
+        if is_revenge(t["entry_ts"], ll):
             revenge.append(t)
         if t["net"] < 0:
             last_loss[t["contract"]] = t["exit_ts"]
@@ -201,7 +212,7 @@ def summarize(trips):
         if x and x["aligned"] is False and x["direction"] in ("LONG", "SHORT"):
             counter.append(t)
         h = datetime.fromtimestamp(t["entry_ts"] / 1000, CT)
-        if (h.hour, h.minute) >= (14, 55):
+        if is_late(t["entry_ts"]):
             late.append(t)
         if (h.hour, h.minute) < (8, 45) and (h.hour, h.minute) >= (8, 30):
             early.append(t)

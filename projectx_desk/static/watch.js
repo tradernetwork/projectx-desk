@@ -32,6 +32,21 @@
     }
     return out;
   }
-  root.PXWatch = {crossEvents};
+  /* Trade events from the server's detector (/ai/state tradewatch.events: [{id, kind, ts, text}]). Returns the ones not announced before and
+     younger than maxAgeMs. `seen` is a Set the caller keeps, so a page load announces nothing older than maxAgeMs: a reload never replays
+     history. Only kind and text are drawn; text is a fixed server template. */
+  const KINDS = ['NO_STOP', 'REENTRY', 'SCALE_IN', 'LATE_ENTRY', 'COUNTER_BIAS'];
+  function freshEvents(events, seen, now, maxAgeMs){
+    const out = [];
+    if(!Array.isArray(events)) return out;
+    for(const e of events){
+      if(!e || typeof e.id !== 'string' || typeof e.text !== 'string' || !fin(e.ts) || KINDS.indexOf(e.kind) < 0) continue;
+      if(seen.has(e.id)) continue;
+      seen.add(e.id);
+      if(now - e.ts <= maxAgeMs) out.push(e);
+    }
+    return out;
+  }
+  root.PXWatch = {crossEvents, freshEvents};
   if(typeof module !== 'undefined') module.exports = root.PXWatch;
 })(typeof window !== 'undefined' ? window : globalThis);

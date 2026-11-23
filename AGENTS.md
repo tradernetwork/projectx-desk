@@ -30,7 +30,7 @@ checkout root, never inside the package; `tests/conftest.py` puts the root on `s
 | `projectx_desk/state.py` | live quotes/positions/orders/trades; trading-day P&L; allowlisted `position_view`/`order_view` |
 | `projectx_desk/limits.py` | config (every limit fails closed) and persisted day state |
 | `projectx_desk/digest.py` | the AI surface: one state dict, `/ai/state` JSON and `/ai/digest` text |
-| `projectx_desk/mcp.py` | FastMCP tools (read, size, stage, halt). No place/flatten/cancel/clear |
+| `projectx_desk/mcp.py` | FastMCP tools (read, size, stage, halt, `get_trade_memory`: capped trades.md text, dollars stripped unless `PX_MCP_MEMORY_DOLLARS=1`, notes.md only behind `PX_MCP_MEMORY_NOTES=1`). No place/flatten/cancel/clear |
 | `projectx_desk/net.py` | bind and exposure rules: loopback detection, host/origin allowlists, the operator login, the refusal to start unsafe |
 | `projectx_desk/app.py` | FastAPI: chart data, SSE ticks, CSRF-gated POST routes, mounts MCP. `POST /api/cancel {ticket_id}` (human only, no MCP tool, not in `PX_RECORD_ONLY`) replies `{ok, code, entry_status}` with a fixed code |
 | `projectx_desk/levels.py` | EMA stack, ATR series, level-reaction statistics with a random-line baseline |

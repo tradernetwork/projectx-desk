@@ -46,7 +46,7 @@ mcp_servers:
 ```
 
 `hermes config path` prints the active profile's file; a different profile has its own `config.yaml` and `.env`, and editing the root one does
-nothing. Check with `hermes mcp test projectx` (it should list 12 tools). Keep the token out of the config file and out of shell history.
+nothing. Check with `hermes mcp test projectx` (it should list 13 tools). Keep the token out of the config file and out of shell history.
 
 ## Tools
 
@@ -57,6 +57,7 @@ nothing. Check with `hermes mcp test projectx` (it should list 12 tools). Keep t
 | `get_positions`, `get_orders`, `get_quote`, `get_bars`, `search_contracts`, `get_risk_status` | reads |
 | `size_trade` | what size the desk would allow for an idea; stages nothing, always rounds down |
 | `preview_order` | **stages** a ticket for a human to review and place. Returns the readback or the checks that failed. |
+| `get_trade_memory` | the trader's trade memory (`data/memory/trades.md` under `PX_MEMORY_DIR`) as capped text: counts, sample sizes, hold times, habit counts, last trips. **Dollar figures are replaced with `[$ withheld]`** unless `PX_MCP_MEMORY_DOLLARS=1`. `file="notes"` (the hand-written `notes.md`) is refused unless `PX_MCP_MEMORY_NOTES=1`. Output is capped at `PX_MCP_MEMORY_MAX` characters (default 20000, 1000 to 100000). Switches are on only for exactly `1`. Facts, not advice; no path comes from the caller. |
 | `halt` | freezes new opens. Only a human can clear it. |
 
 `search_contracts` returns only `id`, `name` (an uppercase code, or one derived from the id), `tick` and `tick_value`. `get_quote`,

@@ -24,6 +24,9 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
   a "thesis against what happened" section in `data/memory/trades.md`, and `static/thesis.js` (preset buttons, respected-level chips).
   Left for later: the invalidation alert through the phone notifier, a banner for the facts, voice fill.
 
+- Read-only MCP tool `get_trade_memory` for the trade memory (roadmap item 9 prerequisite): dollars withheld unless
+  `PX_MCP_MEMORY_DOLLARS=1`, `notes.md` only behind `PX_MCP_MEMORY_NOTES=1`, size-capped.
+
 ## Next, in order
 
 **Gate: the sim probe.** Items 1, 2 (its probe) and the throughput test in 4 are settled only by a run of
@@ -55,14 +58,14 @@ below is ticked until that table shows PASS for the steps the item names; an UNK
 8. **Callout cross-check.** The coach says whether the newest analyst callout agrees with the open position. Only when the callout
    carries a symbol and side. Allowlisted fields only (`feed.py`), never callout text, opinion not signal, no path to the guard.
 9. **Scheduled debriefs on the home agent.** A locked-down profile with only the desk MCP, a debrief after the close and a pre-open
-   note, reading the trade memory. Needs a read-only MCP tool for `data/memory/trades.md`.
+   note, reading the trade memory. The read-only MCP tool for `data/memory/trades.md` now exists (`get_trade_memory`).
 
 ## Waiting on a decision
 
 - Deep model for the coach: Opus or Sonnet (Opus burns more of the subscription).
 - Edits from chat: a branch on the home box that the trader reviews here, or a patch applied from this checkout.
 - Where scheduled output is delivered. A chat platform conflicts with the LAN-only decision, so nothing is wired until it is decided.
-- Whether dollars belong in the trade-memory MCP tool (the AI surface otherwise carries no balances).
+- Whether dollars belong in the trade-memory MCP tool (the AI surface otherwise carries no balances). Default is OFF (withheld); `PX_MCP_MEMORY_DOLLARS=1` turns them on.
 - Prettier desk UI: three directions live in `design/prettier-desk/` (A conservative re-skin, B strong-fit re-composition, C divergent editorial), with screenshots and a slop audit in its README. Pick one to port into `projectx_desk/static/`; B is the recommendation.
 
 ## Known gaps

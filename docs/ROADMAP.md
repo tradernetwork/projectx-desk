@@ -30,6 +30,10 @@ moves an item. Rules that bind every item live in `AGENTS.md`; the reasons are i
   `PXDeclutter.pickTrendLines` drops lines over 3 ATR from price and near-parallel copies of a stronger line, ranks by touches
   and recency, and caps the other-timeframe extras so at most 4 lines draw beside the chart's own. Per-timeframe toggles unchanged.
 
+- Agent-set display toggles (Round 38): MCP tool `set_view(key, value)` over seven allowlisted chart flags, prefs in `data/view_prefs.json`,
+  read-only `view` in `/state.json`, applied by `static/viewprefs.js`; `PX_AGENT_VIEW=1` lets the desk agent call it. Next: retire the
+  toolbar buttons the trader no longer touches.
+
 ## Next, in order
 
 **Gate: the sim probe.** Items 1, 2 (its probe) and the throughput test in 4 are settled only by a run of

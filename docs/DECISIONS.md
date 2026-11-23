@@ -937,3 +937,29 @@ Docs: `docs/PUBLIC.md`. Tests: `tests/test_pub_link.py`, `tests/test_pub_app.py`
   the same path as the API. These stay unverified after the probe and the runbook says so.
 - **The one extra login.** `fillVolume`/`customTag` and the trail fields need raw order rows, which no desk route returns (they are
   allowlisted away on purpose). The runbook takes one `Order/search` with the desk STOPPED, never alongside it (Round 23).
+
+## Round 38: the desk agent can turn display features on and off (2026-11-23)
+
+- **Why.** The chart toolbar keeps growing (GEX, More, map, trend, one button per trendline timeframe). The trader can already talk
+  to the embedded agent, so "hide the GEX lines" should be a sentence, and the buttons can shrink later. It must not become a way
+  to reach anything that moves money.
+- **What.** `projectx_desk/viewprefs.py`: a fixed allowlist of seven boolean keys that mirror flags the page already keeps
+  (`gex`, `chartMore`, `tmap`, `trend`, `trend_1m`, `trend_5m`, `trend_15m`). One MCP tool, `set_view(key, value)`, is the only
+  writer. Prefs live in memory and in `data/view_prefs.json` (`PX_VIEW_FILE`), written with `print(..., file=f)` and `os.replace`;
+  a garbled or unwritable file never breaks the desk. They come back read-only as `view` in `/state.json`, which the UI already
+  polls; `static/viewprefs.js` (pure, node-tested) works out which toggles differ and `desk.js` clicks its own existing button for
+  each, once per change (signature kept in `localStorage`), so the page's own handlers do the work and a later manual click is not
+  overridden until the agent sets something new.
+- **Refusals are fixed words.** `unknown_key`, `bad_value` (anything but a boolean or true/false/on/off), `unavailable`. A key
+  called `halt` is simply an unknown key. The reply never echoes the caller's text.
+- **No path to the guard.** `viewprefs.py` imports only `json`, `os`, `pathlib`; the guard, limits, sizing and anchor never name it
+  (tests pin both). No route sets a pref: there is no POST, so the order-path AST pin is untouched. No key can name an order,
+  ticket, halt, sizing or limit. Adding a key is a new Round.
+- **Record-only and stream mode.** A recorder builds no `ViewPrefs` (`app.state.view` is None), mounts no MCP and has no
+  `/state.json`. Stream mode: the prefs carry no balance, account or dollar value, so they are served in both modes; the toggles
+  are chart display, not private data.
+- **Agent.** `scripts/deskagent.py` allows `mcp__deskmcp__set_view` only when `PX_AGENT_VIEW=1` (default off, like
+  `PX_AGENT_TRAIL`), a switch of its own: allowing the view tool never allows the trail tools or the reverse. The desk MCP needs
+  `PX_MCP_TOKEN`; the tool is registered whenever MCP is mounted, so the host sees it but the agent cannot call it without the switch.
+- **Not done.** Indicator groups and the Robinhood/LETF panels are not in the set: their state is server-chosen (`indicators.py`)
+  or lives in the URL hash. The buttons are not removed yet; that waits on the trader using the tool for a while.

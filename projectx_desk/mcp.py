@@ -18,6 +18,7 @@ from fastmcp import FastMCP
 from fastmcp.server.auth import AccessToken, TokenVerifier
 
 from projectx_desk import digest as px_digest
+from projectx_desk import viewprefs as px_viewprefs
 from projectx_desk.client import live_data
 from projectx_desk.state import order_view, position_view
 from projectx_desk.tradeday import parse_ts
@@ -261,6 +262,17 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
         Dollar figures are withheld unless the operator enabled them. file="notes" (hand-written) is refused unless enabled.
         Facts from fills, not advice or a signal. Read-only."""
         return read_memory(file)
+
+    @mcp.tool
+    def set_view(key: str, value: bool | str) -> dict:
+        """Turn one chart DISPLAY toggle on or off on the trader's desk page (display only, never an order, sizing or limit).
+        key is one of: gex, chartMore, tmap, trend, trend_1m, trend_5m, trend_15m. Anything else is refused with `code`
+        unknown_key; a non-boolean value is bad_value. Use it when the trader asks to show or hide something."""
+        v = getattr(st(), "view", None)
+        if v is None:
+            return {"ok": False, "code": "unavailable"}
+        ok, code = v.set(key, value)
+        return {"ok": ok, "code": code, **({"key": key, "value": v.prefs[key]} if ok else {}), "keys": list(px_viewprefs.KEYS)}
 
     @mcp.tool
     def halt() -> dict:

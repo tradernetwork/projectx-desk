@@ -52,6 +52,7 @@ from projectx_desk import push as px_push
 from projectx_desk import recorder as px_recorder
 from projectx_desk import ticks as px_ticks
 from projectx_desk.pub import link as px_pub_link
+from projectx_desk import viewprefs as px_viewprefs
 from projectx_desk.rh import letf as px_letf, letf_gex as px_letf_gex, state as px_rh
 from projectx_desk.rh.guard import Guard as RhGuard, Refused as RhRefused
 from projectx_desk.guard import Guard, GuardError
@@ -218,6 +219,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.pub = pub_link
+    app.state.view = None if rec else px_viewprefs.ViewPrefs.from_env()      # display toggles the desk agent may set (Round 38); a recorder has none
 
     tok = mcp_token if mcp_token is not None else os.getenv("PX_MCP_TOKEN")
     if tok and rec:
@@ -483,6 +485,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
         keep = ("lastPrice", "bestBid", "bestAsk", "high", "low", "volume", "timestamp")
         return {
             **({"pub": st.pub.health()} if getattr(st, "pub", None) is not None else {}),
+            **({"view": st.view.view()} if getattr(st, "view", None) is not None else {}),
             "v": 0,
             "asof": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "boot_error": st.boot_error,

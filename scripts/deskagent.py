@@ -42,6 +42,9 @@ BROWSER = ["browser_navigate", "browser_snapshot", "browser_take_screenshot", "b
 MCP_FILE = Path.home() / ".cache" / "projectx-desk" / "agent_mcp.json"   # holds the desk MCP bearer token: 0600, OUTSIDE the checkout so no Read/Grep/Glob rule is needed, never an argv string
 ALLOWED = ["Read", "Grep", "Glob"] + ["mcp__deskbrowser__" + t for t in BROWSER]
 TRAIL_TOOLS = ["mcp__deskmcp__" + t for t in ("arm_trail", "get_positions", "get_orders", "get_quote")]
+# PX_AGENT_VIEW=1 lets the agent call the desk's display-only set_view tool (chart toggles, Round 38). It shares the deskmcp server and
+# token with the trail tools but is its own switch, so allowing one never allows the other.
+VIEW_TOOLS = ["mcp__deskmcp__set_view"]
 # Belt and braces on top of dontAsk: nothing that writes or runs, and the files that hold secrets are unreadable to Read/Grep/Glob.
 DENIED = ["Bash", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent",
           "Read(./.env*)", "Read(./data/agent_token)", "Read(./data/*.json)", "Read(./data/*.db*)",
@@ -67,6 +70,8 @@ SYSTEM = (
     "TRAILING STOP: if (and only if) you have an arm_trail tool, call it ONLY when the trader asks for a trail in this conversation, with the distance in "
     "points they gave (never invent one, never retry a refusal in a loop). It swaps the position's fixed stop for a trailing stop, can only tighten, "
     "and the desk reads it back before dropping the old stop. Report exactly what it returned, including the refusal reason. You cannot place, flatten or cancel anything else. "
+    "DISPLAY TOGGLES: if you have a set_view tool, use it only when the trader asks to show or hide a chart feature (keys gex, chartMore, tmap, trend, "
+    "trend_1m, trend_5m, trend_15m; value true or false). It changes what the page draws and nothing else. Report the code it returned. "
     "Never print tokens or .env.projectx contents. Earlier turns of this conversation are stale: re-read the page or /ai/digest "
     "before stating anything about the current position, orders, price or halt. Terse, blunt, show the numbers."
 )
@@ -162,7 +167,7 @@ def mcp_config() -> str:
         "command": "npx",
         "args": ["-y", "@playwright/mcp@0.0.83", "--headless", "--isolated", "--executable-path", CHROME,
                  "--allowed-origins", DESK, "--viewport-size", "1600x1000"]}}
-    tok = mcp_token() if trail_on() else ""
+    tok = mcp_token() if (trail_on() or view_on()) else ""
     if not tok:
         return json.dumps({"mcpServers": servers})
     servers["deskmcp"] = {"type": "http", "url": DESK.rstrip("/") + "/mcp/", "headers": {"Authorization": "Bearer " + tok}}
@@ -175,6 +180,10 @@ def mcp_config() -> str:
 
 def trail_on() -> bool:
     return env_value("PX_AGENT_TRAIL") == "1"
+
+
+def view_on() -> bool:
+    return env_value("PX_AGENT_VIEW") == "1"
 
 
 def load_sessions() -> dict:
@@ -220,7 +229,7 @@ def budget_usd() -> float:
 def build_cmd(prompt: str, resume: str = "") -> list:
     cmd = ["claude", "-p", prompt, "--output-format", "json", "--append-system-prompt", SYSTEM,
            "--mcp-config", mcp_config(), "--strict-mcp-config", "--permission-mode", "dontAsk",
-           "--allowedTools", *ALLOWED, *(TRAIL_TOOLS if trail_on() else []), "--disallowedTools", *DENIED]
+           "--allowedTools", *ALLOWED, *(TRAIL_TOOLS if trail_on() else []), *(VIEW_TOOLS if view_on() else []), "--disallowedTools", *DENIED]
     b = budget_usd()
     if b > 0:
         cmd += ["--max-budget-usd", f"{b:.4f}".rstrip("0").rstrip(".")]

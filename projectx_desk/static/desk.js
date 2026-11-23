@@ -166,7 +166,7 @@ async function refresh(){
     S.aiFails = ai ? 0 : S.aiFails + 1;
     S.prev = S.ai; S.ai = ai; S.st = st; S.sizeCid = cid; S.aiKey = key; S.cd = {left: (ai && ai.behavior && num(ai.behavior.cooldown_left_s)) ? ai.behavior.cooldown_left_s : 0, at: performance.now()}; if(dg != null) S.digest = dg;
     pairPoll(cid);
-    announce(); renderAll();
+    announce(); renderAll(); applyView(st && st.view);
   }finally{S.inflight = false}
 }
 setInterval(() => schedule(0), POLL_MS);
@@ -1761,6 +1761,23 @@ for(const b of document.querySelectorAll('#tr-tfs button')){
   b.onclick = () => {const t = b.dataset.tf; if(TRX.tfs.has(t)) TRX.tfs.delete(t); else TRX.tfs.add(t); LS.set('px.trendTfs', [...TRX.tfs]); b.setAttribute('aria-pressed', String(TRX.tfs.has(t))); TR.sig = ''; drawTrend(true)};
 } drawTrend(true)};
 $('tr-toggle').setAttribute('aria-pressed', String(TR.on));
+
+/* Display preferences the desk agent set (static/viewprefs.js, Round 38): applied once per change by clicking the page's own toggle. Never an order control. */
+function viewNow(){
+  const o = {gex: CH.gex, chartMore: CH.more, tmap: TM.on, trend: TR.on};
+  for(const t of ['1m', '5m', '15m']) o['trend_' + t] = TRX.tfs.has(t);
+  return o;
+}
+const VIEW_BTN = {gex: () => $('gex-toggle'), chartMore: () => $('more-toggle'), tmap: () => $('tm-toggle'), trend: () => $('tr-toggle')};
+for(const t of ['1m', '5m', '15m']) VIEW_BTN['trend_' + t] = () => document.querySelector('#tr-tfs button[data-tf="' + t + '"]');
+function applyView(v){
+  try{
+    if(!v || !v.prefs || !window.PXView) return;
+    const sg = PXView.sig(v.prefs); if(!sg || sg === LS.get('px.viewApplied', '')) return;
+    for(const k of PXView.diff(v.prefs, viewNow())){const b = VIEW_BTN[k] && VIEW_BTN[k](); if(b) b.click()}
+    LS.set('px.viewApplied', sg);
+  }catch(e){err(e)}
+}
 
 /* ================= Level-cross alerts: a flash, a chime and the tab title when price crosses a dealer-map level. Display only. =================
    Says what HAPPENED ("TRAPDOOR BROKE 7704.5"), never a call to act: the map has no proven edge. The crossing logic is static/watch.js (node-tested). */

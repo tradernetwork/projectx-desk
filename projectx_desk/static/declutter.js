@@ -115,7 +115,7 @@
      1. drop a line farther than `far` ATR (default 3) from the last price;
      2. rank by touches, recency, a bonus for the chart's own timeframe, minus distance (touches are counted, not an edge claim);
      3. walk the ranking and drop a line of the same kind that sits within `dup` ATR (default 0.3) of a stronger kept line at BOTH ends (near parallel);
-     4. keep at most `cap` (default 4). Own lines are never dropped by the cap or the duplicate rule (they are the chart's own channel), only counted.
+     4. keep at most `cap` (default 4) in all. Own lines are kept first and never dropped (they are the chart's own channel), but they count toward the cap and an extra that copies one is dropped.
      Without a last price or ATR nothing can be judged and only the cap applies. Returns a Set of kept ids. */
   function pickTrendLines(cands, last, atr, o){
     o = o || {}; const far = o.far == null ? 3 : o.far, dup = o.dup == null ? 0.3 : o.dup, cap = o.cap == null ? 4 : o.cap;
@@ -124,12 +124,11 @@
     const rows = (Array.isArray(cands) ? cands : []).filter(c => c && num(c.now) && (c.own || !ok || d(c) <= far))
       .map((c, i) => ({c, i, s: (num(c.touches) ? c.touches : 0) + 2 * (num(c.recency) ? Math.max(0, Math.min(1, c.recency)) : 0) + (c.own ? 3 : 0) - 0.5 * d(c)}))
       .sort((a, b) => b.s - a.s || a.i - b.i);
-    const kept = [];
+    const kept = rows.filter(r => r.c.own).map(r => r.c);          // the chart's own lines go first so the cap and the duplicate rule count them
     for(const {c} of rows){
-      if(!c.own){
-        if(kept.length >= cap) continue;
-        if(ok && kept.some(k => k.kind === c.kind && Math.abs(k.now - c.now) <= dup * atr && num(c.past) && num(k.past) && Math.abs(k.past - c.past) <= dup * atr)) continue;
-      }
+      if(c.own) continue;
+      if(kept.length >= cap) continue;
+      if(ok && kept.some(k => k.kind === c.kind && Math.abs(k.now - c.now) <= dup * atr && num(c.past) && num(k.past) && Math.abs(k.past - c.past) <= dup * atr)) continue;
       kept.push(c);
     }
     return new Set(kept.map(c => c.id));

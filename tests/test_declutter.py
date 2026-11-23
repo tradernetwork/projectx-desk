@@ -172,3 +172,12 @@ def test_other_timeframe_tags_carry_no_timeframe_text():
     seg = JS[JS.index("const keep = PXDeclutter.pickTrendLines"):JS.index("if(!drew){applyRoom()")]
     assert "label: tf" not in seg and "dots: tf === '1m'" in seg
     assert "label: own" not in JS
+
+
+@needs_node
+def test_trend_pick_counts_own_lines_in_the_cap_and_drops_an_extra_that_copies_one():
+    own = _c("own", "support", now=100.5, past=100, touches=3, own=True)
+    a = _c("a", "support", now=100.6, past=100.1, touches=8, rec=1)               # a near-parallel copy of own, stronger on paper
+    rest = [_c(n, "resistance", now=101 + i * 0.5, past=102 + i * 3, touches=4) for i, n in enumerate("bcde")]
+    got = js("[...T.pickTrendLines(d.c, 100, 1, {cap: 4})]", {"c": [own, a] + rest})
+    assert "own" in got and "a" not in got and len(got) == 4                      # at most 4 in all, own included

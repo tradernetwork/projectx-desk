@@ -1741,7 +1741,7 @@ function drawTrend(force){
         }
       }
       // which of the other-timeframe lines are worth the ink: near price, not a near-parallel copy of a stronger one, at most 4 lines on the chart with its own
-      const keep = PXDeclutter.pickTrendLines(cands, lp, r && r.atr, {far: 3, dup: 0.3, cap: 4});
+      const keep = PXDeclutter.pickTrendLines(cands, lp, (r && r.atr) || chAtr(), {far: 3, dup: 0.3, cap: 4});
       for(const {tf, ln, tl} of extras){
         if(!keep.has(tf + ln.kind)) continue;
         const t0 = Math.max(ln.t1, stamps[0]), col = TR_COL[ln.kind], flat = Math.abs(ln.slopeMs * 60000) < 0.03 * (tl.atr || 1) / TRX_MIN[tf];

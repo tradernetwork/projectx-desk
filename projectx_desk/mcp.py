@@ -251,7 +251,7 @@ def build_mcp(get_app, token: Optional[str] = None) -> FastMCP:
                             order_type=order_type, entry=entry, origin="mcp")
         out = {"ok": p.ok, "reasons": p.reasons}
         if p.ticket:
-            out.update(ticket_id8=p.ticket.hash8, expires_in_s=max(0, round(p.ticket.expires - g.clock())),
+            out.update(ticket_id8=p.ticket.hash8, expires_in_s=g.ttl_s(p.ticket),
                        readback=dict(p.ticket.readback),
                        next_step="The operator must review this ticket on the desk and place it personally. You cannot place it.")
         return out

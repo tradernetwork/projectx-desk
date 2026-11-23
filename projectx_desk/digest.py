@@ -765,7 +765,7 @@ async def build_ai_state(app, contract_id, *, side="long", risk_pct=DEFAULT_RISK
     staged = next((t for t in guard.tickets.values() if t.state == "STAGED" and not guard._expired(t)), None)
     ticket = None
     if staged:
-        ticket = {"id8": staged.hash8, "ttl_s": max(0, round(staged.expires - guard.clock())),
+        ticket = {"id8": staged.hash8, "ttl_s": guard.ttl_s(staged),
                   "readback": {k: (v if isinstance(v, (int, float)) or re.fullmatch(r"[A-Za-z0-9 ().\-/]{1,40}", str(v)) else None)
                                for k, v in staged.readback.items()},
                   "checks_failed": [n for n, ok, _ in staged.verdict if not ok]}

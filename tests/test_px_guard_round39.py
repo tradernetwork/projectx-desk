@@ -123,7 +123,7 @@ BOOK = (Decimal("4999.75"), Decimal("5000.25"))
 
 @pytest.mark.parametrize("over,close_side,planned,want", [
     ({"stopPrice": 4994.0}, 1, 5000.0, None),
-    ({"stopPrice": 5010.0}, 1, 5000.0, "wrong_side_of_market"),         # at or over the bid
+    ({"stopPrice": 5010.0}, 1, 5000.0, "wrong_side_of_plan"),           # over the planned entry
     ({"stopPrice": 4999.75}, 1, 5000.0, "wrong_side_of_market"),
     ({"side": 0, "stopPrice": 5000.25}, 0, 4999.0, "wrong_side_of_market"),
     ({"stopPrice": 4900.0}, 1, 5000.0, "too_far_plan"),                 # beyond the ceiling from the PLANNED entry too
@@ -132,6 +132,15 @@ BOOK = (Decimal("4999.75"), Decimal("5000.25"))
 def test_fixed_stop_problem_hard_cases_use_market_and_plan(over, close_side, planned, want):
     got = {**STOPROW, **over}
     assert Guard._fixed_stop_problem(got, close_side, 1, 5000.25, 0.25, 200, planned_px=planned, book=BOOK) == want
+
+
+def test_a_stop_equal_to_the_plan_that_the_market_ran_through_is_drift_not_wrong():
+    got = {**STOPROW, "stopPrice": 4999.75}
+    kw = dict(planned_px=5000.0, book=BOOK)
+    assert Guard._fixed_stop_problem(got, 1, 1, 5000.25, 0.25, 200, plan_stop=4999.75, **kw) == "market_through_plan"
+    assert "market_through_plan" in Guard.SOFT_READBACK
+    assert Guard._fixed_stop_problem(got, 1, 1, 5000.25, 0.25, 200, plan_stop=4994.0, **kw) == "wrong_side_of_market"   # differs from the plan
+    assert Guard._fixed_stop_problem(got, 1, 1, 5000.25, 0.25, 200, **kw) == "wrong_side_of_market"
 
 
 def test_slippage_alone_is_soft_not_a_flatten_reason():
@@ -212,20 +221,48 @@ async def test_a_resized_stop_the_broker_still_shows_too_small_flattens(tmp_path
     assert g.halted() and any(a.get("state") == "STOP_READBACK_BAD" and a.get("code") == "too_small" for a in audits(g))
 
 
-async def test_an_unlisted_stop_is_audited_and_an_undersized_one_halts(tmp_path):
+async def test_a_stop_that_never_lists_is_rechecked_then_flattened_like_a_trail(tmp_path):
     g, live, clock, gw = build2(tmp_path)
     t = await staged(g)
     await go(g, t)
-    gw.working = []                                        # not listed: cannot be read back, so audited, not guessed
+    gw.list_acked = False                                  # ACKed with an id, never listed, position still open
     await g.handle_position(fill(live))
-    assert not g.halted()
-    assert any(a.get("state") == "STOP_READBACK_UNREAD" for a in audits(g))
-    g2, live2, clock2, gw2 = build2(tmp_path / "b")
-    t2 = await staged(g2)
-    await go(g2, t2)
-    gw2.working = [{**STOPROW, "size": 0}]
-    await g2.handle_position(fill(live2))
-    assert g2.halted()
+    assert g.halted() and t.abandoned
+    assert any(a.get("state") == "STOP_READBACK_UNLISTED" for a in audits(g))
+    assert g.auto_action()["kind"] == "stop_readback"
+
+
+async def test_an_unlisted_stop_on_a_position_that_is_already_flat_does_nothing(tmp_path):
+    g, live, clock, gw = build2(tmp_path)
+    t = await staged(g)
+    await go(g, t)
+    t.stop_state, t.stop_order_id, t.stop_size = "ACKED", 900, 1
+    gw.working = []
+    live.positions.clear()                                 # the stop filled / a human closed it
+    await g._fixed_stop_readback(t, 900)
+    assert not g.halted() and not t.abandoned
+
+
+async def test_a_list_that_lags_one_read_after_a_resize_does_not_flatten(tmp_path):
+    g, live, clock, gw = build2(tmp_path, max_qty_order=3, max_qty_symbol=3, max_qty_total=3)
+    t = await staged(g, risk_dollars=200.0)
+    await go(g, t)
+    t.stop_state, t.stop_order_id, t.stop_size = "ACKED", 900, 1
+    fill(live, size=3)
+    gw.working = [{**STOPROW, "size": 1}]               # the OLD size, as a stale list shows it
+    calls = {"n": 0}
+    real = gw.open_orders
+
+    async def lagging(account_id):
+        calls["n"] += 1
+        if calls["n"] >= 3:                             # catches up after the resize and a couple of reads; gw.working is NOT rewritten
+            return [{**STOPROW, "size": 3}]
+        return await real(account_id)
+
+    gw.open_orders = lagging
+    await g._fixed_stop_readback(t, 900)
+    assert calls["n"] >= 3 and not g.halted() and not t.abandoned
+    assert any(a.get("state") == "STOP_READBACK_OK" for a in audits(g))
 
 
 async def test_a_fill_price_the_desk_cannot_read_is_flagged_not_flattened(tmp_path):
@@ -297,6 +334,31 @@ async def test_an_oversize_trail_is_flagged_only_never_resized_or_flattened(tmp_
     await g.protect_open_positions()
     assert not [w for w in gw.writes[n:] if w[0] == ORDER_MODIFY] and not g.halted() and not t.abandoned
     assert g.oversize_flags() == [{"contract": CID, "stop": 3, "pos": 1}]
+
+
+async def test_oversize_seen_is_pruned_to_contracts_with_a_position_and_capped(tmp_path):
+    g, live, clock, gw = build2(tmp_path)
+    fill(live, size=1)
+    gw.working = [dict(BIG)]
+    await g.protect_open_positions()
+    assert g._oversize_seen
+    live.positions.clear()
+    gw.pos = []
+    await g.protect_open_positions()
+    assert g._oversize_seen == set()
+    g._oversize_seen = {(CID, i, 3, 1) for i in range(300)}
+    fill(live, size=1)
+    gw.pos = [{"id": 1, "contractId": CID, "type": 1, "size": 1}]
+    await g.protect_open_positions()
+    assert len(g._oversize_seen) <= 200
+
+
+async def test_ticket_ttl_shown_reads_both_clocks(tmp_path):
+    g, live, clock, gw = build(tmp_path)
+    t = await staged(g)
+    assert g.ttl_s(t) > 0
+    g.wall = lambda: NOW + timedelta(seconds=121)
+    assert g._expired(t) and g.ttl_s(t) == 0
 
 
 def test_the_digest_shows_the_oversize_flag_and_is_quiet_without_it():

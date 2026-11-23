@@ -155,6 +155,7 @@ async def _stale_a_then_b(tmp_path, stop_fill_seen=True):
     await g.handle_position(fill(live))
     assert a.stop_state == "ACKED" and a.filled_size == 1
     live.positions.clear()
+    gw.working = []                  # the stop filled: the broker no longer lists it
     if stop_fill_seen:
         live.trades.append({"id": 50, "orderId": a.stop_order_id, "contractId": CID, "size": 1, "voided": False})
     clock.t += 60

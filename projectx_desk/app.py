@@ -560,7 +560,7 @@ def create_app(client=None, market_hub=None, user_hub=None, allowed_hosts=None, 
 
     def ticket_view(t, g):
         return {"ticket_id": t.ticket_id, "hash8": t.hash8, "state": t.state,
-                "ttl_s": max(0, round(t.expires - g.clock())), "readback": dict(t.readback),
+                "ttl_s": g.ttl_s(t), "readback": dict(t.readback),
                 "stop_plan": t.stop_plan["mode"], "account_suffix": t.account_suffix,
                 "acked": t.acked, "stop_state": t.stop_state, "entry_status": g.entry_status(t)}
 

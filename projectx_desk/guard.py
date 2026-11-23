@@ -957,6 +957,18 @@ class Guard:
         except Exception:  # noqa: BLE001
             return True
 
+    def ttl_s(self, t) -> int:
+        """Seconds left on a ticket by BOTH clocks (0 when expired by either): what the desk and the MCP show."""
+        if self._expired(t):
+            return 0
+        left = t.expires - self.clock()
+        if t.expires_wall is not None:
+            try:
+                left = min(left, (t.expires_wall - self.wall()).total_seconds())
+            except Exception:  # noqa: BLE001
+                return 0
+        return max(0, round(left))
+
     def _deny(self, t, reasons, origin="ui", state=None):
         self._audit("reject", ticket=t.hash8 if t else None, origin=origin, state=state,
                     check=(reasons[0].split(":")[0] if reasons else None))
@@ -1414,6 +1426,10 @@ class Guard:
                         self._oversize_seen.add(key)
                         self._audit("stop", state="OVERSIZE_STOP", size=int(abs(sz)))
         self.oversize = found
+        live_cids = {p["contractId"] for p in positions}
+        self._oversize_seen = {k for k in self._oversize_seen if k[0] in live_cids}      # bounded: only contracts with a position
+        if len(self._oversize_seen) > 200:
+            self._oversize_seen.clear()
 
     def oversize_flags(self) -> list:
         """Allowlisted view for /ai/state and the digest: [{contract, stop, pos}] (contract validated, sizes ints)."""
@@ -1522,8 +1538,8 @@ class Guard:
                       if q.get("contractId") == t.contract_id)
             if now and now != t.stop_size:      # the position grew (partial fills) while the stop was in flight
                 await self._resize_stop(t, now)
-            elif not trailing and not t.abandoned and t.state != "CLOSED":
-                await self._fixed_stop_readback(t, oid)
+            if not trailing and not t.abandoned and t.state != "CLOSED":
+                await self._fixed_stop_readback(t, oid)       # also after a resize: the resized stop is read back too
         else:
             await self._naked(t, "stop_failed")
 
@@ -2000,10 +2016,10 @@ class Guard:
     # ---- trailing stop: swap the fixed stop for a TRAIL, read back, then drop the fixed one -------------
 
     # Problems that prove the stop is wrong NOW; the rest (SOFT) can come from slippage alone and are only audited (Round 41).
-    SOFT_READBACK = frozenset({"wrong_side_of_fill", "too_far"})
+    SOFT_READBACK = frozenset({"wrong_side_of_fill", "too_far", "market_through_plan"})
 
     @staticmethod
-    def _fixed_stop_problem(got, close_side, pos_size, fill_px, tick, max_ticks, planned_px=None, book=None):
+    def _fixed_stop_problem(got, close_side, pos_size, fill_px, tick, max_ticks, planned_px=None, book=None, plan_stop=None):
         """Round 39/41: what is wrong with the broker's own record of a FIXED post-fill stop, as a fixed word, or None when it checks out.
         A working type 4 on the closing side, at least the position's size, a numeric trigger. Provably wrong (flatten): `not_a_stop`,
         `not_working`, `wrong_side`, `too_small`, `unreadable`, `wrong_side_of_market` (a long's stop at or over the bid, a short's at or
@@ -2023,12 +2039,16 @@ class Guard:
         if not _finite_pos(trig) or not _finite_pos(fill_px) or not _finite_pos(tick):
             return "unreadable"
         long_ = close_side == 1                                              # closing SELL = long: the stop belongs under the price
+        if _finite_pos(planned_px) and ((trig >= planned_px) if long_ else (trig <= planned_px)):
+            return "wrong_side_of_plan"
         if book is not None:
             bid, ask = book
             if (Decimal(str(trig)) >= bid) if long_ else (Decimal(str(trig)) <= ask):
+                # The stop IS the planned one and the market simply ran through it: the broker accepted it and it is working, so this
+                # is a normal stop-out in progress, not a wrong stop (Round 41). Only a trigger that differs from the plan is hard.
+                if _finite_pos(plan_stop) and Decimal(str(trig)) == Decimal(str(plan_stop)):
+                    return "market_through_plan"
                 return "wrong_side_of_market"
-        if _finite_pos(planned_px) and ((trig >= planned_px) if long_ else (trig <= planned_px)):
-            return "wrong_side_of_plan"
         if not ((trig < fill_px) if long_ else (trig > fill_px)):
             return "wrong_side_of_fill"
         if max_ticks is not None and abs(Decimal(str(fill_px)) - Decimal(str(trig))) / Decimal(str(tick)) > max_ticks:
@@ -2037,47 +2057,71 @@ class Guard:
             return "too_far"
         return None
 
+    def _open_size(self, t: Ticket) -> int:
+        return sum(abs(q.get("size") or 0) for q in self.live.positions.values()
+                   if q.get("contractId") == t.contract_id and abs(q.get("size") or 0))
+
+    def _exposed(self, t: Ticket) -> bool:
+        """The ticket's contract still has an open position and the desk has not already flattened it or retired the ticket."""
+        return bool(self._open_size(t)) and not t.abandoned and t.state != "CLOSED"
+
     async def _fixed_stop_readback(self, t: Ticket, oid) -> None:
         """After a fixed stop is ACKed, read it back from the broker and check it (Round 39, 41). A stop that is provably wrong is a fill
-        with no effective stop: flatten and halt (`stop_readback`). A mismatch that slippage alone explains is audited
-        (`STOP_READBACK_DRIFT`), as is a stop or price the desk cannot read (`STOP_READBACK_UNREAD`); protect_open_positions proves the
-        stop is listed on every resync. A position that GREW since the ACK (partial fills) goes through the ordinary resize first."""
+        with no effective stop: flatten and halt (`stop_readback`). A mismatch that slippage alone explains, or a market that ran through
+        the planned stop, is audited (`STOP_READBACK_DRIFT`). A position that GREW since the ACK goes through the ordinary resize first,
+        and a stop that still reads too small is re-read (a stale list) before it is judged. A stop that never lists is re-checked once and
+        then flattened like a TRAIL that does not read back. An unreadable fill price, tick size or quote is only audited
+        (`STOP_READBACK_UNREAD`). The position is re-checked right before any flatten: flat means nothing to do."""
+        if not self._exposed(t):
+            return          # flat or already handled: nothing to judge (checked BEFORE the order-read retries)
         got = await self._read_order(oid)
-        for _ in range(2):
-            size = sum(abs(q.get("size") or 0) for q in self.live.positions.values()
-                       if q.get("contractId") == t.contract_id and abs(q.get("size") or 0))
-            if not size:
-                return          # already flat: the close path retires the stop
-            if t.abandoned or t.state == "CLOSED":
-                return
-            if size > (t.stop_size or 0):
-                await self._resize_stop(t, size)        # the normal path: it flattens and halts on its own failure
-                if t.abandoned or t.state == "CLOSED":
-                    return
-                got = await self._read_order(oid)       # judge the resized stop, not the old size
-                continue
-            break
-        else:
-            self._audit("stop", ticket=t.hash8, state="STOP_READBACK_UNREAD")
-            return
-        pos = [q for q in self.live.positions.values() if q.get("contractId") == t.contract_id and abs(q.get("size") or 0)]
-        fill_px = pos[0].get("averagePrice") if len(pos) == 1 else None
         tick = None
         try:
             rec = await asyncio.wait_for(self._contract(t.contract_id, stale_ok=True), 2)
             tick = rec["tickSize"]
         except Exception:  # noqa: BLE001
             pass
-        if got is None or (not _finite_pos(fill_px)) or not _finite_pos(tick):
+        unlisted_rechecked = False
+        for _ in range(6):
+            size = self._open_size(t)
+            if not self._exposed(t):
+                return
+            if size > (t.stop_size or 0):
+                await self._resize_stop(t, size)        # the normal path: it flattens and halts on its own failure
+                if t.abandoned or t.state == "CLOSED":
+                    return
+                await self.sleep(self.verify_interval)
+                got = await self._read_order(oid)       # judge the resized stop, not the old size
+                continue
+            if got is None:
+                if not unlisted_rechecked:
+                    unlisted_rechecked = True
+                    await self.sleep(self.verify_interval)
+                    got = await self._read_order(oid)
+                    continue
+                if not self._exposed(t):
+                    return
+                self._audit("stop", ticket=t.hash8, state="STOP_READBACK_UNLISTED")
+                t.stop_order_id = oid
+                try:                                    # the sweep sees only LISTED orders; a stop the list lags on needs its own cancel
+                    await self.client.write(ORDER_CANCEL, {"accountId": self.live.account_id, "orderId": oid})
+                except Exception:  # noqa: BLE001 - flatten sweeps and verifies the book anyway
+                    pass
+                if self._exposed(t):
+                    await self._naked(t, "stop_readback")
+                return
+            problem = self._judge_fixed_stop(t, got, size, tick)
+            if problem == "too_small" and size <= (t.stop_size or 0) and _ < 4:
+                await self.sleep(self.verify_interval)  # our resize ACKed: a stale list may still show the old size; read again
+                got = await self._read_order(oid)
+                continue
+            break
+        else:
             self._audit("stop", ticket=t.hash8, state="STOP_READBACK_UNREAD")
             return
-        q = self.live.quotes.get(t.contract_id) or {}
-        fresh = self.clock() - q.get("_rx", -1e9) <= self.limits.max_quote_age_s
-        planned = (t.readback or {}).get("entry_ref")
-        problem = self._fixed_stop_problem(got, t.stop_plan["side"], size, float(fill_px), float(tick),
-                                           None if t.one_lot else self.limits.max_stop_ticks,
-                                           planned_px=float(planned) if _finite_pos(planned) else None,
-                                           book=_book(q) if fresh else None)
+        if problem == "UNREAD":
+            self._audit("stop", ticket=t.hash8, state="STOP_READBACK_UNREAD")
+            return
         if problem is None:
             self._audit("stop", ticket=t.hash8, state="STOP_READBACK_OK")
             return
@@ -2085,10 +2129,25 @@ class Guard:
             self._audit("stop", ticket=t.hash8, state="STOP_READBACK_DRIFT", code=problem)
             return
         self._audit("stop", ticket=t.hash8, state="STOP_READBACK_BAD", code=problem)
-        if t.abandoned or t.state == "CLOSED":
+        if not self._exposed(t):            # flat in the meantime (the stop filled, or a human closed it): nothing to flatten
             return
         t.stop_order_id = oid
         await self._naked(t, "stop_readback")
+
+    def _judge_fixed_stop(self, t: Ticket, got, size, tick):
+        """Fixed word, None for OK, or "UNREAD" when the fill price or tick size cannot be read (then only audited)."""
+        pos = [q for q in self.live.positions.values() if q.get("contractId") == t.contract_id and abs(q.get("size") or 0)]
+        fill_px = pos[0].get("averagePrice") if len(pos) == 1 else None
+        if (not _finite_pos(fill_px)) or not _finite_pos(tick):
+            return "UNREAD"
+        q = self.live.quotes.get(t.contract_id) or {}
+        fresh = self.clock() - q.get("_rx", -1e9) <= self.limits.max_quote_age_s
+        planned = (t.readback or {}).get("entry_ref")
+        return self._fixed_stop_problem(got, t.stop_plan["side"], size, float(fill_px), float(tick),
+                                        None if t.one_lot else self.limits.max_stop_ticks,
+                                        planned_px=float(planned) if _finite_pos(planned) else None,
+                                        book=_book(q) if fresh else None,
+                                        plan_stop=t.stop_plan.get("stop_price"))
 
     async def _read_order(self, order_id):
         """The broker's own record of one working order (REST), retried a few times because a new order can lag the list. None = not seen."""

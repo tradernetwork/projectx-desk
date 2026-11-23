@@ -1038,6 +1038,17 @@ Docs: `docs/PUBLIC.md`. Tests: `tests/test_pub_link.py`, `tests/test_pub_app.py`
   from a tick or two of slippage alone, so they are audited `STOP_READBACK_DRIFT` and never flatten. An order the broker does not list yet, or a
   fill price or tick size the desk cannot read, is audited `STOP_READBACK_UNREAD` and NOT halted (`protect_open_positions` flattens an owned
   position whose stop is missing from the book). The distance check is skipped for a 1-lot ticket.
+- **Review round 2 (Round 41).** (1) A trigger EQUAL to the planned stop that the market has run through is `market_through_plan`, audited
+  `STOP_READBACK_DRIFT`, never a flatten: the broker accepted it and it is working, and halting would turn a normal stop-out into a human-clear
+  halt. Only a trigger that differs from the plan (or is on the wrong side of the planned entry) is hard. The position is checked flat BEFORE the
+  order-read retries and again right before any flatten; flat or `CLOSED` means audit and do nothing. (2) After a resize ACKs, a `too_small` read
+  is re-read up to 4 times with a short sleep (a stale list) before it counts. (3a) The read-back also runs after the resize in `_arm_stop`.
+  (3b) A stop ACKed but never listed is re-checked once after a delay; still unlisted with the position still open is `STOP_READBACK_UNLISTED`,
+  a best-effort cancel of that id and a flatten + halt (`stop_readback`), as a TRAIL that does not read back (`TRAIL_MISREAD`). A fixed stop is
+  no weaker than a trail. The second net is `protect_open_positions` through the `_reseed_loop`; `PX_RESEED_S=0` turns that loop off, and then
+  only the read-back and boot/resync runs remain. (3c) An unreadable `averagePrice`, tick size or quote only audits `STOP_READBACK_UNREAD`
+  (the quote also skips the market check, which then relies on the plan check). (4) `Guard.ttl_s` reads both clocks, so the desk, MCP and
+  digest never show time left on a ticket that is expired; `_oversize_seen` keeps only contracts with a position and is capped at 200.
 - **What this does not settle.** `averagePrice` on a position is the broker's average, so after a partial fill at two prices the
   check is against the average. The read-back runs after the watchdog is cancelled, so a broker that never lists the stop is caught by
   the resync, not by the watchdog.

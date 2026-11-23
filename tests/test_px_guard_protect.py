@@ -18,6 +18,7 @@ class Broker(GW):
         self.stop_reply = {"success": True, "orderId": 900}
         self.cancelled = []
         self.working = []            # REST open orders
+        self.list_acked = True       # a gateway lists the stop it ACKed
 
     async def open_positions(self, account_id):
         return list(self.pos)
@@ -41,7 +42,12 @@ class Broker(GW):
             if body["type"] == 4:                      # a stop
                 if isinstance(self.stop_reply, BaseException):
                     raise self.stop_reply
-                return self.stop_reply
+                r = self.stop_reply
+                if self.list_acked and isinstance(r, dict) and r.get("success") and isinstance(r.get("orderId"), int) \
+                        and not any(o.get("id") == r["orderId"] for o in self.working):
+                    self.working.append({"id": r["orderId"], "contractId": body["contractId"], "type": 4, "side": body["side"],
+                                         "size": body["size"], "stopPrice": body["stopPrice"], "status": 1})   # a gateway lists what it ACKed
+                return r
             if body["type"] == 2 and body["customTag"].endswith("-9"):    # flatten market order
                 if self.market_close_works:
                     self.pos = []
